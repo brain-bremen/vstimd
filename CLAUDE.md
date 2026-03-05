@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-`vstim_server` is a Rust port of an MFC/C++/Direct3D11 neuroscience visual stimulus server. The goal is a GPU-accelerated 2-D/3-D stimulus renderer controlled via ZeroMQ, targeting Linux (though currently developed on Windows).
+**VStim v3** is a Rust rewrite of the C++ StimServer visual stimulus server, combined with ideas from the VStim project. The Rust server binary is named `vstim_server`; the overall project (server + Python client + tools) is VStim v3.
 
-The current code is a 2-D Bézier rendering demo. The `StimServer/` directory is a git submodule containing the original C++ reference implementation.
+The original StimServer used MFC/C++/Direct3D11 with a client/server architecture over Windows named pipes (binary protocol). This project ports that architecture to Rust, targeting Linux as the primary deployment platform, replacing named pipes with ZeroMQ for cross-platform IPC, and adding a modern GPU rendering stack.
+
+The `extern/` directory contains git submodules for external references: `extern/StimServer/` holds the original C++ reference implementation and `extern/psychopy/` holds PsychoPy for stimulus design reference.
 
 ## Build & Run
 
@@ -52,13 +54,7 @@ Everything is in one file. Layer order bottom-up:
 
 ### Planned Architecture (see `docs/`)
 
-| Doc | Topic |
-|---|---|
-| `docs/PLAN.md` | Full port plan: ZeroMQ command protocol, all stimulus types, phase roadmap |
-| `docs/STIMULUS_DATA_MODEL.md` | Flat `enum Stimulus { ... }` composition model (no inheritance) |
-| `docs/EVENT_LOGGING.md` | Append-only event log + ZMQ PUB + deterministic replay |
-| `docs/INPUT_LATENCY.md` | Shared memory for position input (gaze/joystick); ZMQ for commands |
-| `docs/3D_ROADMAP.md` | Phases A–E: camera → primitives → corridors → meshes → Gaussian splatting |
+See `docs/PLAN.md` for the full design and roadmap. Additional planning documents are in the `docs/` directory.
 
 Key architectural decisions already made:
 - Stimulus types: flat `enum` with composition (not trait objects or inheritance)
