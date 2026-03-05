@@ -8,6 +8,7 @@ overlay = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
 
 [dependencies]
 bytemuck = { version = "1", features = ["derive"] }
+indexmap = "2"
 kurbo = "0.13.0"
 pollster = "0.3"
 wgpu = "27.0.1"

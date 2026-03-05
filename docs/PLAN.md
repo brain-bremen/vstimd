@@ -1,7 +1,7 @@
 # StimServer → Rust Port: Master Plan
 
 > **Status:** Planning phase  
-> **Last updated:** 2025  
+> **Last updated:** 2026
 > **Original:** MFC / Direct2D / Direct3D 11 / Windows Named Pipe  
 > **Target:** Rust / wgpu / kurbo / ZeroMQ / protobuf / Linux (also Windows-compatible)
 
@@ -660,9 +660,9 @@ wonderlamp_server/
 
 ## 7. Phase-by-Phase Implementation Plan
 
-### Phase 1 — Project Scaffolding
+### Phase 3 — Project Scaffolding
 
-- [ ] Update `Cargo.toml` with new dependencies (see §4).
+- [ ] Update `Cargo.toml` with ZeroMQ / protobuf / tokio / async dependencies (see §4).
 - [ ] Write `build.rs`:
   ```rust
   fn main() {
@@ -682,7 +682,7 @@ wonderlamp_server/
   - `--fullscreen` flag
   - `--overlay` / `--no-overlay`
 
-### Phase 2 — Scene State Core (`src/scene/`)
+### Phase 1 — Scene State Core (`src/scene/`)
 
 > **See `STIMULUS_DATA_MODEL.md` for the full design rationale.** The summary is below.
 
@@ -809,7 +809,7 @@ pub struct SceneState {
 Implement `SceneState::handle_request(&mut self, req: Request) -> Response` dispatching the
 protobuf `oneof` to the appropriate creation/mutation method.
 
-### Phase 3 — Renderer (`src/render/`)
+### Phase 2 — Renderer (`src/render/`)
 
 Refactor the existing `src/main.rs` prototype into the `render/` module.
 
@@ -1097,9 +1097,9 @@ The structured protobuf messages are far easier to work with than the hand-packe
 
 ## 10. Suggested Implementation Order
 
-- [ ] **Phase 1** — Scaffolding: `Cargo.toml`, `build.rs`, `proto/wonderlamp.proto`, `args.rs`
-- [ ] **Phase 2** — Scene state: `Stimulus` enum + component structs (see `STIMULUS_DATA_MODEL.md`), `Animation` trait + all variants, `SceneState`
-- [ ] **Phase 3** — Renderer: refactor `main.rs` into `render/`, all shape tessellators, pipelines
+- [ ] **Phase 1** — Scene state: `Stimulus` enum + component structs (see `STIMULUS_DATA_MODEL.md`), `Animation` trait + all variants, `SceneState`
+- [ ] **Phase 2** — Renderer: refactor `main.rs` into `render/`, all shape tessellators, pipelines, render loop wired to `SceneState`
+- [ ] **Phase 3** — Scaffolding: ZeroMQ / protobuf deps in `Cargo.toml`, `build.rs`, `proto/wonderlamp.proto`, `args.rs`
 - [ ] **Phase 4** — ZeroMQ server: `ipc/zmq_server.rs`, wire to `SceneState::handle_request`
 - [ ] **Phase 5** — Shared-memory reader: `ipc/shm_reader.rs`, `AnimExternalPos`
 - [ ] **Phase 6** — Main + threading: proper fullscreen winit, thread spawning, `Arc<RwLock>`
