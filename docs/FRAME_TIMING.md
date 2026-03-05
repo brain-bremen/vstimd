@@ -298,6 +298,7 @@ See `docs/INPUT_LATENCY.md` for the shared memory layout.
 
 ```bash
 # 1. Start the server (with overlay for visual confirmation)
+cd server
 cargo run --features overlay
 
 # 2. Run the timing test (hardware lab)
@@ -309,5 +310,6 @@ uv run python -m vstim_timing_test \
     --out results/$(date +%Y%m%d_%H%M%S).csv
 
 # 3. Run CI/unit tests (no hardware)
+cd ..
 uv run pytest tools/timing_test/tests/ -v
 ```

@@ -48,7 +48,7 @@ PsychoPy's local renderer.
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Class hierarchy | Flat — no mixins, no shared base class behavior | Mirrors PsychoPy's own "wide not deep" structure; avoids MRO surprises |
+| Class hierarchy | Flat — no mixins, no shared base class behavior | PsychoPy has a deep inheritance hierarchy (MRO surprises, hidden state); vstim_client is deliberately flat — each class is self-contained |
 | Repeated fields | Duplicated explicitly in every class | Intentional — each class is self-contained; matches the plan in `STIMULUS_DATA_MODEL.md` |
 | Wire format v1 | JSON over ZMQ REQ/REP | Easy to inspect and debug during early development |
 | Wire format v2 | Protobuf (planned) | Migrate once server protocol is stable; see `PLAN.md` §5 |
@@ -62,7 +62,7 @@ PsychoPy's local renderer.
 ## 3. Package Structure
 
 ```
-vstim_client/                        ← installable Python package
+client-python/                       ← installable Python package
 ├── pyproject.toml                   ← build + dependencies
 ├── vstim_client/
 │   ├── __init__.py                  ← re-exports visual module
@@ -83,9 +83,9 @@ vstim_client/                        ← installable Python package
 Install:
 
 ```bash
-pip install -e vstim_client/
+pip install -e client-python/
 # or with uv:
-uv pip install -e vstim_client/
+uv pip install -e client-python/
 ```
 
 ---
@@ -317,7 +317,7 @@ WGSL source is always sent as a plain string in the JSON command — no upload n
 
 ## 10. Testing Strategy
 
-Tests are in `vstim_client/tests/`. They are structured in three layers:
+Tests are in `client-python/tests/`. They are structured in three layers:
 
 ### Layer 1 — Unit tests (`test_commands.py`) — no server required
 
@@ -338,6 +338,7 @@ ZMQ frames without any network activity.
 
 **Run:**
 ```bash
+cd client-python
 uv run pytest tests/test_commands.py -v
 ```
 
@@ -356,6 +357,7 @@ Parametrized tests that compare `vstim_client.visual` signatures against
 **Run:**
 ```bash
 # First generate fixtures (requires psychopy installed):
+cd client-python
 uv run python compat/check_compat.py --output-pytest-fixtures tests/_compat_fixtures.py
 uv run pytest tests/test_api_compat.py -v
 ```
@@ -373,6 +375,7 @@ Server address is set via `VSTIM_SERVER_ADDR` env var.
 
 **Run:**
 ```bash
+cd client-python
 VSTIM_SERVER_ADDR=tcp://192.168.1.10:5555 \
   uv run pytest tests/test_integration.py --run-integration -v
 ```
@@ -401,6 +404,7 @@ and its `open_window` ZMQ call.
 ### Standalone report
 
 ```bash
+cd client-python
 uv run python compat/check_compat.py
 ```
 
@@ -422,6 +426,7 @@ Exit code 0 = fully compatible; 1 = at least one missing parameter or method.
 ### Generating pytest fixtures
 
 ```bash
+cd client-python
 uv run python compat/check_compat.py --output-pytest-fixtures tests/_compat_fixtures.py
 ```
 
