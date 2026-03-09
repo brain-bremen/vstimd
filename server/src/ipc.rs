@@ -21,6 +21,13 @@ use crate::scene::SceneState;
 /// `tokio::runtime` lets us use `zeromq`'s async API without interfering with
 /// the render loop.
 ///
+/// # Bind address
+///
+/// Use a concrete IP, not a wildcard hostname.  The `zeromq` crate resolves
+/// the host part as a DNS name, so `tcp://*:5555` (libzmq C convention) will
+/// fail with a lookup error.  Use `tcp://0.0.0.0:5555` to bind on all
+/// interfaces, or `tcp://127.0.0.1:5555` for loopback only.
+///
 /// Returns the `JoinHandle` for the thread (detach or join on shutdown).
 pub fn spawn_zmq_thread(
     scene: Arc<RwLock<SceneState>>,

@@ -41,7 +41,7 @@ fn main() {
     let scene = Arc::new(RwLock::new(scene));
 
     // Spawn ZMQ server thread before entering the event loop.
-    let _zmq_thread = wonderlamp_server::ipc::spawn_zmq_thread(Arc::clone(&scene), "tcp://*:5555");
+    let _zmq_thread = wonderlamp_server::ipc::spawn_zmq_thread(Arc::clone(&scene), "tcp://0.0.0.0:5555");
 
     // The frame loop: winit fires RedrawRequested → RenderState::tick()
     // ControlFlow::Poll ensures we redraw continuously (no waiting for input).
