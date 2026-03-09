@@ -1,0 +1,60 @@
+syntax = "proto3";
+package wonderlamp;
+
+// ── Primitive types ──────────────────────────────────────────────────────────
+
+message Vec2 {
+  float x = 1;
+  float y = 2;
+}
+
+message Color {
+  float r = 1;
+  float g = 2;
+  float b = 3;
+  float a = 4;
+}
+
+// ── Command bodies ───────────────────────────────────────────────────────────
+
+// System command (handle=0): create a rectangle stimulus.
+// Returns the new stimulus handle in Response.handle.
+message CreateRect {
+  Vec2  center = 1;   // pixel-space position (origin = screen centre, Y-up)
+  float width  = 2;   // full width in pixels  (0 → default 100)
+  float height = 3;   // full height in pixels (0 → default 100)
+  Color fill   = 4;   // fill colour (absent → scene default_fill)
+}
+
+// Stimulus command (handle>0): enable or disable a stimulus.
+message SetEnabled {
+  bool enabled = 1;
+}
+
+// Stimulus command (handle>0): delete a stimulus.
+message Delete {}
+
+// ── Envelope ─────────────────────────────────────────────────────────────────
+
+// Client → server request envelope.
+message Request {
+  // Routing: 0 = system command, >0 = stimulus handle.
+  uint32 handle = 1;
+
+  oneof body {
+    CreateRect  create_rect  = 10;
+    SetEnabled  set_enabled  = 11;
+    Delete      delete       = 12;
+  }
+}
+
+// Server → client response envelope.
+message Response {
+  // For create commands: the newly allocated handle (>0).
+  // For mutation commands: -1 (ack).
+  // For errors: 0.
+  int32 handle = 1;
+
+  // Non-empty on error.
+  string error = 2;
+}

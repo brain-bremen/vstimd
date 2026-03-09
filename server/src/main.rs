@@ -1,9 +1,6 @@
-mod app;
-mod render;
-mod scene;
-mod timing;
+use std::sync::{Arc, RwLock};
 
-use scene::{
+use wonderlamp_server::scene::{
     Deferred, DiscStimulus, RectStimulus, SceneState, ShapeAppearance, Stimulus, StimulusFlags,
     Transform2D,
 };
@@ -41,10 +38,16 @@ fn main() {
         }),
     );
 
+    let scene = Arc::new(RwLock::new(scene));
+
+    // Spawn ZMQ server thread before entering the event loop.
+    let _zmq_thread = wonderlamp_server::ipc::spawn_zmq_thread(Arc::clone(&scene), "tcp://*:5555");
+
     // The frame loop: winit fires RedrawRequested → RenderState::tick()
     // ControlFlow::Poll ensures we redraw continuously (no waiting for input).
     let event_loop = winit::event_loop::EventLoop::new().unwrap();
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-    let mut app = app::App::new(scene);
+    let mut app = wonderlamp_server::app::App::new(scene);
     event_loop.run_app(&mut app).unwrap();
 }
+

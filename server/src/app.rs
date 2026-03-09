@@ -1,14 +1,16 @@
+use std::sync::{Arc, RwLock};
+
 use crate::render::RenderState;
 use crate::scene::SceneState;
 
 pub struct App {
     /// Held here until the window is created, then moved into `RenderState`.
-    scene: Option<SceneState>,
+    scene: Option<Arc<RwLock<SceneState>>>,
     state: Option<RenderState>,
 }
 
 impl App {
-    pub fn new(scene: SceneState) -> Self {
+    pub fn new(scene: Arc<RwLock<SceneState>>) -> Self {
         Self { scene: Some(scene), state: None }
     }
 }

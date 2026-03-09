@@ -19,9 +19,18 @@ pub type FinalActionMask = u8;
 /// is highly heterogeneous and the per-frame `advance()` interface is uniform
 /// regardless of implementation.
 ///
+/// # `Send + Sync` requirement
+///
+/// `Animation` requires both `Send` and `Sync` because `SceneState` (which
+/// owns a map of `Box<dyn Animation>`) is shared across threads via
+/// `Arc<RwLock<SceneState>>`.  For `Arc<RwLock<T>>` to be `Send`, `T` must
+/// be `Send + Sync`.  All concrete animation types must therefore be `Send +
+/// Sync`; this is trivially satisfied as long as they contain no raw pointers
+/// or thread-local state.
+///
 /// Note: the `command()` method (for handling per-animation protobuf commands)
 /// will be added in Phase 3 once the protobuf types are available.
-pub trait Animation: Send + 'static {
+pub trait Animation: Send + Sync + 'static {
     /// Advance the animation by one frame, updating the assigned stimulus.
     fn advance(
         &mut self,

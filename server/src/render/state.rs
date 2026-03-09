@@ -1,3 +1,5 @@
+use std::sync::{Arc, RwLock};
+
 use crate::scene::SceneState;
 use crate::timing::FrameStats;
 
@@ -7,6 +9,21 @@ use super::overlay::OverlayRenderer;
 use super::pipeline::create_pipeline;
 use super::tess;
 
+/// Owns the wgpu device/surface/pipeline and drives the per-frame render loop.
+///
+/// `scene` is shared with the ZMQ server thread via `Arc<RwLock<SceneState>>`.
+/// The locking discipline used each frame is:
+///
+/// 1. **`update()`** — acquires a **write lock** to apply any pending deferred
+///    flip, update bookkeeping fields (`screen_size`, `frame_rate`), and
+///    tessellate all stimuli.  The lock is dropped when `update()` returns.
+/// 2. **`render()`** — acquires a **read lock** only long enough to snapshot
+///    the background colour and collect the draw list from `gpu_buffers`.
+///    The lock is dropped before GPU submission.
+///
+/// This means the ZMQ thread can acquire a write lock in the gap between
+/// `update()` and `render()` (or after `render()`) — it is never blocked for
+/// more than the time it takes to finish the tessellation pass.
 pub struct RenderState {
     // `surface` must be declared before `window` so it drops first.
     surface: wgpu::Surface<'static>,
@@ -15,7 +32,7 @@ pub struct RenderState {
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
     gpu_buffers: GpuBuffers,
-    scene: SceneState,
+    scene: Arc<RwLock<SceneState>>,
     frame_stats: FrameStats,
     pub show_overlay: bool,
     #[cfg(feature = "overlay")]
@@ -26,7 +43,7 @@ pub struct RenderState {
 impl RenderState {
     pub fn new(
         window: std::sync::Arc<winit::window::Window>,
-        scene: SceneState,
+        scene: Arc<RwLock<SceneState>>,
         #[cfg(feature = "overlay")] event_loop: &winit::event_loop::ActiveEventLoop,
     ) -> Self {
         let instance = wgpu::Instance::default();
@@ -101,23 +118,26 @@ impl RenderState {
     }
 
     fn update(&mut self) {
-        if self.scene.pending_flip {
-            self.scene.apply_flip();
+        let screen_size = (self.config.width, self.config.height);
+        let fps = self.frame_stats.summary().fps as f32;
+
+        let mut scene = self.scene.write().expect("scene lock poisoned");
+
+        if scene.pending_flip {
+            scene.apply_flip();
         }
 
-        let screen_size = (self.config.width, self.config.height);
-        self.scene.screen_size = screen_size;
-        self.scene.frame_rate = self.frame_stats.summary().fps as f32;
+        scene.screen_size = screen_size;
+        scene.frame_rate = fps;
 
         // Remove GPU buffers for stimuli that no longer exist.
-        self.gpu_buffers.meshes.retain(|h, _| self.scene.stimuli.contains_key(h));
+        self.gpu_buffers.meshes.retain(|h, _| scene.stimuli.contains_key(h));
 
         // Tessellate every stimulus and upload. In Phase 2 this will be
         // made incremental (only upload dirty stimuli).
-        let handles: Vec<u32> = self.scene.stimuli.keys().copied().collect();
+        let handles: Vec<u32> = scene.stimuli.keys().copied().collect();
         for handle in handles {
-            let (verts, idxs) =
-                tess::tessellate_stimulus(&self.scene.stimuli[&handle], screen_size);
+            let (verts, idxs) = tess::tessellate_stimulus(&scene.stimuli[&handle], screen_size);
             self.gpu_buffers.upload(handle, &self.device, &verts, &idxs);
         }
     }
@@ -131,7 +151,8 @@ impl RenderState {
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
         {
-            let bg = self.scene.background.live;
+            let scene = self.scene.read().expect("scene lock poisoned");
+            let bg = scene.background.live;
             let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("main pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -156,7 +177,7 @@ impl RenderState {
             rp.set_pipeline(&self.pipeline);
 
             // Draw stimuli in insertion order (= draw order).
-            for (handle, _) in &self.scene.stimuli {
+            for (handle, _) in &scene.stimuli {
                 if let Some(mesh) = self.gpu_buffers.meshes.get(handle) {
                     if mesh.index_count > 0 {
                         rp.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));

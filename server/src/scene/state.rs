@@ -7,6 +7,26 @@ use super::stimulus::Stimulus;
 
 /// All shared scene state. Wrapped in `Arc<RwLock<SceneState>>` and shared
 /// between the render thread (read lock) and the ZMQ server thread (write lock).
+///
+/// # Thread-safety contract
+///
+/// `SceneState` itself does not contain any synchronisation primitives; all
+/// locking is done by the caller via the outer `RwLock`.  Two threads access
+/// the state concurrently:
+///
+/// | Thread | Lock | Duration |
+/// |---|---|---|
+/// | **ZMQ server** (`ipc.rs`) | **write** | One decoded request at a time |
+/// | **Render** (`render/state.rs`) | **write** then **read** | One frame at a time |
+///
+/// The ZMQ thread holds the write lock only while dispatching a single
+/// `handle_request()` call, so it releases it before the next ZMQ recv.
+/// The render thread takes a write lock briefly in `update()` for
+/// `apply_flip()` and scene bookkeeping, then drops it before drawing.
+///
+/// `SceneState: Send + Sync` follows automatically from its fields as long
+/// as every `Box<dyn Animation>` stored in `animations` is also
+/// `Send + Sync`.  See `Animation` trait for details.
 pub struct SceneState {
     /// Stimulus objects in insertion order (insertion order = draw order).
     pub stimuli: IndexMap<u32, Stimulus>,

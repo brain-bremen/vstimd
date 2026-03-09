@@ -61,3 +61,28 @@ Key architectural decisions already made:
 - Position input: keep shared memory (ZMQ latency too high at ~100–400 µs round-trip)
 - 2-D and 3-D coexist in one frame (3-D rendered first, 2-D overlaid)
 - Render thread must never block or heap-allocate on event emission
+
+### Threading Model
+
+The server has two concurrent threads sharing `Arc<RwLock<SceneState>>`:
+
+| Thread | Lock held | When |
+|---|---|---|
+| **winit / render** (`app.rs` → `render/state.rs`) | write → read | Once per frame: write for tessellation bookkeeping, read for draw list |
+| **ZMQ server** (`ipc.rs`) | write | One command dispatch at a time (`handle_request`) |
+
+The `RwLock` write lock in `update()` is dropped before `render()` acquires a read
+lock, so the ZMQ thread always has a window to process commands between frames.
+
+**`Send + Sync` requirements:**  
+`Arc<RwLock<SceneState>>: Send` requires `SceneState: Send + Sync`.  
+`SceneState` contains `IndexMap<u32, Box<dyn Animation>>`, so `dyn Animation`
+must be `Send + Sync`.  The `Animation` trait bound was updated to
+`Send + Sync + 'static` for this reason; all concrete animation types must
+satisfy this (straightforward as long as they contain no raw pointers or
+thread-local state).
+
+**`lib.rs`:**  
+A `src/lib.rs` was added to expose `proto`, `scene`, `ipc`, and other modules
+as a library crate, enabling `tests/commands.rs` integration tests to call
+`SceneState::handle_request` directly without GPU or ZMQ.

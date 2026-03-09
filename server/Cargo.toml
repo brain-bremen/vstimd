@@ -11,10 +11,16 @@ bytemuck = { version = "1", features = ["derive"] }
 indexmap = "2"
 kurbo = "0.13.0"
 pollster = "0.3"
+prost = "0.13"
+tokio = { version = "1", features = ["rt"] }
 wgpu = "27.0.1"
 winit = "0.30"
+zeromq = "0.4"
 
 # Optional egui overlay (enable with --features overlay)
 egui       = { version = "0.33", optional = true }
 egui-wgpu  = { version = "0.33", optional = true }
 egui-winit = { version = "0.33", optional = true }
+
+[build-dependencies]
+prost-build = "0.13"
