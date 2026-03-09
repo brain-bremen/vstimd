@@ -5,22 +5,16 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wonderlamp_client"
 version = "0.1.0"
-description = "PsychoPy-compatible Python client for wonderlamp_server"
+description = "Python client for wonderlamp_server (protobuf + ZMQ)"
 requires-python = ">=3.10"
-dependencies = ["pyzmq>=25", "numpy>=1.24"]
+dependencies = [
+    "pyzmq>=25",
+    "protobuf>=5",
+]
 
 [project.optional-dependencies]
-test = ["pytest", "psychopy"]  # psychopy only needed for compat tests
-dev  = ["wonderlamp_client[test]"]
-
-[project.scripts]
-wonderlamp-compat = "wonderlamp_client.compat.check_compat:main"
+dev = ["pytest>=8", "grpcio-tools>=1.62"]  # grpcio-tools: regenerate _proto/ stubs
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["wonderlamp_client*"]
-
-[dependency-groups]
-dev = [
-    "pytest>=9.0.2",
-]

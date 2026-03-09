@@ -1,20 +1,19 @@
-"""wonderlamp_client — PsychoPy-compatible client for wonderlamp_server.
+"""wonderlamp_client — Python client for wonderlamp_server.
 
-Usage
------
-    from wonderlamp_client import visual
+Talks to the server over ZMQ using protobuf encoding.
 
-    # Connect to server on the same host (default)
-    win = visual.Window(size=(1920, 1080))
+Example::
 
-    # Connect to a remote server — provide IP and port via the address parameter
-    win = visual.Window(size=(1920, 1080), address='tcp://192.168.1.10:5555')
+    from wonderlamp_client import Connection
 
-    circle = visual.Circle(win, radius=50, fillColor='red')
-    circle.autoDraw = True
-    win.flip()
+    with Connection() as conn:
+        handle = conn.create_rect(x=-200, y=0, width=300, height=200,
+                                  r=1.0, g=0.0, b=0.0)
+        conn.set_enabled(handle, False)
+        conn.delete(handle)
 """
 
-from . import visual
+from ._connection import Connection
 
-__all__ = ["visual"]
+__all__ = ["Connection"]
+
