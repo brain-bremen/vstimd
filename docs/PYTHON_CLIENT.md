@@ -1,7 +1,7 @@
 # Python Client (`wonderlamp_client`)
 
-> **Status:** v1 implemented, server-side protocol not yet built
-> **Location:** `wonderlamp_client/` at repo root
+> **Status:** Low-level `Connection` class implemented (protobuf/ZMQ, 3 commands). PsychoPy-compatible `visual` layer is planned — not yet started.
+> **Location:** `client-python/` directory
 > **See also:** `PLAN.md` §9 (Migration Path), `STIMULUS_DATA_MODEL.md`
 
 ---
@@ -50,33 +50,50 @@ PsychoPy's local renderer.
 |---|---|---|
 | Class hierarchy | Flat — no mixins, no shared base class behavior | PsychoPy has a deep inheritance hierarchy (MRO surprises, hidden state); wonderlamp_client is deliberately flat — each class is self-contained |
 | Repeated fields | Duplicated explicitly in every class | Intentional — each class is self-contained; matches the plan in `STIMULUS_DATA_MODEL.md` |
-| Wire format v1 | JSON over ZMQ REQ/REP | Easy to inspect and debug during early development |
-| Wire format v2 | Protobuf (planned) | Migrate once server protocol is stable; see `PLAN.md` §5 |
+| Wire format | **Protobuf over ZMQ REQ/REP** (implemented) | Compact, schema-versioned, multi-language; same `.proto` file shared by server and all clients |
 | Position input | ZMQ commands only | High-rate gaze/joystick position stays in shared memory (see `INPUT_LATENCY.md`) |
 | flip() model | Configurable: `deferred=True` (default) or `deferred=False` | `deferred=True` gives the experimenter explicit control over *when* changes take effect: all property changes since the last `flip()` are held back and applied simultaneously on the next `flip()` call, which is typically synchronised to a vsync |
 | Coordinate origin | Window centre, Y-up, pixels | Matches PsychoPy default and the server's 2-D coordinate system |
-| Scope v1 | Window + Rect, Circle, Polygon, Line, ShapeStim | Sufficient to port most 2-D experiments |
+| Scope v1 (current) | `Connection` class, 3 commands (`create_rect`, `set_enabled`, `delete`) | Low-level foundation; enough to drive `flash_rects.py` example |
+| Scope v2 (planned) | `visual` module: `Window` + `Rect`, `Circle`, `Polygon`, `Line`, `ShapeStim` | PsychoPy-compatible API layer on top of `Connection`; sufficient to port most 2-D experiments |
 
 ---
 
 ## 3. Package Structure
 
+### Current (implemented)
+
 ```
 client-python/                       ← installable Python package
-├── pyproject.toml                   ← build + dependencies
-├── wonderlamp_client/
-│   ├── __init__.py                  ← re-exports visual module
-│   ├── visual.py                    ← all stimulus classes + Window
-│   ├── _connection.py               ← ZMQ socket, send/recv, batch send, reconnect
-│   ├── _commands.py                 ← command dataclasses → JSON serialisation
-│   ├── _units.py                    ← unit system conversion (pix/norm/height/deg/cm)
-│   └── _colors.py                   ← color space normalisation to RGBA float
-├── tests/
-│   ├── conftest.py                  ← MockSocket, MockConnection, mock_win fixtures
-│   ├── test_api_compat.py           ← parametrized signature comparison vs psychopy
-│   ├── test_commands.py             ← unit tests: verify correct JSON per operation
-│   └── test_integration.py         ← live-server tests (skipped by default)
-└── compat/
+├── pyproject.toml                   ← build + dependencies (pyzmq, protobuf)
+├── examples/
+│   └── flash_rects.py               ← create two rects, flash them, delete them
+└── wonderlamp_client/
+    ├── __init__.py                  ← exports Connection
+    ├── _connection.py               ← ZMQ REQ socket + protobuf send/recv; 3 commands
+    └── _proto/
+        ├── __init__.py
+        └── wonderlamp_pb2.py        ← generated from server/proto/wonderlamp.proto
+```
+
+### Planned (visual layer)
+
+```
+wonderlamp_client/
+    ├── __init__.py                  ← re-exports Connection + visual module
+    ├── _connection.py               ← extended: batch send, deferred mode, reconnect
+    ├── _proto/
+    │   └── wonderlamp_pb2.py        ← regenerated as server schema expands
+    ├── visual.py                    ← Window + all stimulus classes (PsychoPy-compatible)
+    ├── _commands.py                 ← command dataclasses → protobuf serialisation
+    ├── _units.py                    ← unit system conversion (pix/norm/height/deg/cm)
+    └── _colors.py                   ← color space normalisation to RGBA float
+tests/
+    ├── conftest.py                  ← MockSocket, MockConnection, mock_win fixtures
+    ├── test_api_compat.py           ← parametrized signature comparison vs psychopy
+    ├── test_commands.py             ← unit tests: verify correct protobuf per operation
+    └── test_integration.py         ← live-server tests (skipped by default)
+compat/
     └── check_compat.py              ← standalone human-readable report + fixture gen
 ```
 
@@ -94,64 +111,63 @@ uv pip install -e client-python/
 
 ### Transport
 
-ZeroMQ REQ/REP socket pair. The client sends one JSON frame and waits for one reply:
+ZeroMQ REQ/REP socket pair. The client sends one **protobuf-encoded** frame and waits
+for one reply. The schema is defined in `server/proto/wonderlamp.proto` and shared
+between the server (Rust/prost) and the Python client (`wonderlamp_pb2.py`).
 
-```json
-// Request
-{"cmd": "create_circle", "handle": 1, "radius": 50.0, "pos": [0, 0],
- "fill_color": [1.0, 1.0, 1.0, 1.0], "line_color": null, "line_width": 1.5,
- "ori": 0.0, "opacity": 1.0, "enabled": false}
+```python
+# Low-level usage (current API)
+from wonderlamp_client import Connection
 
-// Reply
-{"ok": true}
-// or on error:
-{"ok": false, "error": "handle 1 already exists"}
+with Connection("tcp://localhost:5555") as conn:
+    handle = conn.create_rect(x=0, y=0, width=200, height=100, r=1.0, g=0.0, b=0.0)
+    conn.set_enabled(handle, False)
+    conn.delete(handle)
 ```
 
-### Command naming
-
-All commands use `snake_case`. Creation commands are named after the stimulus type:
-`create_circle`, `create_rect`, `create_polygon`, `create_line`, `create_shape`.
-
-Setter commands are shared across all types:
-`set_pos`, `set_ori`, `set_opacity`, `set_fill_color`, `set_line_color`,
-`set_line_width`, `set_enabled`, `set_autodraw`, `set_size`.
-
-Window commands: `open_window`, `close_window`, `set_window_color`, `deferred_flip`.
+Internally `_connection.py` builds a `Request` protobuf message and calls
+`SerializeToString()` before sending; responses are decoded with `ParseFromString()`.
 
 ### Handles
 
-Integer stimulus IDs allocated client-side by a monotonically increasing counter
-(`itertools.count(1)`) scoped to the process. The server maps these to its internal
-stimulus objects.
+Server-allocated: `create_*` commands return a `handle` integer in the `Response`.
+The client stores this handle and passes it to subsequent `set_enabled` / `delete` /
+`move_to` etc. calls. Handle 0 is reserved for system commands.
 
-### Batching (deferred mode)
+### Batching (deferred mode) — planned for visual layer
 
 In deferred mode, all commands staged since the last `flip()` are sent as a single ZMQ
-**multipart message** (one frame per JSON command), followed by a `deferred_flip`
-sentinel. The server holds the staged changes until it receives `deferred_flip`, then
-applies them all and renders the next frame. This gives the experimenter precise control
-over *when* stimulus changes become visible: every change made during a trial loop
-iteration takes effect simultaneously at the moment `flip()` is called.
+**multipart message** (one serialized protobuf frame per command), followed by a
+`CmdDeferredMode { start: false }` sentinel. The server holds staged changes until it
+receives the sentinel, then applies them all atomically on the next rendered frame.
 
 ```
-Client                           Server
-  |                                |
-  |-- [cmd1][cmd2]...[cmdN]------> |  (multipart — one recv call)
-  |   [deferred_flip]              |  ← server applies all changes here, then renders
-  |<-- {"ok": true} --------------|
+Client                              Server
+  |                                   |
+  |-- [req1][req2]...[reqN]---------> |  (multipart — one recv call)
+  |   [DeferredMode{start:false}]     |  ← server flips all changes, renders frame
+  |<-- Response{handle: -1} ---------|
 ```
 
-### Future: protobuf migration
+### Protobuf stub regeneration
 
-Once the server protocol is stable, JSON will be replaced with protobuf (see `PLAN.md`
-§5). The `_commands.py` dataclasses are designed so that serialisation is isolated —
-switching from `.to_dict()` + `json.dumps` to `.SerializeToString()` is a
-one-file change in `_connection.py`.
+`wonderlamp_pb2.py` is generated from `server/proto/wonderlamp.proto`. Regenerate
+after schema changes:
+
+```bash
+cd server
+protoc --python_out=../client-python/wonderlamp_client/_proto proto/wonderlamp.proto
+```
+
+The stub must be kept in sync with the server binary. A mismatch causes silent decode
+errors (unknown fields are silently ignored by protobuf; missing required fields raise
+`DecodeError`).
 
 ---
 
 ## 5. Class Design
+
+> **Note:** §5–§12 describe the planned `visual` layer (v2). None of this is implemented yet.
 
 ### Marker base
 
@@ -487,17 +503,31 @@ win = visual.Window(size=(1920, 1080), color=(-1, -1, -1), units='pix',
 
 ---
 
-## 13. What Is Not in v1
+## 13. What Is Not Yet Implemented
+
+### Implemented now
+- `Connection` class with `create_rect`, `set_enabled`, `delete`
+- Protobuf wire format (always was — JSON was never used)
+- `examples/flash_rects.py`
+
+### Planned (visual layer — not started)
 
 | Feature | Status |
 |---|---|
-| GratingStim, ImageStim, TextStim, DotStim, MovieStim | No server-side support yet |
-| Chunked asset upload | v2; raises `NotImplementedError` |
-| `deg`/`cm` units without a monitor object | Raises `ValueError` with explanation |
-| `operation` on color setters (`+`, `-`, `*`, `/`) | Only `=` supported; raises `ValueError` |
-| `contains()` / `overlaps()` | v2; raises `NotImplementedError` |
-| Protobuf wire format | v2; JSON used in v1 |
-| `query_stimulus` on the server | Not yet implemented server-side |
+| `visual` module (`Window`, `Rect`, `Circle`, `Polygon`, `Line`, `ShapeStim`) | Planned v2 |
+| Deferred mode / `flip()` batching | Planned v2 — requires multipart ZMQ send |
+| Unit system (`pix`/`norm`/`height`/`deg`/`cm`) | Planned v2 |
+| Color normalisation (named, hex, float, rgb255) | Planned v2 |
+| `autoDraw` / `draw()` one-shot pattern | Planned v2 |
+| `_commands.py` dataclasses | Planned v2 |
+| Tests (`test_commands.py`, `test_api_compat.py`, `test_integration.py`) | Planned v2 |
+| PsychoPy compatibility check (`compat/check_compat.py`) | Planned v2 |
+| ImageStim, TextStim, GratingStim, DotStim | Planned v3+ (requires server-side support) |
+| MovieStim | Planned v4 (requires server Phase 12) |
+| Chunked asset upload | Planned v3 |
+| `contains()` / `overlaps()` | Planned v3 |
+| `query_stimulus` / scene inspection | Planned v2 (requires server Phase 17/18) |
+| MATLAB client | Long-term |
 
 ---
 
@@ -505,7 +535,7 @@ win = visual.Window(size=(1920, 1080), color=(-1, -1, -1), units='pix',
 
 | Version | Additions |
 |---|---|
-| **v1** (now) | Window, Circle, Rect, Polygon, Line, ShapeStim; JSON/ZMQ; deferred mode |
-| **v2** | ImageStim (path + inline binary); TextStim; `contains()`/`overlaps()`; chunked upload |
-| **v3** | Protobuf wire format (replace JSON); GratingStim; MovieStim |
-| **v4** | MATLAB client (parity with Python client) |
+| **v1** (now) | `Connection` class; protobuf/ZMQ; `create_rect`, `set_enabled`, `delete`; `flash_rects.py` example |
+| **v2** | `visual` module: `Window` + `Rect`, `Circle`, `Polygon`, `Line`, `ShapeStim`; deferred `flip()`; unit system; color normalisation; full test suite; PsychoPy compat check |
+| **v3** | `ImageStim` (path + inline binary); `TextStim`; `query_stimulus`; `contains()`/`overlaps()`; chunked upload; `GratingStim` |
+| **v4** | `MovieStim`; MATLAB client parity |
