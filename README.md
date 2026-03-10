@@ -20,6 +20,7 @@ The IPC pipeline is working end-to-end:
 - Clients send protobuf-encoded `Request` messages; the server dispatches them to the scene and replies with a `Response`
 - Three commands are implemented: **CreateRect**, **SetEnabled**, **Delete**
 - The Python client (`client-python/`) wraps the ZMQ + protobuf layer and includes an example script that creates and flashes rectangles
+- An egui debug overlay (press **F1**) shows live frame timing, a stimulus list with enable toggles, and a scrolling command log
 
 The `extern/` directory contains git submodules for external references:
 
@@ -33,6 +34,7 @@ The `extern/` directory contains git submodules for external references:
 cd server
 cargo run --release
 # Press D to spawn demo stimuli (cyan disc + magenta rect)
+# Press F1 to toggle the debug overlay (frame timing, stimulus list, command log)
 
 # Terminal 2 — run the flash example
 cd client-python
@@ -62,6 +64,7 @@ with Connection() as conn:
 | [zeromq](https://github.com/zeromq/zmq.rs) | Pure-Rust async ZMQ (no libzmq dependency) |
 | [tokio](https://tokio.rs) | Async runtime for the ZMQ server thread |
 | [bytemuck](https://github.com/Lokathor/bytemuck) | Safe `&[Vertex]` → `&[u8]` casts for buffer uploads |
+| [egui](https://github.com/emilk/egui) + egui-wgpu + egui-winit | Debug overlay (enabled by default, `--no-default-features` to strip) |
 | [pyzmq](https://pyzmq.readthedocs.io) | Python ZMQ bindings (client) |
 | [protobuf](https://pypi.org/project/protobuf/) | Python protobuf runtime (client) |
 

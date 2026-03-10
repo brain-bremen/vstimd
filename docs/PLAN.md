@@ -234,9 +234,9 @@ An optional immediate-mode overlay showing:
 - `egui-wgpu` and `egui-winit` integrate cleanly with the existing wgpu/winit stack.
 - Actively maintained with good documentation.
 
-The overlay should be toggled by a hotkey (e.g. F1) and must **not** affect frame timing when
-hidden — it should be compiled out of the render pass entirely when the `overlay` Cargo feature
-is not enabled, so production builds have zero overhead.
+The overlay is toggled by **F1** and does **not** affect frame timing when hidden — egui is not
+called at all when the overlay is off. The `overlay` Cargo feature is **on by default**; use
+`--no-default-features` to strip it from production builds (zero overhead, no egui dependency).
 
 ### 3.4 End-to-End Latency Budget
 
@@ -337,7 +337,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["overlay"]
+default = ["overlay"]   # overlay is ON by default; use --no-default-features to strip
 overlay = ["egui", "egui-wgpu", "egui-winit"]
 
 [dependencies]
@@ -850,10 +850,16 @@ in one corner. State machine per frame:
 
 ### Phase 11 — Debug Overlay (feature = "overlay")
 
-> **Status:** Partially complete. `OverlayRenderer` in `render/overlay.rs` with frame
-> timing HUD (FPS, jitter, mean/min/max, drops, frame index — colour-coded). Feature-gated
-> behind `overlay`, toggled with F1. Missing: scene/animation/IPC panels (depend on
-> Phases 4+).
+> **Status:** Substantially complete. `OverlayRenderer` in `render/overlay.rs`.
+> The `overlay` feature is **on by default** (use `--no-default-features` to strip it for
+> production). Toggle with **F1**. When hidden, egui is not called — zero overhead.
+>
+> **Implemented panels:**
+> - **Frame Timing** — FPS, jitter (std ms), mean/min/max frame time, drop count, frame index; all colour-coded green/yellow/red.
+> - **Stimuli** — table of all active stimuli: handle, type name, enabled checkbox (clicking toggles the stimulus live), X and Y position.
+> - **Commands** — scrolling log of the last N ZMQ commands: elapsed time, handle, human-readable summary, response; errors shown in red.
+>
+> **Still planned:** Animation assignments panel, IPC message-rate counter, config/screen-info panel.
 
 Using `egui-wgpu` + `egui-winit`:
 - Integrate into the render pass after all stimuli but before present.
@@ -953,7 +959,7 @@ The structured protobuf messages are far easier to work with than the hand-packe
 - [ ] **Phase 8** — WGSL pixel shader stimuli: runtime pipeline compilation, uniform buffer
 - [ ] **Phase 9** — Bitmap / bitmap-sequence stimuli: `image` crate, textured pipeline
 - [ ] **Phase 10** — Photodiode sync rectangle
-- [x] **Phase 11** *(partial)* — egui debug overlay: `OverlayRenderer` with frame timing HUD (feature-gated, F1 toggle). Remaining: scene/animation/IPC panels
+- [x] **Phase 11** *(substantially complete)* — egui debug overlay: `OverlayRenderer` with frame timing HUD, stimulus list (with live enable toggles), and command log. `overlay` feature on by default; F1 toggle; zero cost when hidden. Remaining: animations panel, IPC counter, config panel
 - [ ] **Phase 12** — Video stimuli via `ffmpeg-next` (deferred, last)
 - [ ] **Phase 13** — Event logging: `logging/` module, messenger thread, `.wllog` file writer, ZMQ PUB publisher, `emit!` / `emit_trace!` macros; integrate `EventSender` into `SceneState` and render thread
 - [ ] **Phase 14** — Replay mode: `replay/` module, `ReplayDriver`, `LogFileReader`, `--replay` CLI flag, `inject_shm_sample` on position animations, timing modes (real-time, step, as-fast-as-possible)

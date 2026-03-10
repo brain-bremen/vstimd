@@ -15,9 +15,13 @@ The `extern/` directory contains git submodules for external references: `extern
 ```bash
 # Server
 cargo run --release   # opens fullscreen window, ZMQ on tcp://0.0.0.0:5555
+                      # F1 = toggle debug overlay, D = spawn demo stimuli
 cargo build
 cargo test
 cargo clippy
+
+# Strip overlay for production (removes egui dependencies entirely)
+cargo build --release --no-default-features
 
 # Python client
 cd client-python
