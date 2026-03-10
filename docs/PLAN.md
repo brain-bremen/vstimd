@@ -608,7 +608,7 @@ wonderlamp_server/
     │   ├── mod.rs                 # re-exports only
     │   ├── state.rs               # SceneState, handle registry, deferred-mode logic
     │   ├── deferred.rs            # Deferred<T> generic wrapper
-    │   ├── animation.rs           # Animation trait (no concrete impls yet)
+    │   ├── animation.rs           # Animation enum + AnimCommon (no concrete variants yet)
     │   ├── photodiode.rs          # PhotoDiodeState
     │   └── stimulus/
     │       ├── mod.rs             # Stimulus enum, stim_field! macro, dispatch methods
@@ -673,13 +673,21 @@ The compiler enforces exhaustiveness — a missing variant in `make_copy` or `fl
 **compile error**, not a silent bug (unlike the C++ "forgot to call `Super::makeCopy()`"
 failure mode).
 
-#### Animation representation: trait objects
+#### Animation representation: enum (same pattern as Stimulus)
 
-Animations remain `Box<dyn Animation>` because their internal state is highly heterogeneous,
-the set may be extended, and the per-frame `advance()` interface is uniform regardless of
-implementation.
+Animations use a flat `enum Animation` with one variant per animation type, exactly as stimuli
+do. `Box<dyn Animation>` is not used. Each variant is a concrete struct holding both
+**parameters** (serialized on save) and **runtime state** (tagged `#[serde(skip)]`, reset on
+load). Shared bookkeeping (`stimulus_handle`, `final_action`) lives in `AnimCommon`, which
+every variant embeds.
 
-**Implemented in:** `src/scene/animation.rs` (trait definition; no concrete impls yet).
+`advance()` is a method on the `Animation` enum that dispatches via `match`. An `anim_field!`
+macro (parallel to `stim_field!`) eliminates boilerplate in common-field accessors.
+
+See `STIMULUS_DATA_MODEL.md §13` for the full design, struct layouts, and rationale.
+
+**Implemented in:** `src/scene/animation.rs` (trait definition still present; no concrete
+impls yet — to be replaced with enum variants as animation types are added in Phase 7+).
 
 #### `SceneState`
 
@@ -734,7 +742,9 @@ encoding — without a GPU, using `free_port()` to avoid conflicts.
 
 `SceneState` is wrapped in `Arc<RwLock<SceneState>>` and shared between the render thread
 (write lock in `update()`, read lock in `render()`) and the ZMQ server thread (write lock per
-command). The `Animation` trait was updated to `Send + Sync + 'static` so the `RwLock` is `Sync`.
+command). `Animation` is a plain enum (all concrete structs are `Send + Sync` by default since
+they contain no raw pointers or thread-local state), so `Arc<RwLock<SceneState>>: Send + Sync`
+is satisfied without any special bounds.
 
 `src/lib.rs` exposes all modules as a library crate so integration tests can call
 `SceneState::handle_request` directly.
@@ -880,6 +890,143 @@ Use `ffmpeg-next` (Rust bindings to libffmpeg) to decode video frames:
 - Render thread uploads the current frame to a `wgpu::Texture` via `queue.write_texture`.
 - This is the most complex item and is explicitly deferred until all other phases are complete.
 
+### Phase 17 — Serde De/Serialization
+
+Add `#[derive(Serialize, Deserialize)]` to all stimulus data types. This is a prerequisite for
+the overlay console's `inspect` command (Phase 18) and enables scene save/load.
+
+#### Dependencies
+
+```toml
+serde     = { version = "1", features = ["derive"] }
+serde_json = "1"
+```
+
+#### What gets derived
+
+| Type | Action | Notes |
+|---|---|---|
+| `StimulusFlags`, `Transform2D`, `ShapeAppearance` | `#[derive(Serialize, Deserialize)]` | Straightforward — all plain data |
+| Concrete stimulus structs (`RectStimulus`, `DiscStimulus`, …) | `#[derive(Serialize, Deserialize)]` | New fields appear in output automatically |
+| `Stimulus` enum | `#[derive(Serialize, Deserialize)]` | Works naturally; variant name becomes the type tag |
+| `Deferred<T>` | Manual impl or `#[serde(serialize_with = …)]` | Serialize the **live** value only; the copy field is transient state and must not be saved |
+| `Animation` enum + concrete structs | `#[derive(Serialize, Deserialize)]`; runtime fields tagged `#[serde(skip)]` | Parameters saved; runtime state (frame counter, phase accumulator, etc.) reset to `Default` on load |
+| `AnimCommon` | `#[derive(Serialize, Deserialize)]` | `stimulus_handle`, `final_action` |
+| `SceneState` | Serialize `stimuli`, `animations`, `background`, `photodiode` | Skip `deferred_mode` flags, `command_log` (runtime state) |
+
+#### Use cases
+
+1. **`inspect <handle>` console command** — `serde_json::to_string_pretty(&stim)` dumps the
+   full stimulus struct to the console output. Any new field added to the struct and tagged
+   `#[derive(Serialize)]` appears automatically — no manual registration.
+
+2. **Scene save** — serialize `SceneState` to a `.json` file. Useful for snapshotting
+   a test setup and reloading it without rerunning a client script.
+   ```
+   # CLI (Phase 18 console or future args.rs)
+   save scene.json
+   ```
+
+3. **Scene load** — deserialize a saved `.json` back into a fresh `SceneState`. All tessellation
+   `dirty` flags are set so the render thread rebuilds GPU buffers on the next frame. Animations
+   are not restored (they must be re-created via ZMQ commands or the console).
+
+4. **Test fixtures** — integration tests can construct expected scene state as JSON strings and
+   round-trip through `serde_json::from_str` without needing a running GPU or ZMQ server.
+
+#### File format
+
+JSON is the primary format (human-readable, hand-editable). A future phase may add TOML for
+static configuration files (e.g. default background colour, display index) where JSON's lack of
+comments is inconvenient.
+
+#### `Deferred<T>` serialization detail
+
+`Deferred<T>` holds a `live: T` and an `Option<T>` copy. Only `live` is meaningful outside of
+an active deferred-mode transaction. The serialized form is just the inner `T` with no wrapper:
+
+```json
+"transform": { "x": 120.0, "y": -40.0, "angle_deg": 0.0 }
+```
+
+On deserialization, `Deferred::new(live)` is constructed; the copy is `None` and
+`deferred_mode` is `false`.
+
+### Phase 18 — Overlay Console (feature = "overlay")
+
+An interactive console panel in the egui overlay for issuing commands and inspecting state
+without recompiling. Targeted at **developer debugging**: quickly exercising new commands,
+inspecting newly added stimulus fields, and reproducing bugs without a full client script.
+
+#### Stage 1 — Line parser (no new dependencies)
+
+A single-line `TextEdit` input with a scrollable output area added to the overlay.
+
+**Built-in commands:**
+
+| Command | Effect |
+|---|---|
+| `list` | Print all stimulus handles with type and position |
+| `inspect <handle>` | Pretty-print the full stimulus struct as JSON (requires Phase 17) |
+| `create_rect [x=0] [y=0] [w=100] [h=100] [r=1] [g=1] [b=1]` | Create a rectangle, print returned handle |
+| `set_enabled <handle> <true\|false>` | Show or hide a stimulus |
+| `move <handle> <x> <y>` | Move a stimulus to pixel coordinates |
+| `delete <handle>` | Delete a stimulus |
+| `clear` | Delete all stimuli (`CmdClearAll`) |
+| `save [path]` | Serialize `SceneState` to JSON file (requires Phase 17) |
+| `load <path>` | Replace `SceneState` from a JSON file (requires Phase 17) |
+
+**Threading rule:** the parser runs inside the egui `prepare()` callback on the render thread.
+It must **never** call `handle_request` directly. Instead, push parsed `Request` values onto a
+`VecDeque<Request>` stored in `SceneState` (or a dedicated `Mutex<VecDeque<Request>>`). The
+render thread drains this queue at the top of `update()`, in the same write-lock window as ZMQ
+commands. This guarantees console commands have identical timing and error-handling to wire
+commands.
+
+**Output area:** a `Vec<ConsoleLine>` capped at 500 entries, each carrying:
+```rust
+struct ConsoleLine {
+    kind: LineKind,   // Input | Output | Error
+    text: String,
+}
+```
+Rendered in a `ScrollArea` that sticks to the bottom. Errors shown in red, input echoed in
+dim text, output in white.
+
+#### Stage 2 — Rhai scripting (add `rhai = "1"`, pure Rust)
+
+Upgrade the `TextEdit` to multi-line (Shift+Enter for newlines, Enter to submit).
+Add a `[Run]` button.
+
+Register Stage 1 functions as [Rhai native functions](https://rhai.rs/book/rust/functions.html):
+
+```rust
+engine.register_fn("create_rect", move |x: f64, y: f64, w: f64, h: f64| -> i64 { … });
+engine.register_fn("set_enabled", move |handle: i64, enabled: bool| { … });
+engine.register_fn("inspect",     move |handle: i64| -> String { … });
+// etc.
+```
+
+Run the script on a **dedicated side thread** (one per submission); it submits commands back
+via the same `VecDeque` channel used in Stage 1. This ensures a `for` loop or `sleep` in a
+script cannot block the render thread.
+
+Example script:
+```js
+let h = create_rect(0.0, 0.0, 200.0, 100.0);
+for i in 0..6 {
+    set_enabled(h, i % 2 == 0);
+    // sleep not available by default — use frame-count delay or a channel signal
+}
+print(inspect(h));
+delete(h);
+```
+
+Rhai is chosen over Lua or embedded Python because: pure Rust (no native deps, no build
+complexity), designed for embedding in Rust applications, sandboxable by default, and fast
+startup (< 1 ms). The function names match the Python client API so the mental model is
+consistent for anyone who already uses `wonderlamp_client`.
+
 ---
 
 ## 8. Key Design Decisions
@@ -895,7 +1042,7 @@ Use `ffmpeg-next` (Rust bindings to libffmpeg) to decode video frames:
 | Stimulus representation | `enum Stimulus` (not `Box<dyn Stimulus>`) | No vtable, inline storage in `IndexMap`, exhaustive match catches missing cases at compile time |
 | Shared stimulus state | Explicit component structs (`StimulusFlags`, `Deferred<Transform2D>`, `Deferred<Appearance>`) | No implicit data inheritance; every field is exactly where you expect it |
 | Deferred copy mechanism | `Deferred<T>` generic wrapper with `.make_copy()` / `.flip()` | Mechanical, cannot be accidentally omitted; compiler enforces all variants in flip |
-| Animation representation | `Box<dyn Animation>` trait object | Heterogeneous internal state; open for extension; uniform `advance()` interface justifies dynamic dispatch |
+| Animation representation | `enum Animation` (same as `Stimulus`) | No vtable, inline in `IndexMap`, exhaustive match, `#[derive(Serialize, Deserialize)]` works directly — no separate registry type needed |
 | High-rate position input | Shared memory (via `shared_memory` crate) | Sub-frame latency; no serialisation; compatible with existing producers |
 | Networked position input | ZMQ SUB socket (`AnimZmqPos`) | For remote producers where 1–2 frame latency is acceptable |
 | Video decode | `ffmpeg-next` (Phase 12, deferred) | No pure-Rust alternative with comparable format support |
@@ -916,6 +1063,9 @@ Use `ffmpeg-next` (Rust bindings to libffmpeg) to decode video frames:
 | Messenger thread | Dedicated `std::thread`; receives events over `crossbeam_channel::bounded` | Render thread never blocks; all I/O (file, ZMQ PUB, SQLite) isolated to messenger |
 | ZMQ PUB events | Separate socket on port 5556; topic-filtered by log level | Independent of REP control channel; subscribers get live event stream without polling |
 | `wonderlamp-convert` | Standalone binary in workspace; `.wllog` → SQLite | Post-hoc analysis in Python/R/SQL without touching the server |
+| Serialization format | `serde` + JSON (human-readable, hand-editable) | Drives `inspect` console command, scene save/load, and query responses; new fields appear automatically with `#[derive(Serialize)]` |
+| Overlay console | Stage 1: line parser (no deps); Stage 2: Rhai scripting (`rhai = "1"`, pure Rust) | Developer debugging use case; commands queued via `VecDeque` and drained in `update()` — same timing as ZMQ commands, render thread never blocked |
+| Console scripting language | Rhai (not Lua/Python) | Pure Rust, no native deps, designed for embedding, sandboxable; function names match Python client API |
 
 ---
 
@@ -961,6 +1111,8 @@ The structured protobuf messages are far easier to work with than the hand-packe
 - [ ] **Phase 10** — Photodiode sync rectangle
 - [x] **Phase 11** *(substantially complete)* — egui debug overlay: `OverlayRenderer` with frame timing HUD, stimulus list (with live enable toggles), and command log. `overlay` feature on by default; F1 toggle; zero cost when hidden. Remaining: animations panel, IPC counter, config panel
 - [ ] **Phase 12** — Video stimuli via `ffmpeg-next` (deferred, last)
+- [ ] **Phase 17** — Serde de/serialization: `#[derive(Serialize, Deserialize)]` on all stimulus structs, `Deferred<T>` live-value serialization, `SceneState` save/load to JSON, test fixtures
+- [ ] **Phase 18** — Overlay console: Stage 1 line parser (`list`, `inspect`, `create_rect`, `set_enabled`, `move`, `delete`, `save`, `load`); Stage 2 Rhai scripting; commands queued via `VecDeque`, drained in `update()`
 - [ ] **Phase 13** — Event logging: `logging/` module, messenger thread, `.wllog` file writer, ZMQ PUB publisher, `emit!` / `emit_trace!` macros; integrate `EventSender` into `SceneState` and render thread
 - [ ] **Phase 14** — Replay mode: `replay/` module, `ReplayDriver`, `LogFileReader`, `--replay` CLI flag, `inject_shm_sample` on position animations, timing modes (real-time, step, as-fast-as-possible)
 - [ ] **Phase 15** — SQLite export: `sqlite_writer.rs`, deferred real-time batch writes, `wonderlamp-convert` binary
@@ -1031,7 +1183,8 @@ Per-stimulus opcodes (key > 0):
   concrete stimulus struct — no data inheritance.
 - **`Deferred<T>`** wrapper replaces the C++ `makeCopy()`/`getCopy()` virtual chain.
 - **`enum Stimulus`** with exhaustive `match` — compiler catches missing variants.
-- **`Box<dyn Animation>`** for heterogeneous animation types (trait in `animation.rs`).
+- **`enum Animation`** (same pattern as `Stimulus`) — `AnimCommon` for shared fields, concrete
+  structs per animation type, `#[serde(skip)]` on runtime-only fields.
 
 ---
 

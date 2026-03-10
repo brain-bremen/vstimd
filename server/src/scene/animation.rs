@@ -15,21 +15,23 @@ pub type FinalActionMask = u8;
 
 /// Interface for all animation types.
 ///
-/// Animations are stored as `Box<dyn Animation>` because their internal state
-/// is highly heterogeneous and the per-frame `advance()` interface is uniform
-/// regardless of implementation.
+/// TODO: Replace this trait + `Box<dyn Animation>` with a plain `enum Animation`
+/// following the same pattern as `enum Stimulus`. See `STIMULUS_DATA_MODEL.md §13`
+/// for the full design. This trait is a placeholder until concrete animation types
+/// are implemented in Phase 7+, at which point it should be removed in favour of:
 ///
-/// # `Send + Sync` requirement
+/// ```rust
+/// pub enum Animation {
+///     Flash(FlashAnim),
+///     Flicker(FlickerAnim),
+///     Harmonic(HarmonicAnim),
+///     // ...
+/// }
+/// ```
 ///
-/// `Animation` requires both `Send` and `Sync` because `SceneState` (which
-/// owns a map of `Box<dyn Animation>`) is shared across threads via
-/// `Arc<RwLock<SceneState>>`.  For `Arc<RwLock<T>>` to be `Send`, `T` must
-/// be `Send + Sync`.  All concrete animation types must therefore be `Send +
-/// Sync`; this is trivially satisfied as long as they contain no raw pointers
-/// or thread-local state.
-///
-/// Note: the `command()` method (for handling per-animation protobuf commands)
-/// will be added in Phase 3 once the protobuf types are available.
+/// `advance()` and common accessors become methods on the enum, dispatching via
+/// `match`. `AnimCommon` holds the shared `stimulus_handle` and `final_action`
+/// fields that every variant embeds.
 pub trait Animation: Send + Sync + 'static {
     /// Advance the animation by one frame, updating the assigned stimulus.
     fn advance(

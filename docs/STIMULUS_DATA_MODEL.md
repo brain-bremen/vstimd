@@ -583,14 +583,14 @@ also allows O(1) lookup by handle.
 use indexmap::IndexMap;
 
 pub struct SceneState {
-    pub stimuli:   IndexMap<u32, Stimulus>,
-    pub animations: IndexMap<u32, Animation>,
+    pub stimuli:    IndexMap<u32, Stimulus>,    // enum, inline storage
+    pub animations: IndexMap<u32, Animation>,   // enum, inline storage
     // ...
 }
 ```
 
-No `Box`, no heap allocation per stimulus beyond what `Vec`-backed fields inside each struct
-need. The entire stimulus collection is a dense, cache-friendly slab.
+No `Box`, no heap allocation per stimulus or animation beyond what `Vec`-backed fields inside
+each struct need. Both collections are dense, cache-friendly slabs.
 
 ---
 
@@ -745,26 +745,152 @@ No dynamic dispatch. No allocation beyond the returned `Vec`s. Fully inlinable p
 
 ---
 
-## 13. What Remains as a Trait
+## 13. Animations: Also an Enum
 
-After this analysis, only one interface truly needs dynamic dispatch: **`Animation`**. Unlike
-stimuli, animations are open-ended enough in behaviour that a `match` over an enum would have
-deeply asymmetric arms (the path animation has a `Vec<[f32;2]>` while the flash animation has
-just a counter). More importantly, animations interact with stimuli through the same small
-interface (`advance`, `assign`, `deassign`) regardless of their internal implementation.
+Animations follow the same design as stimuli: a flat `enum Animation` with one variant per
+animation type, no trait objects, no virtual dispatch.
 
-The animation enum approach is still viable — and is explored in `PLAN.md` — but the
-trait-object approach is more defensible here than for stimuli because:
+The earlier argument for `Box<dyn Animation>` — that internal state is "too heterogeneous" —
+does not hold up. `BitmapSeqStimulus` has more heterogeneous state than `FlashAnim`, yet it is
+a stimulus enum variant without any issue. The asymmetry between arms (`PathAnim` has a
+`Vec<[f32;2]>` while `FlashAnim` has just a counter) is exactly the same situation as
+`BitmapStimulus` vs `PixelStimulus`. An enum handles it identically.
 
-1. The call count per frame is identical (at most one `advance()` per animation, same as `Draw()` per stimulus).
-2. The internal state variation is much larger and less uniform.
-3. New animation types are more likely to be added by users (custom trajectory formats, etc.).
+### 13.1 `AnimCommon` — shared across all animation types
 
-So the final split is:
+```rust
+#[derive(Clone)]
+pub struct AnimCommon {
+    pub stimulus_handle: Option<u32>,
+    pub final_action:    FinalActionMask,
+}
+```
 
-- `Stimulus` → **enum** (closed set, uniform components, benefits from exhaustive match)
-- `Animation` → **`Box<dyn Animation>` trait object** (open set, heterogeneous state, natural
-  interface boundary)
+Every animation variant embeds `AnimCommon`. Accessors on the `Animation` enum delegate to it,
+exactly as `Stimulus` delegates common fields to `StimulusFlags`.
+
+### 13.2 Concrete animation structs
+
+Each struct carries both **parameters** (config, serialized on save) and **runtime state**
+(current progress, skipped on save with `#[serde(skip)]`).
+
+```rust
+pub struct FlashAnim {
+    pub common:    AnimCommon,
+    // parameters (saved):
+    pub n_frames:  u32,
+    // runtime state (not saved — reset on load):
+    #[serde(skip)] pub frame_count: u32,
+}
+
+pub struct FlickerAnim {
+    pub common:     AnimCommon,
+    pub on_frames:  u32,
+    pub off_frames: u32,
+    #[serde(skip)] pub frame_count: u32,
+    #[serde(skip)] pub phase_on:    bool,
+}
+
+pub struct HarmonicAnim {
+    pub common:         AnimCommon,
+    pub amplitude:      f32,
+    pub freq_hz:        f32,
+    pub direction_deg:  f32,
+    pub phase_deg:      f32,   // initial phase (saved)
+    #[serde(skip)] pub phase_accum: f32,  // running phase (not saved)
+    #[serde(skip)] pub origin:      [f32; 2],
+}
+
+pub struct LineSegAnim {
+    pub common:          AnimCommon,
+    pub speed_px_per_s:  f32,
+    pub vertices:        Vec<[f32; 2]>,
+    #[serde(skip)] pub seg_index:   usize,
+    #[serde(skip)] pub seg_frac:    f32,
+}
+
+pub struct PathAnim {
+    pub common:   AnimCommon,
+    pub path:     Vec<[f32; 2]>,  // loaded from file; stored inline
+    #[serde(skip)] pub frame_index: usize,
+}
+
+// LinRangeAnim, IntRangeAnim, ExternalPosAnim, ZmqPosAnim, MouseAnim, GamepadAnim — same pattern
+```
+
+### 13.3 The `Animation` enum
+
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Animation {
+    Flash(FlashAnim),
+    Flicker(FlickerAnim),
+    Harmonic(HarmonicAnim),
+    LineSeg(LineSegAnim),
+    Path(PathAnim),
+    LinRange(LinRangeAnim),
+    IntRange(IntRangeAnim),
+    ExternalPos(ExternalPosAnim),
+    ZmqPos(ZmqPosAnim),
+    Mouse(MouseAnim),
+    Gamepad(GamepadAnim),
+}
+```
+
+`IndexMap<u32, Animation>` — no `Box`, no heap allocation per animation, no vtable.
+
+### 13.4 `advance()` via match
+
+```rust
+impl Animation {
+    pub fn advance(
+        &mut self,
+        stimuli:    &mut IndexMap<u32, Stimulus>,
+        frame_rate: f32,
+        deferred:   bool,
+    ) {
+        match self {
+            Animation::Flash(a)    => a.advance(stimuli, frame_rate, deferred),
+            Animation::Flicker(a)  => a.advance(stimuli, frame_rate, deferred),
+            Animation::Harmonic(a) => a.advance(stimuli, frame_rate, deferred),
+            // ...
+        }
+    }
+
+    pub fn common(&self) -> &AnimCommon {
+        match self {
+            Animation::Flash(a)    => &a.common,
+            Animation::Flicker(a)  => &a.common,
+            // ...
+        }
+    }
+
+    pub fn common_mut(&mut self) -> &mut AnimCommon { /* same */ }
+}
+```
+
+The same `anim_field!` macro used for stimuli applies here.
+
+### 13.5 Serialization
+
+Because `Animation` is a plain enum with concrete struct variants, `#[derive(Serialize,
+Deserialize)]` works directly. No separate `AnimationDef` type is needed. Runtime-only fields
+are tagged `#[serde(skip)]`; on load they are initialized to their `Default` values, giving a
+freshly started animation with the saved parameters.
+
+### 13.6 Why not a trait object?
+
+| Concern | `Box<dyn Animation>` | `enum Animation` |
+|---|---|---|
+| Serialization | Requires a separate `AnimationDef` registry | `#[derive(Serialize, Deserialize)]` directly |
+| Exhaustiveness | Silent if a new type is missing from a match | Compiler error |
+| Allocation | One heap alloc per animation | Inline in `IndexMap` |
+| Dispatch | Vtable indirection | Inlined `match` |
+| Adding a new type | Implement trait, register for serde | Add variant, add match arms — compiler guides you |
+
+The only real advantage of trait objects — allowing user-defined animation types at runtime —
+is not a requirement for this project. The set of animation types is defined in the codebase.
 
 ---
 

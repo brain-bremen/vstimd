@@ -119,11 +119,9 @@ lock, so the ZMQ thread always has a window to process commands between frames.
 
 **`Send + Sync` requirements:**  
 `Arc<RwLock<SceneState>>: Send` requires `SceneState: Send + Sync`.  
-`SceneState` contains `IndexMap<u32, Box<dyn Animation>>`, so `dyn Animation`
-must be `Send + Sync`.  The `Animation` trait bound was updated to
-`Send + Sync + 'static` for this reason; all concrete animation types must
-satisfy this (straightforward as long as they contain no raw pointers or
-thread-local state).
+`SceneState` contains `IndexMap<u32, Animation>` where `Animation` is a plain
+enum (same pattern as `Stimulus`). All concrete animation structs are `Send + Sync`
+by default since they contain no raw pointers or thread-local state.
 
 **`lib.rs`:**  
 A `src/lib.rs` was added to expose `proto`, `scene`, `ipc`, and other modules
