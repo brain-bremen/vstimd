@@ -14,6 +14,7 @@
 | `3D_ROADMAP.md` | Full roadmap for 3-D stimulus support: infrastructure, primitives, corridors/mazes, mesh models, and Gaussian splatting |
 | `EVENT_LOGGING.md` | Event logging and replay system: binary log format, messenger thread, ZMQ publication, SQLite export, and deterministic replay |
 | `PYTHON_CLIENT.md` | Python client (`wonderlamp_client`): PsychoPy-compatible API, wire protocol, deferred mode, testing strategy, migration guide |
+| `BARE_METAL_LINUX.md` | Compositor-free Linux rendering: raw Vulkan (`ash`) + KMS/DRM + libinput — no X11/Wayland required |
 
 ---
 
