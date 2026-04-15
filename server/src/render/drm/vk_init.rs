@@ -1,8 +1,4 @@
-use std::ffi::CStr;
-
 use ash::vk;
-
-use super::display::DisplayInfo;
 
 const FRAMES_IN_FLIGHT: usize = 2;
 
@@ -73,23 +69,31 @@ impl Drop for VkContext {
 
 // ── Initialisation ────────────────────────────────────────────────────────────
 
-pub fn init(display_info: DisplayInfo) -> VkContext {
+/// Display geometry returned to the caller for logging.
+pub struct DisplayInfo {
+    pub width: u32,
+    pub height: u32,
+}
+
+pub fn init() -> (VkContext, DisplayInfo) {
     // -- Entry (loads libvulkan.so) --------------------------------------------
     let entry = unsafe { ash::Entry::load().expect("failed to load libvulkan.so") };
 
     // -- Instance -------------------------------------------------------------
     let app_info = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_1);
 
-    let instance_extensions: &[*const i8] = &[
+    // VK_KHR_display lets Vulkan enumerate and drive displays directly,
+    // without going through VK_EXT_acquire_drm_display (which requires the
+    // Vulkan device and DRM display controller to be the same hardware node —
+    // not the case on Tegra where nvgpu and the display controller are separate).
+    let instance_extensions = [
         ash::khr::surface::NAME.as_ptr(),
         ash::khr::display::NAME.as_ptr(),
-        ash::ext::acquire_drm_display::NAME.as_ptr(),
-        ash::khr::get_physical_device_properties2::NAME.as_ptr(),
     ];
 
     let instance_info = vk::InstanceCreateInfo::default()
         .application_info(&app_info)
-        .enabled_extension_names(instance_extensions);
+        .enabled_extension_names(&instance_extensions);
 
     let instance = unsafe {
         entry.create_instance(&instance_info, None).expect("failed to create Vulkan instance")
@@ -98,7 +102,6 @@ pub fn init(display_info: DisplayInfo) -> VkContext {
     // -- Extension loaders ----------------------------------------------------
     let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
     let display_loader = ash::khr::display::Instance::new(&entry, &instance);
-    let acquire_drm_loader = ash::ext::acquire_drm_display::Instance::new(&entry, &instance);
 
     // -- Physical device selection --------------------------------------------
     let physical_devices = unsafe {
@@ -110,27 +113,23 @@ pub fn init(display_info: DisplayInfo) -> VkContext {
         .find_map(|&pd| find_graphics_queue(&instance, pd).map(|qf| (pd, qf)))
         .expect("no Vulkan device with a graphics queue found");
 
-    // -- Acquire DRM display --------------------------------------------------
-    // Map DRM connector → VkDisplayKHR, then take exclusive ownership.
-    use std::os::unix::io::AsRawFd as _;
-    let drm_fd = display_info.file.as_raw_fd();
-
-    let vk_display = unsafe {
-        acquire_drm_loader
-            .get_drm_display(physical_device, drm_fd, display_info.connector_id)
-            .expect(
-                "vkGetDrmDisplayEXT failed — driver may not support VK_EXT_acquire_drm_display. \
-                 Check: vulkaninfo | grep VK_EXT_acquire_drm_display",
-            )
+    // -- Enumerate displays via VK_KHR_display --------------------------------
+    // On Tegra, the Vulkan driver enumerates the display controller's outputs
+    // directly — no DRM fd or VK_EXT_acquire_drm_display needed.
+    let display_props = unsafe {
+        display_loader
+            .get_physical_device_display_properties(physical_device)
+            .expect("vkGetPhysicalDeviceDisplayPropertiesKHR failed")
     };
 
-    unsafe {
-        acquire_drm_loader
-            .acquire_drm_display(physical_device, drm_fd, vk_display)
-            .expect("vkAcquireDrmDisplayEXT failed — another process may hold DRM master");
-    }
-    // Vulkan now owns the display; close the DRM fd.
-    drop(display_info.file);
+    assert!(
+        !display_props.is_empty(),
+        "no Vulkan displays found — is the display connected and the driver loaded?"
+    );
+
+    let vk_display = display_props[0].display;
+    let width = display_props[0].physical_resolution.width;
+    let height = display_props[0].physical_resolution.height;
 
     // -- Surface via VK_KHR_display -------------------------------------------
     let mode_props = unsafe {
@@ -139,12 +138,12 @@ pub fn init(display_info: DisplayInfo) -> VkContext {
             .expect("failed to get display mode properties")
     };
 
-    // Find the mode that matches the DRM connector's resolution, or take first.
+    // Prefer the mode matching the display's native resolution; fall back to first.
     let display_mode = mode_props
         .iter()
         .find(|m| {
-            m.parameters.visible_region.width == display_info.width
-                && m.parameters.visible_region.height == display_info.height
+            m.parameters.visible_region.width == width
+                && m.parameters.visible_region.height == height
         })
         .unwrap_or(&mode_props[0])
         .display_mode;
@@ -157,13 +156,11 @@ pub fn init(display_info: DisplayInfo) -> VkContext {
     };
 
     let plane_index = (0..plane_props.len() as u32)
-        .find(|&i| {
-            unsafe {
-                display_loader
-                    .get_display_plane_supported_displays(physical_device, i)
-                    .map(|displays| displays.contains(&vk_display))
-                    .unwrap_or(false)
-            }
+        .find(|&i| unsafe {
+            display_loader
+                .get_display_plane_supported_displays(physical_device, i)
+                .map(|displays| displays.contains(&vk_display))
+                .unwrap_or(false)
         })
         .unwrap_or(0);
 
@@ -174,7 +171,7 @@ pub fn init(display_info: DisplayInfo) -> VkContext {
         .transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
         .global_alpha(1.0)
         .alpha_mode(vk::DisplayPlaneAlphaFlagsKHR::OPAQUE)
-        .image_extent(vk::Extent2D { width: display_info.width, height: display_info.height });
+        .image_extent(vk::Extent2D { width, height });
 
     let surface = unsafe {
         display_loader
@@ -188,11 +185,11 @@ pub fn init(display_info: DisplayInfo) -> VkContext {
         .queue_family_index(graphics_queue_family)
         .queue_priorities(&queue_priorities);
 
-    let device_extensions: &[*const i8] = &[ash::khr::swapchain::NAME.as_ptr()];
+    let device_extensions = [ash::khr::swapchain::NAME.as_ptr()];
 
     let device_info = vk::DeviceCreateInfo::default()
         .queue_create_infos(std::slice::from_ref(&queue_info))
-        .enabled_extension_names(device_extensions);
+        .enabled_extension_names(&device_extensions);
 
     let device = unsafe {
         instance
@@ -233,7 +230,7 @@ pub fn init(display_info: DisplayInfo) -> VkContext {
         },
     );
 
-    let extent = vk::Extent2D { width: display_info.width, height: display_info.height };
+    let extent = vk::Extent2D { width, height };
 
     let swapchain_info = vk::SwapchainCreateInfoKHR::default()
         .surface(surface)
@@ -326,7 +323,7 @@ pub fn init(display_info: DisplayInfo) -> VkContext {
     let framebuffers =
         create_framebuffers(&device, render_pass, &swapchain_image_views, extent);
 
-    VkContext {
+    let ctx = VkContext {
         frames,
         framebuffers,
         render_pass,
@@ -345,7 +342,9 @@ pub fn init(display_info: DisplayInfo) -> VkContext {
         extent,
         instance,
         entry,
-    }
+    };
+
+    (ctx, DisplayInfo { width, height })
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

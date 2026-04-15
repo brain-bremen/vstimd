@@ -30,52 +30,46 @@ pub struct DisplayInfo {
 /// Open the first available DRM card that has a connected display, and return
 /// the display's geometry. Tries `/dev/dri/card0` through `card3`.
 pub fn find_display() -> Result<DisplayInfo, String> {
-    let card = (0..4)
-        .find_map(|i| {
-            let path = format!("/dev/dri/card{i}");
-            std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&path)
-                .ok()
-                .map(Card)
-        })
-        .ok_or_else(|| {
-            "no DRM card found at /dev/dri/card0..3 — is the 'video' group set?".to_string()
-        })?;
+    for i in 0..4 {
+        let path = format!("/dev/dri/card{i}");
+        let file = match std::fs::OpenOptions::new().read(true).write(true).open(&path) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        let card = Card(file);
 
-    let res = card
-        .resource_handles()
-        .map_err(|e| format!("DRM resource_handles() failed: {e}"))?;
+        let res = match card.resource_handles() {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
 
-    for &conn_handle in res.connectors() {
-        let conn = card
-            .get_connector(conn_handle, false)
-            .map_err(|e| format!("get_connector failed: {e}"))?;
+        for &conn_handle in res.connectors() {
+            let conn = match card.get_connector(conn_handle, false) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
 
-        if conn.state() != connector::State::Connected {
-            continue;
+            if conn.state() != connector::State::Connected {
+                continue;
+            }
+
+            let Some(mode) = conn.modes().first() else {
+                continue;
+            };
+
+            let (hdisplay, vdisplay) = mode.size();
+            let connector_id: u32 = conn_handle.into();
+
+            // Consume the Card, extracting the inner File so the fd stays open.
+            let file = card.0;
+            return Ok(DisplayInfo {
+                file,
+                connector_id,
+                width: hdisplay as u32,
+                height: vdisplay as u32,
+            });
         }
-
-        let Some(mode) = conn.modes().first() else {
-            continue;
-        };
-
-        let (hdisplay, vdisplay) = mode.size();
-        let connector_id = {
-            use drm_sys::control::ResourceHandle as _;
-            conn_handle.as_raw()
-        };
-
-        // Consume the Card, extracting the inner File so the fd stays open.
-        let file = card.0;
-        return Ok(DisplayInfo {
-            file,
-            connector_id,
-            width: hdisplay as u32,
-            height: vdisplay as u32,
-        });
     }
 
-    Err("no connected display found on any DRM connector".to_string())
+    Err("no connected display found on any DRM connector (tried card0..3)".to_string())
 }

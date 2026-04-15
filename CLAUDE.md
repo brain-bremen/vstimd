@@ -14,14 +14,13 @@ The `extern/` directory contains git submodules for external references: `extern
 
 ```bash
 # Server
-cargo run --release   # opens fullscreen window, ZMQ on tcp://0.0.0.0:5555
-                      # F1 = toggle debug overlay, D = spawn demo stimuli
+cargo run --release   # bare-metal DRM/Vulkan, ZMQ on tcp://0.0.0.0:5555
 cargo build
 cargo test
 cargo clippy
 
-# Strip overlay for production (removes egui dependencies entirely)
-cargo build --release --no-default-features
+# wgpu-backend with overlay (windowed, for development)
+cargo run --release --no-default-features --features wgpu-backend,overlay
 
 # Python client
 cd client-python
@@ -82,6 +81,35 @@ client-python/
   examples/
     flash_rects.py       # create two rects, flash them, delete them
 ```
+
+### DRM Backend — Tegra Orin Hardware Notes
+
+The target hardware is a **Jetson Orin** (Tegra), which has a split architecture:
+
+| DRM node | Hardware | Role |
+|---|---|---|
+| `card0` / `renderD128` | nvgpu (`13e00000.host1x`) | GPU, Vulkan runs here |
+| `card1` / `renderD129` | display controller (`13800000.display`) | Scanout, KMS connectors |
+
+`VkPhysicalDeviceDrmPropertiesEXT` reports `hasPrimary=false` / `hasRender=false` because
+the Vulkan driver (nvgpu) does not associate itself with any DRM node.
+**`VK_EXT_acquire_drm_display` does not work on this hardware** — the extension
+requires the Vulkan device and the display controller to be the same hardware node.
+
+The working approach is **`VK_KHR_display`**: the Vulkan driver enumerates displays
+directly without a DRM fd, as long as no other process holds the display. GDM/Xorg
+must not be running. If GDM is the display manager, disable it:
+```bash
+sudo systemctl disable --now gdm
+```
+
+### Working status (bare-metal DRM backend)
+
+- Vulkan swapchain initialised directly via `VK_KHR_display` at 3840×2160
+- Per-frame tessellation + draw loop running at display refresh (FIFO present mode)
+- ZMQ REP server accepting protobuf commands from Python client
+- Keyboard input via libinput: **D** spawns demo stimuli, **ESC** exits
+- **F1** (debug overlay) is a no-op on this backend — egui overlay not yet implemented
 
 ### Critical wgpu 27 API Notes
 

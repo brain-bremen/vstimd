@@ -1,4 +1,5 @@
-use std::os::fd::{FromRawFd as _, OwnedFd};
+use std::os::fd::OwnedFd;
+use input::event::keyboard::KeyboardEventTrait as _;
 use std::path::Path;
 
 // ── Application-level key actions ────────────────────────────────────────────

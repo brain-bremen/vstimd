@@ -17,10 +17,12 @@ pub struct VkMesh {
 impl VkMesh {
     /// Free all Vulkan resources owned by this mesh.
     pub unsafe fn destroy(&self, device: &ash::Device) {
-        device.destroy_buffer(self.vertex_buffer, None);
-        device.free_memory(self.vertex_memory, None);
-        device.destroy_buffer(self.index_buffer, None);
-        device.free_memory(self.index_memory, None);
+        unsafe {
+            device.destroy_buffer(self.vertex_buffer, None);
+            device.free_memory(self.vertex_memory, None);
+            device.destroy_buffer(self.index_buffer, None);
+            device.free_memory(self.index_memory, None);
+        }
     }
 }
 

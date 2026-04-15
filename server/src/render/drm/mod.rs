@@ -1,4 +1,3 @@
-mod display;
 mod input;
 mod vk_buffers;
 mod vk_frame;
@@ -35,15 +34,9 @@ impl RenderState {
     /// `VK_EXT_acquire_drm_display`, and sets up a full Vulkan swapchain ready
     /// for rendering.  Panics with a descriptive message if any step fails.
     pub fn new(scene: Arc<RwLock<SceneState>>) -> Self {
-        let display = display::find_display()
-            .unwrap_or_else(|e| panic!("DRM display discovery failed: {e}"));
+        let (ctx, display) = vk_init::init();
 
-        eprintln!(
-            "wonderlamp: display {}×{} on connector {}",
-            display.width, display.height, display.connector_id
-        );
-
-        let ctx = vk_init::init(display);
+        eprintln!("wonderlamp: display {}×{}", display.width, display.height);
         let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass);
         let gpu_buffers = GpuBuffers::new(&ctx.instance, ctx.physical_device);
         let input = InputState::new();

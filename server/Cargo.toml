@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["wgpu-backend", "overlay"]
+default = ["drm"]
 wgpu-backend = ["dep:wgpu", "dep:winit", "dep:pollster"]
 overlay = ["dep:egui", "dep:egui-wgpu", "dep:egui-winit"]
 drm = ["dep:ash", "dep:drm_sys", "dep:input"]
