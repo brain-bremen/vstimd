@@ -44,8 +44,14 @@ pub fn render_frame(
 
     // -- Wait for this slot's previous GPU work -------------------------------
     unsafe {
-        ctx.device.wait_for_fences(&[frame.in_flight], true, u64::MAX).expect("fence wait");
-        ctx.device.reset_fences(&[frame.in_flight]).expect("fence reset");
+        ctx.device
+            .wait_for_fences(&[frame.in_flight], true, u64::MAX)
+            .expect("fence wait");
+        // NOTE: do NOT reset the fence here. If acquire_next_image fails with
+        // OUT_OF_DATE below, we return early without ever calling queue_submit,
+        // which means the fence would stay reset-but-never-signaled. The next
+        // call to render_frame would then wait on it forever. Reset only after
+        // a successful acquire, immediately before queue_submit.
     }
 
     // -- Acquire swapchain image ----------------------------------------------
@@ -58,7 +64,7 @@ pub fn render_frame(
         )
     } {
         Ok(r) => r,
-        Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => return false,
+        Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => return false, // fence still signaled ✔
         Err(e) => panic!("acquire_next_image: {e}"),
     };
 
@@ -78,10 +84,15 @@ pub fn render_frame(
 
         let bg = {
             let sc = scene.read().expect("scene lock poisoned");
-            vk::ClearColorValue { float32: sc.background.live }
+            vk::ClearColorValue {
+                float32: sc.background.live,
+            }
         };
 
-        let render_area = vk::Rect2D { offset: vk::Offset2D::default(), extent: ctx.extent };
+        let render_area = vk::Rect2D {
+            offset: vk::Offset2D::default(),
+            extent: ctx.extent,
+        };
         let clear_value = vk::ClearValue { color: bg };
         let rp_info = vk::RenderPassBeginInfo::default()
             .render_pass(ctx.render_pass)
@@ -89,8 +100,10 @@ pub fn render_frame(
             .render_area(render_area)
             .clear_values(std::slice::from_ref(&clear_value));
 
-        ctx.device.cmd_begin_render_pass(cb, &rp_info, vk::SubpassContents::INLINE);
-        ctx.device.cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
+        ctx.device
+            .cmd_begin_render_pass(cb, &rp_info, vk::SubpassContents::INLINE);
+        ctx.device
+            .cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
 
         let viewport = vk::Viewport {
             x: 0.0,
@@ -100,31 +113,45 @@ pub fn render_frame(
             min_depth: 0.0,
             max_depth: 1.0,
         };
-        ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
-        ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+        ctx.device
+            .cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+        ctx.device
+            .cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
 
         let sc = scene.read().expect("scene lock poisoned");
         for (handle, _) in &sc.stimuli {
             if let Some(mesh) = gpu_buffers.meshes.get(handle) {
                 if mesh.index_count > 0 {
-                    ctx.device.cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
+                    ctx.device
+                        .cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
                     ctx.device.cmd_bind_index_buffer(
                         cb,
                         mesh.index_buffer,
                         0,
                         vk::IndexType::UINT32,
                     );
-                    ctx.device.cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
+                    ctx.device
+                        .cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
                 }
             }
         }
         drop(sc);
 
         ctx.device.cmd_end_render_pass(cb);
-        ctx.device.end_command_buffer(cb).expect("end_command_buffer");
+        ctx.device
+            .end_command_buffer(cb)
+            .expect("end_command_buffer");
     }
 
     // -- Submit ---------------------------------------------------------------
+    // Reset the fence here — after a successful acquire — so that an early
+    // return above (OUT_OF_DATE) never leaves it in the reset-but-unsignaled
+    // state that would deadlock the next wait_for_fences call.
+    unsafe {
+        ctx.device
+            .reset_fences(&[frame.in_flight])
+            .expect("fence reset");
+    }
     let wait_sems = [frame.image_available];
     let signal_sems = [frame.render_done];
     let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];

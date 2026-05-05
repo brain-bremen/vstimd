@@ -8,9 +8,21 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
-use crate::render::vk::{GpuBuffers, VkContext, VkPipeline, render_frame};
+use crate::render::vk::{GpuBuffers, VkContext, VkPipeline, render_frame, select_present_mode};
 use crate::scene::SceneState;
 use crate::timing::FrameStats;
+
+/// Priority-ordered list of present modes for low-latency fullscreen.
+/// `IMMEDIATE` has zero queue depth (may tear but minimum latency).
+/// `MAILBOX` drops stale frames rather than queuing them.
+/// `FIFO_RELAXED` tears only when a deadline is missed.
+/// `FIFO` is the guaranteed fallback.
+const LOW_LATENCY_PRESENT_MODES: &[ash::vk::PresentModeKHR] = &[
+    ash::vk::PresentModeKHR::IMMEDIATE,
+    ash::vk::PresentModeKHR::MAILBOX,
+    ash::vk::PresentModeKHR::FIFO_RELAXED,
+    ash::vk::PresentModeKHR::FIFO,
+];
 
 // ── Window creation options ───────────────────────────────────────────────────
 
@@ -29,15 +41,21 @@ impl Default for WindowMode {
 // ── Per-window Vulkan state ───────────────────────────────────────────────────
 
 struct State {
-    window: Arc<Window>,
+    // Rust drops fields in declaration order.
+    // All display-system and Vulkan resources must be declared — and therefore
+    // dropped — BEFORE `window`, because they hold references (surface handles,
+    // wl_surface proxies, …) into the window that become dangling once the
+    // window is destroyed.
     ctx: VkContext,
     pipeline: VkPipeline,
     gpu_buffers: GpuBuffers,
+    egui_winit: egui_winit::State, // holds display-handle references
+    // ── Window comes after all borrowers ─────────────────────────────────────
+    window: Arc<Window>,
     scene: Arc<RwLock<SceneState>>,
     frame_stats: FrameStats,
     frame_index: usize,
     egui_ctx: egui::Context,
-    egui_winit: egui_winit::State,
     show_overlay: bool,
 }
 
@@ -47,7 +65,29 @@ impl State {
         scene: Arc<RwLock<SceneState>>,
         event_loop: &ActiveEventLoop,
     ) -> Self {
-        let ctx = init::init(&window);
+        let mut ctx = init::init(&window);
+
+        // If the window is already fullscreen at startup, switch to the
+        // lowest-latency present mode supported by the driver.
+        if window.fullscreen().is_some() {
+            let mode = select_present_mode(
+                &ctx.surface_loader,
+                ctx.physical_device,
+                ctx.surface,
+                LOW_LATENCY_PRESENT_MODES,
+            );
+            if mode != ctx.present_mode {
+                ctx.present_mode = mode;
+                let size = window.inner_size();
+                let extent = ash::vk::Extent2D {
+                    width: size.width.max(1),
+                    height: size.height.max(1),
+                };
+                ctx.recreate_swapchain(extent);
+                eprintln!("wonderlamp: fullscreen startup — present mode: {:?}", mode);
+            }
+        }
+
         let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass);
         let gpu_buffers = GpuBuffers::new(&ctx.instance, ctx.physical_device);
 
@@ -83,7 +123,8 @@ impl State {
             let output = self.egui_ctx.run(raw_input, |ctx| {
                 build_overlay_ui(ctx, &self.scene, &self.frame_stats);
             });
-            self.egui_winit.handle_platform_output(&self.window, output.platform_output);
+            self.egui_winit
+                .handle_platform_output(&self.window, output.platform_output);
             // TODO: tessellate output.shapes with egui_ctx.tessellate() and
             // upload to a Vulkan egui renderer pass after the main pass.
         }
@@ -98,7 +139,10 @@ impl State {
         );
         if !ok {
             let size = self.window.inner_size();
-            let extent = ash::vk::Extent2D { width: size.width.max(1), height: size.height.max(1) };
+            let extent = ash::vk::Extent2D {
+                width: size.width.max(1),
+                height: size.height.max(1),
+            };
             self.ctx.recreate_swapchain(extent);
         }
     }
@@ -126,21 +170,53 @@ impl WinitApp {
     }
 
     fn toggle_fullscreen(&mut self, event_loop: &ActiveEventLoop) {
-        let Some(state) = &self.state else { return };
+        if self.state.is_none() {
+            return;
+        }
+
         if self.is_fullscreen {
+            // ── Leaving fullscreen → windowed ─────────────────────────────
+            // Switch back to compositor-friendly FIFO before recreating.
+            self.state.as_mut().unwrap().ctx.present_mode = ash::vk::PresentModeKHR::FIFO;
+
+            let state = self.state.as_ref().unwrap();
             state.window.set_fullscreen(None);
             if let WindowMode::Windowed { width, height } = self.window_mode {
-                let _ = state.window.request_inner_size(winit::dpi::LogicalSize::new(width, height));
+                let _ = state
+                    .window
+                    .request_inner_size(winit::dpi::LogicalSize::new(width, height));
             }
+            // `state` borrow ends here; safe to write the flag.
             self.is_fullscreen = false;
+            eprintln!("wonderlamp: windowed — present mode: FIFO");
         } else {
-            let monitor = state
+            // ── Entering fullscreen ───────────────────────────────────────
+            // Pick the lowest-latency present mode the driver supports.
+            let mode = {
+                let s = self.state.as_ref().unwrap();
+                select_present_mode(
+                    &s.ctx.surface_loader,
+                    s.ctx.physical_device,
+                    s.ctx.surface,
+                    LOW_LATENCY_PRESENT_MODES,
+                )
+            };
+            self.state.as_mut().unwrap().ctx.present_mode = mode;
+
+            let monitor = {
+                let s = self.state.as_ref().unwrap();
+                s.window
+                    .current_monitor()
+                    .or_else(|| event_loop.primary_monitor())
+                    .or_else(|| event_loop.available_monitors().next())
+            };
+
+            let state = self.state.as_ref().unwrap();
+            state
                 .window
-                .current_monitor()
-                .or_else(|| event_loop.primary_monitor())
-                .or_else(|| event_loop.available_monitors().next());
-            state.window.set_fullscreen(Some(Fullscreen::Borderless(monitor)));
+                .set_fullscreen(Some(Fullscreen::Borderless(monitor)));
             self.is_fullscreen = true;
+            eprintln!("wonderlamp: fullscreen — present mode: {:?}", mode);
         }
     }
 }
@@ -160,7 +236,7 @@ impl ApplicationHandler for WinitApp {
                 WindowMode::Windowed { width, height } => Window::default_attributes()
                     .with_title("Wonderlamp")
                     .with_inner_size(winit::dpi::LogicalSize::new(width, height))
-                    .with_resizable(false),
+                    .with_resizable(true),
             };
             let window = Arc::new(event_loop.create_window(attrs).unwrap());
             let scene = self.scene.take().expect("scene already consumed");
@@ -168,12 +244,7 @@ impl ApplicationHandler for WinitApp {
         }
     }
 
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _id: WindowId,
-        event: WindowEvent,
-    ) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         // Forward to egui first.
         if let Some(state) = &mut self.state {
             let response = state.egui_winit.on_window_event(&state.window, &event);
@@ -214,6 +285,7 @@ impl ApplicationHandler for WinitApp {
                         crate::render::spawn_demo_stimuli(&state.scene);
                     }
                 }
+                KeyCode::F11 => self.toggle_fullscreen(event_loop),
                 KeyCode::Enter if self.modifiers.state().alt_key() => {
                     self.toggle_fullscreen(event_loop);
                 }

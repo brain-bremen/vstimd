@@ -30,6 +30,9 @@ pub struct VkContext {
     pub physical_device: vk::PhysicalDevice,
     pub format: vk::Format,
     pub extent: vk::Extent2D,
+    /// Present mode currently used by the swapchain.
+    /// Change this field and call `recreate_swapchain` to switch modes.
+    pub present_mode: vk::PresentModeKHR,
     pub instance: ash::Instance,
     pub entry: ash::Entry,
 }
@@ -51,7 +54,8 @@ impl Drop for VkContext {
                 self.device.destroy_image_view(view, None);
             }
             self.device.destroy_command_pool(self.command_pool, None);
-            self.swapchain_loader.destroy_swapchain(self.swapchain, None);
+            self.swapchain_loader
+                .destroy_swapchain(self.swapchain, None);
             self.device.destroy_device(None);
             self.surface_loader.destroy_surface(self.surface, None);
             self.instance.destroy_instance(None);
@@ -60,8 +64,9 @@ impl Drop for VkContext {
 }
 
 impl VkContext {
-    /// Recreate swapchain, image views, and framebuffers for a new window size.
-    /// Call after a resize event or `VK_ERROR_OUT_OF_DATE_KHR`.
+    /// Recreate swapchain, image views, and framebuffers for a new window size
+    /// or after changing `self.present_mode`. Call after a resize event or
+    /// `VK_ERROR_OUT_OF_DATE_KHR`.
     pub fn recreate_swapchain(&mut self, new_extent: vk::Extent2D) {
         unsafe {
             self.device.device_wait_idle().unwrap();
@@ -82,6 +87,7 @@ impl VkContext {
             &self.device,
             self.format,
             new_extent,
+            self.present_mode,
             old_swapchain,
         );
 
@@ -95,6 +101,27 @@ impl VkContext {
         self.swapchain_image_views = views;
         self.extent = extent;
     }
+}
+
+/// Pick the best available present mode from a priority list.
+/// Falls back to `FIFO` (always guaranteed by the Vulkan spec) if none match.
+pub fn select_present_mode(
+    surface_loader: &ash::khr::surface::Instance,
+    physical_device: vk::PhysicalDevice,
+    surface: vk::SurfaceKHR,
+    preferred: &[vk::PresentModeKHR],
+) -> vk::PresentModeKHR {
+    let available = unsafe {
+        surface_loader
+            .get_physical_device_surface_present_modes(physical_device, surface)
+            .unwrap_or_default()
+    };
+    for &mode in preferred {
+        if available.contains(&mode) {
+            return mode;
+        }
+    }
+    vk::PresentModeKHR::FIFO
 }
 
 /// Build a `VkContext` from an already-created surface.
@@ -112,7 +139,9 @@ pub fn build_context(
 ) -> VkContext {
     // -- Physical device + queue family ---------------------------------------
     let physical_devices = unsafe {
-        instance.enumerate_physical_devices().expect("no Vulkan physical devices")
+        instance
+            .enumerate_physical_devices()
+            .expect("no Vulkan physical devices")
     };
     let (physical_device, graphics_queue_family) = physical_devices
         .iter()
@@ -155,6 +184,7 @@ pub fn build_context(
         .format;
 
     // -- Swapchain + image views ----------------------------------------------
+    let initial_present_mode = vk::PresentModeKHR::FIFO;
     let (swapchain, swapchain_images, swapchain_image_views, extent) = create_swapchain(
         &swapchain_loader,
         &surface_loader,
@@ -163,6 +193,7 @@ pub fn build_context(
         &device,
         format,
         desired_extent,
+        initial_present_mode,
         vk::SwapchainKHR::null(),
     );
 
@@ -171,7 +202,9 @@ pub fn build_context(
         .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
         .queue_family_index(graphics_queue_family);
     let command_pool = unsafe {
-        device.create_command_pool(&pool_info, None).expect("failed to create command pool")
+        device
+            .create_command_pool(&pool_info, None)
+            .expect("failed to create command pool")
     };
 
     // -- Frame sync objects + command buffers ---------------------------------
@@ -180,7 +213,9 @@ pub fn build_context(
         .level(vk::CommandBufferLevel::PRIMARY)
         .command_buffer_count(FRAMES_IN_FLIGHT as u32);
     let cbs = unsafe {
-        device.allocate_command_buffers(&cmd_info).expect("failed to allocate command buffers")
+        device
+            .allocate_command_buffers(&cmd_info)
+            .expect("failed to allocate command buffers")
     };
     let frames: Vec<FrameSync> = (0..FRAMES_IN_FLIGHT)
         .map(|i| {
@@ -216,6 +251,7 @@ pub fn build_context(
         physical_device,
         format,
         extent,
+        present_mode: initial_present_mode,
         instance,
         entry,
     }
@@ -249,7 +285,11 @@ pub fn create_render_pass(device: &ash::Device, format: vk::Format) -> vk::Rende
         .attachments(std::slice::from_ref(&attachment))
         .subpasses(std::slice::from_ref(&subpass))
         .dependencies(std::slice::from_ref(&dep));
-    unsafe { device.create_render_pass(&info, None).expect("failed to create render pass") }
+    unsafe {
+        device
+            .create_render_pass(&info, None)
+            .expect("failed to create render pass")
+    }
 }
 
 pub fn create_framebuffers(
@@ -267,7 +307,11 @@ pub fn create_framebuffers(
                 .width(extent.width)
                 .height(extent.height)
                 .layers(1);
-            unsafe { device.create_framebuffer(&info, None).expect("failed to create framebuffer") }
+            unsafe {
+                device
+                    .create_framebuffer(&info, None)
+                    .expect("failed to create framebuffer")
+            }
         })
         .collect()
 }
@@ -280,8 +324,14 @@ fn create_swapchain(
     device: &ash::Device,
     format: vk::Format,
     desired_extent: vk::Extent2D,
+    present_mode: vk::PresentModeKHR,
     old_swapchain: vk::SwapchainKHR,
-) -> (vk::SwapchainKHR, Vec<vk::Image>, Vec<vk::ImageView>, vk::Extent2D) {
+) -> (
+    vk::SwapchainKHR,
+    Vec<vk::Image>,
+    Vec<vk::ImageView>,
+    vk::Extent2D,
+) {
     let caps = unsafe {
         surface_loader
             .get_physical_device_surface_capabilities(physical_device, surface)
@@ -289,7 +339,11 @@ fn create_swapchain(
     };
     let image_count = 2
         .max(caps.min_image_count)
-        .min(if caps.max_image_count == 0 { u32::MAX } else { caps.max_image_count });
+        .min(if caps.max_image_count == 0 {
+            u32::MAX
+        } else {
+            caps.max_image_count
+        });
     let extent = if caps.current_extent.width != u32::MAX {
         caps.current_extent
     } else {
@@ -314,15 +368,19 @@ fn create_swapchain(
         .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
         .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
         .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-        .present_mode(vk::PresentModeKHR::FIFO)
+        .present_mode(present_mode)
         .clipped(true)
         .old_swapchain(old_swapchain);
 
     let swapchain = unsafe {
-        swapchain_loader.create_swapchain(&info, None).expect("failed to create swapchain")
+        swapchain_loader
+            .create_swapchain(&info, None)
+            .expect("failed to create swapchain")
     };
     let images = unsafe {
-        swapchain_loader.get_swapchain_images(swapchain).expect("failed to get swapchain images")
+        swapchain_loader
+            .get_swapchain_images(swapchain)
+            .expect("failed to get swapchain images")
     };
     let views: Vec<vk::ImageView> = images
         .iter()
@@ -338,7 +396,11 @@ fn create_swapchain(
                     base_array_layer: 0,
                     layer_count: 1,
                 });
-            unsafe { device.create_image_view(&info, None).expect("failed to create image view") }
+            unsafe {
+                device
+                    .create_image_view(&info, None)
+                    .expect("failed to create image view")
+            }
         })
         .collect();
     (swapchain, images, views, extent)
