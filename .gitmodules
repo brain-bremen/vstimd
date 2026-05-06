@@ -4,3 +4,6 @@
 [submodule "psychopy"]
 	path = extern/psychopy
 	url = git@github.com:joschaschmiedt/psychopy.git
+[submodule "extern/Psychtoolbox-3"]
+	path = extern/Psychtoolbox-3
+	url = https://github.com/Psychtoolbox-3/Psychtoolbox-3.git
