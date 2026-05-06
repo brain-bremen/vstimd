@@ -1,8 +1,9 @@
 # Wonderlamp deployment notes
 
-Wonderlamp runs in DRM/console mode (`--mode drm`), driving the display directly
-via `VK_KHR_display` without a compositor.  It is designed to replace the display
-manager on the target system and run as a systemd service from boot.
+Wonderlamp automatically detects and uses DRM/console mode when running on Linux
+without a display server, driving the display directly via `VK_KHR_display` without
+a compositor. It is designed to replace the display manager on the target system
+and run as a systemd service from boot.
 
 ## Supported platforms
 

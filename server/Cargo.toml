@@ -5,22 +5,25 @@ edition = "2024"
 
 [dependencies]
 ash        = "0.38"
-drm        = "0.15"
 ash-window = "0.13"
 bytemuck   = { version = "1", features = ["derive"] }
 egui       = "0.33"
 egui-winit = "0.33"
 indexmap   = "2"
-input      = "0.9"
 kurbo      = "0.13.0"
 prost      = "0.13"
 tokio      = { version = "1", features = ["rt", "time"] }
-winit          = "=0.30.13"
+winit      = "=0.30.13"
+zeromq     = "0.4"
+
+# Linux-only dependencies for DRM/console mode and Wayland support
+[target.'cfg(target_os = "linux")'.dependencies]
+drm             = "0.15"
+input           = "0.9"
+libc            = "0.2"
 wayland-backend = "=0.3.12"
 wayland-client  = "=0.31.12"
 wayland-sys     = "=0.31.8"
-zeromq     = "0.4"
-libc       = "0.2"
 
 [build-dependencies]
 prost-build = "0.13"

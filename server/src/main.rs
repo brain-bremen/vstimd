@@ -1,6 +1,8 @@
 use std::sync::{Arc, RwLock};
 
-use wonderlamp_server::render::{DrmRenderState, WindowMode, WinitApp};
+#[cfg(target_os = "linux")]
+use wonderlamp_server::render::DrmRenderState;
+use wonderlamp_server::render::{WindowMode, WinitApp};
 use wonderlamp_server::scene::SceneState;
 
 fn main() {
@@ -9,8 +11,14 @@ fn main() {
     let _zmq = wonderlamp_server::ipc::spawn_zmq_thread(scene.clone(), "tcp://0.0.0.0:5555");
 
     match render_target {
+        #[cfg(target_os = "linux")]
         RenderTarget::Drm => DrmRenderState::new(scene).run_loop(),
-        RenderTarget::DesktopWayland => {
+        #[cfg(not(target_os = "linux"))]
+        RenderTarget::Drm => {
+            eprintln!("DRM/console mode is only available on Linux");
+            std::process::exit(1);
+        }
+        RenderTarget::Desktop => {
             let event_loop = winit::event_loop::EventLoop::new().unwrap_or_else(|e| {
                 eprintln!("wonderlamp: failed to create event loop: {e}");
                 std::process::exit(1);
@@ -19,45 +27,51 @@ fn main() {
             let mut app = WinitApp::new(scene, window_mode);
             event_loop.run_app(&mut app).unwrap();
         }
-        RenderTarget::DesktopX11 => {
-            eprintln!("Desktop X11 is not (yet) supported");
-            return;
-        }
     }
 }
 
 // ── Argument parsing ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RenderTarget {
     Drm,
-    DesktopWayland,
-    DesktopX11,
+    Desktop,
 }
-const VALID_RENDER_TARGETS: &[&str] = &["drm", "desktop-wayland", "desktop-x11"];
-fn mode_from_str(s: &str) -> Option<RenderTarget> {
-    if !VALID_RENDER_TARGETS.contains(&s) {
-        return None;
+
+/// Automatically detect the best render target for the current platform.
+///
+/// Detection logic:
+/// - **Windows/macOS:** Always desktop (winit)
+/// - **Linux with DISPLAY or WAYLAND_DISPLAY:** Desktop session → winit
+/// - **Linux without display env vars:** Bare console → DRM
+fn detect_render_target() -> RenderTarget {
+    #[cfg(not(target_os = "linux"))]
+    {
+        RenderTarget::Desktop
     }
-    match s {
-        "drm" | "console" => Some(RenderTarget::Drm),
-        "desktop-wayland" => Some(RenderTarget::DesktopWayland),
-        "desktop-x11" => Some(RenderTarget::DesktopX11),
-        _ => None,
+
+    #[cfg(target_os = "linux")]
+    {
+        // Check for display server environment variables
+        let has_display =
+            std::env::var("DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY").is_ok();
+
+        if has_display {
+            eprintln!("wonderlamp: detected desktop session (DISPLAY or WAYLAND_DISPLAY set)");
+            RenderTarget::Desktop
+        } else {
+            eprintln!("wonderlamp: detected console environment (no display server)");
+            RenderTarget::Drm
+        }
     }
 }
 
 fn parse_args() -> (RenderTarget, WindowMode) {
     let mut window_mode = WindowMode::default();
 
-    let mut mode = RenderTarget::DesktopWayland;
     let mut args = std::env::args().skip(1).peekable();
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--target" | "-t" => match args.next().as_deref() {
-                Some(target) => mode = mode_from_str(target).unwrap_or(mode),
-                None => {}
-            },
             "--fullscreen" | "-f" => window_mode = WindowMode::Fullscreen,
             "--windowed" | "-w" => {
                 let size = args.next().and_then(|s| {
@@ -70,16 +84,34 @@ fn parse_args() -> (RenderTarget, WindowMode) {
                     height: h,
                 };
             }
+            "--help" | "-h" => {
+                print_usage();
+                std::process::exit(0);
+            }
             other => {
                 eprintln!("Unknown argument: {other}");
-                eprintln!(
-                    "Usage: wonderlamp_server [--mode drm|desktop] \
-                     [--fullscreen | --windowed WxH]"
-                );
+                print_usage();
                 std::process::exit(1);
             }
         }
     }
 
-    (mode, window_mode)
+    let render_target = detect_render_target();
+
+    eprintln!("wonderlamp: render target: {:?}", render_target);
+    (render_target, window_mode)
+}
+
+fn print_usage() {
+    eprintln!("Usage: wonderlamp_server [OPTIONS]");
+    eprintln!();
+    eprintln!("Options:");
+    eprintln!("  -f, --fullscreen        Start in fullscreen mode (desktop only)");
+    eprintln!("  -w, --windowed <WxH>    Start in windowed mode with size WxH (desktop only)");
+    eprintln!("  -h, --help              Show this help message");
+    eprintln!();
+    eprintln!("Render target is automatically detected:");
+    eprintln!("  - Windows/macOS: desktop (winit)");
+    eprintln!("  - Linux with DISPLAY or WAYLAND_DISPLAY: desktop (winit)");
+    eprintln!("  - Linux without display server: console (DRM/KMS)");
 }
