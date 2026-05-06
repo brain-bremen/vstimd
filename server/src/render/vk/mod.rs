@@ -4,6 +4,6 @@ pub mod frame;
 pub mod pipeline;
 
 pub use buffers::GpuBuffers;
-pub use context::{VkContext, build_context, select_present_mode};
+pub use context::{VkContext, build_context};
 pub use frame::render_frame;
 pub use pipeline::VkPipeline;

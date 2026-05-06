@@ -22,6 +22,29 @@ pub fn render_frame(
     frame_index: &mut usize,
     frame_stats: &mut FrameStats,
 ) -> bool {
+    // ── Waitable screen clock (VK_KHR_present_wait) ───────────────────────────
+    // Block until the previously presented frame is confirmed on-screen.
+    // This is the Vulkan equivalent of the D3D11 waitable swap chain:
+    // the post-vblank signal that showed frame N-1 is the "tick" that starts
+    // work on frame N.  Skip on the very first call (no prior present yet).
+    let this_present_id = ctx.next_present_id.get();
+    if let (Some(pw), true) = (&ctx.present_wait, this_present_id > 1) {
+        unsafe {
+            match pw.wait_for_present(ctx.swapchain, this_present_id - 1, 3_000_000_000) {
+                Ok(()) => {}
+                Err(vk::Result::TIMEOUT) => {
+                    eprintln!(
+                        "wonderlamp: vkWaitForPresentKHR timed out (id {})",
+                        this_present_id - 1
+                    );
+                }
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR | vk::Result::ERROR_SURFACE_LOST_KHR) => {
+                    return false;
+                }
+                Err(e) => panic!("vkWaitForPresentKHR: {e}"),
+            }
+        }
+    }
     // -- Update: tessellate scene into GPU buffers ----------------------------
     {
         let fps = frame_stats.summary().fps as f32;
@@ -170,15 +193,23 @@ pub fn render_frame(
             .expect("queue_submit");
     }
 
-    // -- Present (FIFO blocks at vblank) --------------------------------------
+    // -- Present --------------------------------------------------------------
+    // Tag with a monotonic ID so vkWaitForPresentKHR can block on it at the
+    // start of the NEXT frame (the screen-clock tick).
+    let present_ids = [this_present_id];
+    let mut present_id_ext = vk::PresentIdKHR::default().present_ids(&present_ids);
+    let swapchains = [ctx.swapchain];
+    let image_indices_arr = [image_index];
+    let mut present_info = vk::PresentInfoKHR::default()
+        .wait_semaphores(&signal_sems)
+        .swapchains(&swapchains)
+        .image_indices(&image_indices_arr);
+    if ctx.present_wait.is_some() {
+        present_info = present_info.push_next(&mut present_id_ext);
+    }
     let present_ok = unsafe {
-        ctx.swapchain_loader.queue_present(
-            ctx.graphics_queue,
-            &vk::PresentInfoKHR::default()
-                .wait_semaphores(&signal_sems)
-                .swapchains(&[ctx.swapchain])
-                .image_indices(&[image_index]),
-        )
+        ctx.swapchain_loader
+            .queue_present(ctx.graphics_queue, &present_info)
     };
     match present_ok {
         Ok(_) | Err(vk::Result::SUBOPTIMAL_KHR) => {}
@@ -192,6 +223,7 @@ pub fn render_frame(
 
     frame_stats.on_present();
     *frame_index = frame_index.wrapping_add(1);
+    ctx.next_present_id.set(this_present_id + 1);
 
     !suboptimal
 }

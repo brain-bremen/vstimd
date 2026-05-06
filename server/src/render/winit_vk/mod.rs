@@ -8,21 +8,21 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
-use crate::render::vk::{GpuBuffers, VkContext, VkPipeline, render_frame, select_present_mode};
+use crate::render::vk::{GpuBuffers, VkContext, VkPipeline, render_frame};
 use crate::scene::SceneState;
 use crate::timing::FrameStats;
 
-/// Priority-ordered list of present modes for low-latency fullscreen.
-/// `IMMEDIATE` has zero queue depth (may tear but minimum latency).
-/// `MAILBOX` drops stale frames rather than queuing them.
-/// `FIFO_RELAXED` tears only when a deadline is missed.
-/// `FIFO` is the guaranteed fallback.
-const LOW_LATENCY_PRESENT_MODES: &[ash::vk::PresentModeKHR] = &[
-    ash::vk::PresentModeKHR::IMMEDIATE,
-    ash::vk::PresentModeKHR::MAILBOX,
-    ash::vk::PresentModeKHR::FIFO_RELAXED,
-    ash::vk::PresentModeKHR::FIFO,
-];
+// FIFO is the only present mode used throughout the application.
+//
+// FIFO makes vkAcquireNextImageKHR block until the presentation engine returns
+// an image at vblank. The render loop therefore runs at exactly the display
+// refresh rate by construction — the swapchain IS the clock. One acquire =
+// one vblank = one frame on screen. This is the correct foundation for a
+// stimulus server that must never miss or duplicate a frame.
+//
+// MAILBOX decouples the render loop from the display clock (GPU runs uncapped,
+// frames overwrite each other) — the exact opposite of what we want. FIFO is
+// guaranteed to be available on every Vulkan implementation.
 
 // ── Window creation options ───────────────────────────────────────────────────
 
@@ -65,28 +65,10 @@ impl State {
         scene: Arc<RwLock<SceneState>>,
         event_loop: &ActiveEventLoop,
     ) -> Self {
-        let mut ctx = init::init(&window);
-
-        // If the window is already fullscreen at startup, switch to the
-        // lowest-latency present mode supported by the driver.
-        if window.fullscreen().is_some() {
-            let mode = select_present_mode(
-                &ctx.surface_loader,
-                ctx.physical_device,
-                ctx.surface,
-                LOW_LATENCY_PRESENT_MODES,
-            );
-            if mode != ctx.present_mode {
-                ctx.present_mode = mode;
-                let size = window.inner_size();
-                let extent = ash::vk::Extent2D {
-                    width: size.width.max(1),
-                    height: size.height.max(1),
-                };
-                ctx.recreate_swapchain(extent);
-                eprintln!("wonderlamp: fullscreen startup — present mode: {:?}", mode);
-            }
-        }
+        let ctx = init::init(&window);
+        // FIFO is set by build_context and never changed — the swapchain is
+        // the screen clock.
+        eprintln!("wonderlamp: present mode: FIFO");
 
         let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass);
         let gpu_buffers = GpuBuffers::new(&ctx.instance, ctx.physical_device);
@@ -175,10 +157,8 @@ impl WinitApp {
         }
 
         if self.is_fullscreen {
-            // ── Leaving fullscreen → windowed ─────────────────────────────
-            // Switch back to compositor-friendly FIFO before recreating.
-            self.state.as_mut().unwrap().ctx.present_mode = ash::vk::PresentModeKHR::FIFO;
-
+            // ── Leaving fullscreen → windowed ─────────────────────────
+            // Present mode is already FIFO and does not change.
             let state = self.state.as_ref().unwrap();
             state.window.set_fullscreen(None);
             if let WindowMode::Windowed { width, height } = self.window_mode {
@@ -191,17 +171,8 @@ impl WinitApp {
             eprintln!("wonderlamp: windowed — present mode: FIFO");
         } else {
             // ── Entering fullscreen ───────────────────────────────────────
-            // Pick the lowest-latency present mode the driver supports.
-            let mode = {
-                let s = self.state.as_ref().unwrap();
-                select_present_mode(
-                    &s.ctx.surface_loader,
-                    s.ctx.physical_device,
-                    s.ctx.surface,
-                    LOW_LATENCY_PRESENT_MODES,
-                )
-            };
-            self.state.as_mut().unwrap().ctx.present_mode = mode;
+            // Present mode stays FIFO throughout — the swapchain is the
+            // screen clock and must not be decoupled from vblank.
 
             let monitor = {
                 let s = self.state.as_ref().unwrap();
@@ -216,7 +187,7 @@ impl WinitApp {
                 .window
                 .set_fullscreen(Some(Fullscreen::Borderless(monitor)));
             self.is_fullscreen = true;
-            eprintln!("wonderlamp: fullscreen — present mode: {:?}", mode);
+            eprintln!("wonderlamp: fullscreen — present mode: FIFO");
         }
     }
 }

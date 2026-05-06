@@ -33,6 +33,14 @@ pub struct VkContext {
     /// Present mode currently used by the swapchain.
     /// Change this field and call `recreate_swapchain` to switch modes.
     pub present_mode: vk::PresentModeKHR,
+    /// Loader for VK_KHR_present_wait.  None when the extension is absent.
+    /// `wait_for_present_khr` blocks until a tagged frame reaches the display,
+    /// giving a precise post-vblank "screen clock" tick each frame.
+    pub present_wait: Option<ash::khr::present_wait::Device>,
+    /// Monotonically increasing ID attached to every vkQueuePresentKHR call.
+    /// 0 is reserved ("no ID" in the spec); the first frame uses 1.
+    /// `Cell` allows mutation through `&VkContext` (render thread only).
+    pub next_present_id: std::cell::Cell<u64>,
     pub instance: ash::Instance,
     pub entry: ash::Entry,
 }
@@ -100,6 +108,9 @@ impl VkContext {
         self.swapchain_images = images;
         self.swapchain_image_views = views;
         self.extent = extent;
+        // Present IDs are scoped to a swapchain instance; reset so the next
+        // frame skips the wait and starts a fresh ID sequence.
+        self.next_present_id.set(1);
     }
 }
 
@@ -137,7 +148,7 @@ pub fn build_context(
     surface_loader: ash::khr::surface::Instance,
     desired_extent: vk::Extent2D,
 ) -> VkContext {
-    // -- Physical device + queue family ---------------------------------------
+    // -- Physical device + queue family + timing-extension probe -------------
     let physical_devices = unsafe {
         instance
             .enumerate_physical_devices()
@@ -150,15 +161,63 @@ pub fn build_context(
         })
         .expect("no Vulkan device with graphics+present support");
 
+    // -- Device extension inventory -------------------------------------------
+    // Enumerate once; reused for both the capability log and device creation.
+    let available_device_exts: Vec<String> = unsafe {
+        instance
+            .enumerate_device_extension_properties(physical_device)
+            .unwrap_or_default()
+            .iter()
+            .map(|e| {
+                std::ffi::CStr::from_ptr(e.extension_name.as_ptr())
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect()
+    };
+    let has_ext = |name: &str| available_device_exts.iter().any(|a| a == name);
+
+    // Log present-timing extension availability.
+    const TIMING_EXTS: &[&str] = &[
+        "VK_KHR_present_id",
+        "VK_KHR_present_wait",
+        "VK_GOOGLE_display_timing",
+        "VK_EXT_swapchain_maintenance1",
+    ];
+    eprintln!("wonderlamp: present-timing extension availability:");
+    for ext in TIMING_EXTS {
+        eprintln!("  {:<40}  {}", ext, if has_ext(ext) { "YES" } else { "no" });
+    }
+
+    // Both extensions are required together:
+    //   present_id  — attach a monotonic u64 to each vkQueuePresentKHR
+    //   present_wait — vkWaitForPresentKHR blocks until that frame is on screen
+    let use_present_wait = has_ext("VK_KHR_present_id") && has_ext("VK_KHR_present_wait");
+
     // -- Logical device -------------------------------------------------------
     let queue_priorities = [1.0_f32];
     let queue_info = vk::DeviceQueueCreateInfo::default()
         .queue_family_index(graphics_queue_family)
         .queue_priorities(&queue_priorities);
-    let device_exts = [ash::khr::swapchain::NAME.as_ptr()];
-    let device_info = vk::DeviceCreateInfo::default()
+
+    let mut device_exts = vec![ash::khr::swapchain::NAME.as_ptr()];
+    if use_present_wait {
+        device_exts.push(ash::khr::present_id::NAME.as_ptr());
+        device_exts.push(ash::khr::present_wait::NAME.as_ptr());
+    }
+
+    // Feature structs must outlive `device_info` (referenced via p_next chain).
+    let mut present_id_feat = vk::PhysicalDevicePresentIdFeaturesKHR::default().present_id(true);
+    let mut present_wait_feat =
+        vk::PhysicalDevicePresentWaitFeaturesKHR::default().present_wait(true);
+    let mut device_info = vk::DeviceCreateInfo::default()
         .queue_create_infos(std::slice::from_ref(&queue_info))
         .enabled_extension_names(&device_exts);
+    if use_present_wait {
+        device_info = device_info
+            .push_next(&mut present_id_feat)
+            .push_next(&mut present_wait_feat);
+    }
     let device = unsafe {
         instance
             .create_device(physical_device, &device_info, None)
@@ -166,6 +225,11 @@ pub fn build_context(
     };
     let graphics_queue = unsafe { device.get_device_queue(graphics_queue_family, 0) };
     let swapchain_loader = ash::khr::swapchain::Device::new(&instance, &device);
+    let present_wait_loader =
+        use_present_wait.then(|| ash::khr::present_wait::Device::new(&instance, &device));
+    if use_present_wait {
+        eprintln!("wonderlamp: VK_KHR_present_wait enabled — waitable screen clock active");
+    }
 
     // -- Surface format -------------------------------------------------------
     let formats = unsafe {
@@ -252,6 +316,8 @@ pub fn build_context(
         format,
         extent,
         present_mode: initial_present_mode,
+        present_wait: present_wait_loader,
+        next_present_id: std::cell::Cell::new(1),
         instance,
         entry,
     }
