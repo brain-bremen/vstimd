@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 ash        = "0.38"
+drm        = "0.15"
 ash-window = "0.13"
 bytemuck   = { version = "1", features = ["derive"] }
 egui       = "0.33"
