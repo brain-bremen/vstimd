@@ -1,0 +1,28 @@
+[Unit]
+Description=Wonderlamp visual stimulus server
+# Wait for DRM and input device nodes to appear before starting.
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wonderlamp_server --mode drm
+Restart=on-failure
+RestartSec=2
+# Give Vulkan time to release the display on SIGTERM before SIGKILL.
+TimeoutStopSec=5
+
+# VT / terminal — systemd restores KD_TEXT and hangs up the TTY on stop,
+# which avoids the black-screen-until-VT-switch issue on clean exit.
+TTYPath=/dev/tty1
+StandardInput=tty
+TTYReset=yes
+TTYVHangup=yes
+
+# libinput reads /dev/input/event*  (needs 'input' group).
+# DRM/Vulkan opens /dev/dri/*       (needs 'video' or 'render' group).
+# See deploy/DEPLOY.md for per-platform group names.
+SupplementaryGroups=input video
+
+[Install]
+WantedBy=multi-user.target
