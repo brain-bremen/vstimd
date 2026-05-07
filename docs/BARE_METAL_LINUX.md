@@ -92,6 +92,39 @@ The running user needs:
 - `video` group — DRM access to `/dev/dri/card0`, `/dev/dri/card1`
 - `input` group — libinput access to `/dev/input/*`
 
+#### Known driver issue: VRR causes GPU device loss (JetPack 6.x)
+
+**Symptom:** Wonderlamp renders 3–4 frames then crashes with `ERROR_DEVICE_LOST`. The kernel log shows:
+
+```
+nvidia-modeset: ERROR: GPU:0: nvRmApiAlloc(memory) failed for vrr 0x22
+nvidia-modeset: ERROR: GPU:0: Failed to setup Rgline active session for vrr
+nvgpu: ga10b_pbdma_handle_intr_0_acquire: semaphore acquire timeout!
+```
+
+**Root cause:** When `VK_KHR_display` acquires a VRR-capable (G-Sync / Adaptive Sync) display, `nvidia-modeset` automatically attempts to allocate a VRR "Rgline active session". On JetPack 6.x (driver 540.x) this allocation fails with error `0x22` and leaves the GPU presentation semaphore pathway in a corrupted state. The PBDMA engine times out waiting on the semaphore 4 seconds later, causing `ERROR_DEVICE_LOST`.
+
+**Fix:** Disable HDMI FRL (Fixed Rate Link), the HDMI 2.1 transport that enables the high-bandwidth modes required for VRR. Disabling it forces HDMI 2.0 TMDS, which has ample bandwidth for 4K@60Hz but does not expose VRR capability to `nvidia-modeset`.
+
+Apply immediately (takes effect without reboot):
+
+```bash
+sudo sh -c 'echo 1 > /sys/module/nvidia_modeset/parameters/disable_hdmi_frl'
+```
+
+Make it permanent:
+
+```bash
+echo 'options nvidia-modeset disable_hdmi_frl=1' | sudo tee /etc/modprobe.d/nvidia-modeset-nofrl.conf
+```
+
+**Remaining benign log noise after the fix:**
+
+| Message | Source | Meaning |
+|---|---|---|
+| `Failed to set variable refresh rate with invalid minimum frame time` | `nvidia-modeset` | Driver detects VRR range is inconsistent (30 Hz min > 48 Hz max) and skips VRR setup cleanly. Harmless. |
+| `nvdisplayr: secure read @0x000000ffffffff00: EMEM address decode error` | `tegra-mc` | Display controller briefly reads from a stale framebuffer address during CRTC restore on exit (GDM's original framebuffer was freed when GDM was stopped). Harmless after exit. |
+
 ---
 
 ### Raspberry Pi 5
