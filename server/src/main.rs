@@ -6,13 +6,16 @@ use wonderlamp_server::render::{WindowMode, WinitApp};
 use wonderlamp_server::scene::SceneState;
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let args = parse_args();
 
-    let (render_target, window_mode) = parse_args();
+    let default_level = if args.verbose { "debug" } else { "info" };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level))
+        .init();
+
     let scene = Arc::new(RwLock::new(SceneState::new()));
     let _zmq = wonderlamp_server::ipc::spawn_zmq_thread(scene.clone(), "tcp://0.0.0.0:5555");
 
-    match render_target {
+    match args.render_target {
         #[cfg(target_os = "linux")]
         RenderTarget::Drm => DrmRenderState::new(scene).run_loop(),
         #[cfg(not(target_os = "linux"))]
@@ -26,7 +29,7 @@ fn main() {
                 std::process::exit(1);
             });
             event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-            let mut app = WinitApp::new(scene, window_mode);
+            let mut app = WinitApp::new(scene, args.window_mode);
             event_loop.run_app(&mut app).unwrap();
         }
     }
@@ -38,6 +41,12 @@ fn main() {
 enum RenderTarget {
     Drm,
     Desktop,
+}
+
+struct Args {
+    render_target: RenderTarget,
+    window_mode: WindowMode,
+    verbose: bool,
 }
 
 /// Automatically detect the best render target for the current platform.
@@ -54,7 +63,6 @@ fn detect_render_target() -> RenderTarget {
 
     #[cfg(target_os = "linux")]
     {
-        // Check for display server environment variables
         let has_display =
             std::env::var("DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY").is_ok();
 
@@ -68,13 +76,14 @@ fn detect_render_target() -> RenderTarget {
     }
 }
 
-fn parse_args() -> (RenderTarget, WindowMode) {
+fn parse_args() -> Args {
     let mut window_mode = WindowMode::default();
+    let mut verbose = false;
 
     let mut args = std::env::args().skip(1).peekable();
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--fullscreen" | "-f" => window_mode = WindowMode::Fullscreen,
+            "--verbose" | "-v" => verbose = true,
             "--windowed" | "-w" => {
                 let size = args.next().and_then(|s| {
                     let (w, h) = s.split_once('x')?;
@@ -91,7 +100,7 @@ fn parse_args() -> (RenderTarget, WindowMode) {
                 std::process::exit(0);
             }
             other => {
-                log::error!("Unknown argument: {other}");
+                eprintln!("wonderlamp: unknown argument: {other}");
                 print_usage();
                 std::process::exit(1);
             }
@@ -99,18 +108,22 @@ fn parse_args() -> (RenderTarget, WindowMode) {
     }
 
     let render_target = detect_render_target();
-
     log::info!("wonderlamp: render target: {:?}", render_target);
-    (render_target, window_mode)
+
+    Args {
+        render_target,
+        window_mode,
+        verbose,
+    }
 }
 
 fn print_usage() {
     eprintln!("Usage: wonderlamp_server [OPTIONS]");
     eprintln!();
     eprintln!("Options:");
-    eprintln!("  -f, --fullscreen        Start in fullscreen mode (desktop only)");
-    eprintln!("  -w, --windowed <WxH>    Start in windowed mode with size WxH (desktop only)");
-    eprintln!("  -h, --help              Show this help message");
+    eprintln!("  -w, --windowed <WxH>      Start in windowed mode with size WxH (desktop only)");
+    eprintln!("  -v, --verbose             Enable debug logging (overridden by RUST_LOG)");
+    eprintln!("  -h, --help                Show this help message");
     eprintln!();
     eprintln!("Render target is automatically detected:");
     eprintln!("  - Windows/macOS: desktop (winit)");
