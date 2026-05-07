@@ -1,16 +1,19 @@
 [Unit]
 Description=Wonderlamp visual stimulus server
 # Wait for DRM and input device nodes to appear before starting.
-After=systemd-udev-settle.service
+After=systemd-udev-settle.service network.target
 Wants=systemd-udev-settle.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/wonderlamp_server --mode drm
+ExecStart=/usr/bin/wonderlamp_server
 Restart=on-failure
 RestartSec=2
 # Give Vulkan time to release the display on SIGTERM before SIGKILL.
 TimeoutStopSec=5
+
+# Log level — override with e.g. RUST_LOG=debug for diagnostics.
+Environment=RUST_LOG=info
 
 # VT / terminal — systemd restores KD_TEXT and hangs up the TTY on stop,
 # which avoids the black-screen-until-VT-switch issue on clean exit.
