@@ -52,13 +52,13 @@ async fn zmq_loop(scene: Arc<RwLock<SceneState>>, addr: &str) {
         .bind(addr)
         .await
         .unwrap_or_else(|e| panic!("ZMQ bind to {addr} failed: {e}"));
-    eprintln!("ZMQ REP server listening on {addr}");
+    log::info!("ZMQ REP server listening on {addr}");
 
     loop {
         let msg = match socket.recv().await {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("ZMQ recv error: {e}");
+                log::error!("ZMQ recv error: {e}");
                 continue;
             }
         };
@@ -82,7 +82,7 @@ async fn zmq_loop(scene: Arc<RwLock<SceneState>>, addr: &str) {
 
         let out = response.encode_to_vec();
         if let Err(e) = socket.send(out.into()).await {
-            eprintln!("ZMQ send error: {e}");
+            log::error!("ZMQ send error: {e}");
         }
     }
 }

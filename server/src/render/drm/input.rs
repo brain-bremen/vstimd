@@ -32,7 +32,7 @@ impl TtyKbdGuard {
             libc::open(b"/dev/tty\0".as_ptr() as *const libc::c_char, libc::O_RDWR | libc::O_CLOEXEC)
         };
         if fd < 0 {
-            eprintln!("wonderlamp: could not open /dev/tty — keys may echo to terminal");
+            log::warn!("wonderlamp: could not open /dev/tty — keys may echo to terminal");
             return None;
         }
         let mut saved: libc::termios = unsafe { std::mem::zeroed() };
@@ -45,7 +45,7 @@ impl TtyKbdGuard {
         raw.c_lflag &= !(libc::ECHO | libc::ECHOE | libc::ECHOK | libc::ECHONL
             | libc::ICANON | libc::ISIG);
         if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw) } < 0 {
-            eprintln!("wonderlamp: tcsetattr failed — keys may echo to terminal");
+            log::warn!("wonderlamp: tcsetattr failed — keys may echo to terminal");
             unsafe { libc::close(fd) };
             return None;
         }
@@ -104,7 +104,7 @@ impl InputState {
         match ctx.udev_assign_seat("seat0") {
             Ok(()) => Self { ctx: Some(ctx), tty_kbd_guard },
             Err(()) => {
-                eprintln!(
+                log::warn!(
                     "wonderlamp: libinput failed to open seat0 — \
                      keyboard shortcuts unavailable (is the 'input' group set?)"
                 );

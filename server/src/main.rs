@@ -6,6 +6,8 @@ use wonderlamp_server::render::{WindowMode, WinitApp};
 use wonderlamp_server::scene::SceneState;
 
 fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let (render_target, window_mode) = parse_args();
     let scene = Arc::new(RwLock::new(SceneState::new()));
     let _zmq = wonderlamp_server::ipc::spawn_zmq_thread(scene.clone(), "tcp://0.0.0.0:5555");
@@ -15,12 +17,12 @@ fn main() {
         RenderTarget::Drm => DrmRenderState::new(scene).run_loop(),
         #[cfg(not(target_os = "linux"))]
         RenderTarget::Drm => {
-            eprintln!("DRM/console mode is only available on Linux");
+            log::error!("DRM/console mode is only available on Linux");
             std::process::exit(1);
         }
         RenderTarget::Desktop => {
             let event_loop = winit::event_loop::EventLoop::new().unwrap_or_else(|e| {
-                eprintln!("wonderlamp: failed to create event loop: {e}");
+                log::error!("wonderlamp: failed to create event loop: {e}");
                 std::process::exit(1);
             });
             event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
@@ -57,10 +59,10 @@ fn detect_render_target() -> RenderTarget {
             std::env::var("DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY").is_ok();
 
         if has_display {
-            eprintln!("wonderlamp: detected desktop session (DISPLAY or WAYLAND_DISPLAY set)");
+            log::info!("wonderlamp: detected desktop session (DISPLAY or WAYLAND_DISPLAY set)");
             RenderTarget::Desktop
         } else {
-            eprintln!("wonderlamp: detected console environment (no display server)");
+            log::info!("wonderlamp: detected console environment (no display server)");
             RenderTarget::Drm
         }
     }
@@ -89,7 +91,7 @@ fn parse_args() -> (RenderTarget, WindowMode) {
                 std::process::exit(0);
             }
             other => {
-                eprintln!("Unknown argument: {other}");
+                log::error!("Unknown argument: {other}");
                 print_usage();
                 std::process::exit(1);
             }
@@ -98,7 +100,7 @@ fn parse_args() -> (RenderTarget, WindowMode) {
 
     let render_target = detect_render_target();
 
-    eprintln!("wonderlamp: render target: {:?}", render_target);
+    log::info!("wonderlamp: render target: {:?}", render_target);
     (render_target, window_mode)
 }
 

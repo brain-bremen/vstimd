@@ -76,7 +76,7 @@ impl State {
         let ctx = init::init(&window);
         // FIFO is set by build_context and never changed — the swapchain is
         // the screen clock.
-        eprintln!("wonderlamp: present mode: FIFO");
+        log::info!("wonderlamp: present mode: FIFO");
 
         let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass);
         let gpu_buffers = GpuBuffers::new(&ctx.instance, ctx.physical_device);
@@ -230,7 +230,7 @@ impl WinitApp {
             }
             // `state` borrow ends here; safe to write the flag.
             self.is_fullscreen = false;
-            eprintln!("wonderlamp: windowed — present mode: FIFO");
+            log::info!("wonderlamp: windowed — present mode: FIFO");
         } else {
             // ── Entering fullscreen ───────────────────────────────────────
             // Present mode stays FIFO throughout — the swapchain is the
@@ -249,7 +249,7 @@ impl WinitApp {
                 .window
                 .set_fullscreen(Some(Fullscreen::Borderless(monitor)));
             self.is_fullscreen = true;
-            eprintln!("wonderlamp: fullscreen — present mode: FIFO");
+            log::info!("wonderlamp: fullscreen — present mode: FIFO");
         }
     }
 }
@@ -358,7 +358,7 @@ fn detect_refresh_hz(window: &Window) -> f64 {
     // 1. DRM kernel interface (Linux only).
     #[cfg(target_os = "linux")]
     if let Some(hz) = query_refresh_hz_from_drm() {
-        eprintln!("wonderlamp: display clock (DRM): {hz:.3} Hz");
+        log::info!("wonderlamp: display clock (DRM): {hz:.3} Hz");
         return hz;
     }
 
@@ -371,7 +371,7 @@ fn detect_refresh_hz(window: &Window) -> f64 {
             .max()
             .map(|mhz| mhz as f64 / 1000.0)
     }) {
-        eprintln!("wonderlamp: display clock (video_modes): {hz:.3} Hz");
+        log::info!("wonderlamp: display clock (video_modes): {hz:.3} Hz");
         return hz;
     }
 
@@ -381,7 +381,7 @@ fn detect_refresh_hz(window: &Window) -> f64 {
         .and_then(|m| m.refresh_rate_millihertz())
     {
         let hz = mhz as f64 / 1000.0;
-        eprintln!("wonderlamp: display clock (monitor API): {hz:.3} Hz");
+        log::info!("wonderlamp: display clock (monitor API): {hz:.3} Hz");
         return hz;
     }
 

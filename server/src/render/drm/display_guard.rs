@@ -106,7 +106,7 @@ impl DisplayGuard {
                     None => continue,
                 };
 
-                eprintln!(
+                log::debug!(
                     "wonderlamp: [{path}] saved CRTC {crtc_h:?} {:?} fb={:?}",
                     mode,
                     crtc_info.framebuffer()
@@ -124,7 +124,7 @@ impl DisplayGuard {
                 continue;
             }
 
-            eprintln!(
+            log::info!(
                 "wonderlamp: display controller at {path} \
                  ({} active CRTC(s) saved)",
                 saved.len()
@@ -132,13 +132,13 @@ impl DisplayGuard {
 
             // Release master so Vulkan (VK_KHR_display) can take it.
             if let Err(e) = card.release_master_lock() {
-                eprintln!("wonderlamp: release_master_lock on {path}: {e} (continuing)");
+                log::warn!("wonderlamp: release_master_lock on {path}: {e} (continuing)");
             }
 
             return Some(Self { card, saved });
         }
 
-        eprintln!(
+        log::warn!(
             "wonderlamp: no display controller found — \
              CRTC restore on exit will be skipped"
         );
@@ -150,7 +150,7 @@ impl Drop for DisplayGuard {
     fn drop(&mut self) {
         // Re-acquire master so we can reprogram the CRTCs.
         if let Err(e) = self.card.acquire_master_lock() {
-            eprintln!("wonderlamp: acquire_master_lock: {e} (attempting set_crtc anyway)");
+            log::warn!("wonderlamp: acquire_master_lock: {e} (attempting set_crtc anyway)");
         }
 
         for out in &self.saved {
@@ -161,16 +161,16 @@ impl Drop for DisplayGuard {
                 &[out.connector_handle],
                 Some(out.mode),
             ) {
-                Ok(()) => eprintln!(
+                Ok(()) => log::info!(
                     "wonderlamp: CRTC {:?} restored → fb {:?}",
                     out.crtc_handle, out.framebuffer
                 ),
-                Err(e) => eprintln!("wonderlamp: set_crtc({:?}) failed: {e}", out.crtc_handle),
+                Err(e) => log::error!("wonderlamp: set_crtc({:?}) failed: {e}", out.crtc_handle),
             }
         }
 
         if let Err(e) = self.card.release_master_lock() {
-            eprintln!("wonderlamp: release_master_lock: {e}");
+            log::warn!("wonderlamp: release_master_lock: {e}");
         }
     }
 }

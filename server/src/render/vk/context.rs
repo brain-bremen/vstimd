@@ -52,16 +52,16 @@ pub struct VkContext {
 impl Drop for VkContext {
     fn drop(&mut self) {
         unsafe {
-            eprintln!("wonderlamp: [drop] device_wait_idle");
+            log::debug!("wonderlamp: [drop] device_wait_idle");
             self.device.device_wait_idle().ok();
 
-            eprintln!("wonderlamp: [drop] destroy sync objects");
+            log::debug!("wonderlamp: [drop] destroy sync objects");
             for frame in &self.frames {
                 self.device.destroy_semaphore(frame.image_available, None);
                 self.device.destroy_semaphore(frame.render_done, None);
                 self.device.destroy_fence(frame.in_flight, None);
             }
-            eprintln!("wonderlamp: [drop] destroy framebuffers + render pass + image views");
+            log::debug!("wonderlamp: [drop] destroy framebuffers + render pass + image views");
             for &fb in &self.framebuffers {
                 self.device.destroy_framebuffer(fb, None);
             }
@@ -70,18 +70,18 @@ impl Drop for VkContext {
             for &view in &self.swapchain_image_views {
                 self.device.destroy_image_view(view, None);
             }
-            eprintln!("wonderlamp: [drop] destroy command pool");
+            log::debug!("wonderlamp: [drop] destroy command pool");
             self.device.destroy_command_pool(self.command_pool, None);
-            eprintln!("wonderlamp: [drop] destroy swapchain");
+            log::debug!("wonderlamp: [drop] destroy swapchain");
             self.swapchain_loader
                 .destroy_swapchain(self.swapchain, None);
-            eprintln!("wonderlamp: [drop] destroy device");
+            log::debug!("wonderlamp: [drop] destroy device");
             self.device.destroy_device(None);
-            eprintln!("wonderlamp: [drop] destroy surface");
+            log::debug!("wonderlamp: [drop] destroy surface");
             self.surface_loader.destroy_surface(self.surface, None);
-            eprintln!("wonderlamp: [drop] destroy instance");
+            log::debug!("wonderlamp: [drop] destroy instance");
             self.instance.destroy_instance(None);
-            eprintln!("wonderlamp: [drop] done");
+            log::debug!("wonderlamp: [drop] done");
         }
     }
 }
@@ -207,9 +207,9 @@ pub fn build_context(
         "VK_GOOGLE_display_timing",
         "VK_EXT_swapchain_maintenance1",
     ];
-    eprintln!("wonderlamp: present-timing extension availability:");
+    log::debug!("wonderlamp: present-timing extension availability:");
     for ext in TIMING_EXTS {
-        eprintln!("  {:<40}  {}", ext, if has_ext(ext) { "YES" } else { "no" });
+        log::debug!("  {:<40}  {}", ext, if has_ext(ext) { "YES" } else { "no" });
     }
 
     // Both extensions are required together:
@@ -257,7 +257,7 @@ pub fn build_context(
     let display_timing_loader =
         use_display_timing.then(|| ash::google::display_timing::Device::new(&instance, &device));
     if use_present_wait {
-        eprintln!("wonderlamp: VK_KHR_present_wait enabled — waitable screen clock active");
+        log::info!("wonderlamp: VK_KHR_present_wait enabled — waitable screen clock active");
     }
 
     // -- Surface format -------------------------------------------------------

@@ -102,7 +102,7 @@ pub fn init() -> (VkContext, DisplayInfo) {
     let extent = vk::Extent2D { width, height };
     let ctx = build_context(entry, instance, surface, surface_loader, extent);
 
-    eprintln!(
+    log::info!(
         "wonderlamp: display {}×{}  {}.{:03} Hz",
         width,
         height,

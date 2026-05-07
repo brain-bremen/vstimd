@@ -59,5 +59,5 @@ pub(crate) fn spawn_demo_stimuli(
             size: Deferred::new([120.0, 50.0]),
         }),
     );
-    eprintln!("Demo: spawned disc (handle {h1}) and rect (handle {h2})");
+    log::info!("Demo: spawned disc (handle {h1}) and rect (handle {h2})");
 }
