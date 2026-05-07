@@ -1,5 +1,6 @@
 use std::sync::{Arc, RwLock};
 
+use crate::log_buffer::LogBuffer;
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats};
 
@@ -26,6 +27,7 @@ pub fn build_overlay_ui(
     frame_stats: &FrameStats,
     last_phases: FramePhases,
     sys: &SystemInfo,
+    log_buffer: &LogBuffer,
 ) {
     egui::Window::new("System").show(ctx, |ui| {
         ui.label(format!("Screen: {}×{}", sys.screen_width, sys.screen_height));
@@ -107,5 +109,71 @@ pub fn build_overlay_ui(
                 }
             }
         }
+    });
+
+    egui::Window::new("IPC Log").default_size([500.0, 160.0]).show(ctx, |ui| {
+        if let Ok(sc) = scene.try_read() {
+            ui.label(format!(
+                "total: {}  errors: {}",
+                sc.command_log_total, sc.command_log_errors
+            ));
+            ui.separator();
+            egui::ScrollArea::vertical()
+                .stick_to_bottom(true)
+                .max_height(120.0)
+                .show(ui, |ui| {
+                    for entry in &sc.command_log {
+                        let color = if entry.ok {
+                            egui::Color32::from_rgb(80, 200, 80)
+                        } else {
+                            egui::Color32::RED
+                        };
+                        ui.colored_label(
+                            color,
+                            format!(
+                                "[{:>8.1}ms] #{} {} → {}",
+                                entry.elapsed_ms,
+                                entry.handle,
+                                entry.summary,
+                                if entry.ok {
+                                    format!("ok ({})", entry.response)
+                                } else {
+                                    "err".to_string()
+                                },
+                            ),
+                        );
+                    }
+                });
+        }
+    });
+
+    egui::Window::new("Server Log").default_size([600.0, 200.0]).show(ctx, |ui| {
+        let entries = log_buffer
+            .lock()
+            .map(|buf| buf.iter().map(|e| {
+                let color = match e.level {
+                    log::Level::Error => egui::Color32::RED,
+                    log::Level::Warn  => egui::Color32::YELLOW,
+                    log::Level::Info  => egui::Color32::WHITE,
+                    _                 => egui::Color32::GRAY,
+                };
+                let text = format!(
+                    "[{:>8.1}ms] {:5} {}",
+                    e.elapsed_ms,
+                    e.level,
+                    e.message,
+                );
+                (color, text)
+            }).collect::<Vec<_>>())
+            .unwrap_or_default();
+
+        egui::ScrollArea::vertical()
+            .stick_to_bottom(true)
+            .max_height(160.0)
+            .show(ui, |ui| {
+                for (color, text) in entries {
+                    ui.colored_label(color, text);
+                }
+            });
     });
 }

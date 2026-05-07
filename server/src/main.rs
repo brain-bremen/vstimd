@@ -9,15 +9,19 @@ fn main() {
     let args = parse_args();
 
     let default_level = if args.verbose { "debug" } else { "info" };
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level))
-        .init();
+    let server_start = std::time::Instant::now();
+    let env_logger = env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or(default_level),
+    )
+    .build();
+    let log_buffer = wonderlamp_server::log_buffer::install(env_logger, server_start);
 
     let scene = Arc::new(RwLock::new(SceneState::new()));
     let _zmq = wonderlamp_server::ipc::spawn_zmq_thread(scene.clone(), "tcp://0.0.0.0:5555");
 
     match args.render_target {
         #[cfg(target_os = "linux")]
-        RenderTarget::Drm => DrmRenderState::new(scene).run_loop(),
+        RenderTarget::Drm => DrmRenderState::new(scene, log_buffer).run_loop(),
         #[cfg(not(target_os = "linux"))]
         RenderTarget::Drm => {
             log::error!("DRM/console mode is only available on Linux");
@@ -29,7 +33,7 @@ fn main() {
                 std::process::exit(1);
             });
             event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-            let mut app = WinitApp::new(scene, args.window_mode);
+            let mut app = WinitApp::new(scene, args.window_mode, log_buffer);
             event_loop.run_app(&mut app).unwrap();
         }
     }

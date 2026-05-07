@@ -8,6 +8,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
+use crate::log_buffer::LogBuffer;
 use crate::render::overlay::{SystemInfo, build_overlay_ui, query_local_ip};
 use crate::render::vk::{
     EguiFrameData, GpuBuffers, VkContext, VkEguiRenderer, VkPipeline, render_frame,
@@ -65,6 +66,7 @@ struct State {
     show_overlay: bool,
     refresh_hz: f64,
     local_ip: String,
+    log_buffer: LogBuffer,
 }
 
 impl State {
@@ -72,6 +74,7 @@ impl State {
         window: Arc<Window>,
         scene: Arc<RwLock<SceneState>>,
         event_loop: &ActiveEventLoop,
+        log_buffer: LogBuffer,
     ) -> Self {
         let ctx = init::init(&window);
         // FIFO is set by build_context and never changed — the swapchain is
@@ -115,6 +118,7 @@ impl State {
             show_overlay: false,
             refresh_hz: hz,
             local_ip: query_local_ip(),
+            log_buffer,
         }
     }
 
@@ -131,7 +135,7 @@ impl State {
                 local_ip: self.local_ip.clone(),
             };
             let output = self.egui_ctx.run_ui(raw_input, |ctx| {
-                build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases, &sys);
+                build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases, &sys, &self.log_buffer);
             });
             self.egui_winit
                 .handle_platform_output(&self.window, output.platform_output);
@@ -200,16 +204,18 @@ pub struct WinitApp {
     state: Option<State>,
     modifiers: winit::event::Modifiers,
     is_fullscreen: bool,
+    log_buffer: Option<LogBuffer>,
 }
 
 impl WinitApp {
-    pub fn new(scene: Arc<RwLock<SceneState>>, window_mode: WindowMode) -> Self {
+    pub fn new(scene: Arc<RwLock<SceneState>>, window_mode: WindowMode, log_buffer: LogBuffer) -> Self {
         Self {
             scene: Some(scene),
             is_fullscreen: window_mode == WindowMode::Fullscreen,
             window_mode,
             state: None,
             modifiers: winit::event::Modifiers::default(),
+            log_buffer: Some(log_buffer),
         }
     }
 
@@ -273,7 +279,8 @@ impl ApplicationHandler for WinitApp {
             };
             let window = Arc::new(event_loop.create_window(attrs).unwrap());
             let scene = self.scene.take().expect("scene already consumed");
-            self.state = Some(State::new(window, scene, event_loop));
+            let log_buffer = self.log_buffer.take().expect("log_buffer already consumed");
+            self.state = Some(State::new(window, scene, event_loop, log_buffer));
         }
     }
 

@@ -4,6 +4,7 @@ mod input;
 
 use std::sync::{Arc, RwLock};
 
+use crate::log_buffer::LogBuffer;
 use crate::render::vk::{
     EguiFrameData, GpuBuffers, VkContext, VkEguiRenderer, VkPipeline, render_frame,
 };
@@ -33,6 +34,7 @@ pub struct DrmRenderState {
     show_overlay: bool,
     refresh_hz: f64,
     local_ip: String,
+    log_buffer: LogBuffer,
     /// display_guard and vt_guard are Option<_> so they can survive the
     /// DrmRenderState and be dropped in the correct order.  The compiler
     /// warns "never read" but they are consumed by their Drop impls.
@@ -85,7 +87,7 @@ fn check_device_permissions() {
 }
 
 impl DrmRenderState {
-    pub fn new(scene: Arc<RwLock<SceneState>>) -> Self {
+    pub fn new(scene: Arc<RwLock<SceneState>>, log_buffer: LogBuffer) -> Self {
         check_device_permissions();
 
         // Snapshot display state before Vulkan takes DRM master.
@@ -117,6 +119,7 @@ impl DrmRenderState {
             show_overlay: false,
             refresh_hz: display_info.refresh_mhz as f64 / 1000.0,
             local_ip: query_local_ip(),
+            log_buffer,
             display_guard,
         }
     }
@@ -170,7 +173,7 @@ impl DrmRenderState {
                     local_ip: self.local_ip.clone(),
                 };
                 let output = self.egui_ctx.run_ui(raw_input, |ctx| {
-                    build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases, &sys);
+                    build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases, &sys, &self.log_buffer);
                 });
                 let ppp = output.pixels_per_point;
                 let textures_delta = output.textures_delta;
