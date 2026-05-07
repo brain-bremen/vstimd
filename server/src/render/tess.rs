@@ -1,23 +1,25 @@
 use kurbo::ParamCurve as _;
 use kurbo::Shape as _;
 
+use crate::geom::Vertex;
 use crate::scene::stimulus::{
     DiscStimulus, EllipseStimulus, RectStimulus, Stimulus, Transform2D,
 };
 
-use super::vertex::Vertex;
-
 // ── Coordinate conversion ─────────────────────────────────────────────────────
 
-/// Pixel-space (centre = 0, Y-up) → wgpu NDC (centre = 0, Y-down).
-fn px_to_ndc(x: f32, y: f32, half_w: f32, half_h: f32) -> [f32; 2] {
-    [x / half_w, -y / half_h]
+/// Pixel-space (centre = 0, Y-up) → NDC (centre = 0, Y-down), z = 0.
+fn px_to_ndc(x: f32, y: f32, half_w: f32, half_h: f32) -> [f32; 3] {
+    [x / half_w, -y / half_h, 0.0]
 }
+
+const FRONT_NORMAL: [f32; 3] = [0.0, 0.0, 1.0];
+const NO_UV: [f32; 2] = [0.0, 0.0];
 
 // ── Public entry point ────────────────────────────────────────────────────────
 
 /// Tessellate a stimulus into `(vertices, indices)` ready for upload.
-/// All positions are in wgpu NDC space.
+/// All positions are in NDC space, z = 0 (flat / billboard geometry).
 /// Returns empty vecs for invisible stimuli or types not yet tessellated.
 pub fn tessellate_stimulus(
     stimulus: &Stimulus,
@@ -33,20 +35,17 @@ pub fn tessellate_stimulus(
         Stimulus::Rect(s)    => tessellate_rect(s, half_w, half_h),
         Stimulus::Ellipse(s) => tessellate_ellipse(s, half_w, half_h),
         Stimulus::Disc(s)    => tessellate_disc(s, half_w, half_h),
-        // Remaining types: tessellation added in Phase 2
         _ => (vec![], vec![]),
     }
 }
 
 // ── Per-type tessellators ─────────────────────────────────────────────────────
 
-/// Rectangle: 4 corners → centroid fan (2 triangles per half-diagonal = 4 triangles).
 fn tessellate_rect(s: &RectStimulus, half_w: f32, half_h: f32) -> (Vec<Vertex>, Vec<u32>) {
     let [hw, hh] = s.size.live;
     let color = s.appearance.live.fill_color;
     let affine = s.transform.live.to_affine();
 
-    // Corners in local space (CCW starting bottom-left)
     let local = [
         kurbo::Point::new(-(hw as f64), -(hh as f64)),
         kurbo::Point::new(hw as f64, -(hh as f64)),
@@ -54,7 +53,7 @@ fn tessellate_rect(s: &RectStimulus, half_w: f32, half_h: f32) -> (Vec<Vertex>, 
         kurbo::Point::new(-(hw as f64), hh as f64),
     ];
 
-    let ndc: Vec<[f32; 2]> = local
+    let ndc: Vec<[f32; 3]> = local
         .iter()
         .map(|&p| {
             let tp = affine * p;
@@ -62,29 +61,21 @@ fn tessellate_rect(s: &RectStimulus, half_w: f32, half_h: f32) -> (Vec<Vertex>, 
         })
         .collect();
 
-    // Centroid = transform applied to local origin
     let c = affine * kurbo::Point::ZERO;
     let cn = px_to_ndc(c.x as f32, c.y as f32, half_w, half_h);
 
-    let vertices = vec![
-        Vertex { position: cn,     color }, // 0: centroid
-        Vertex { position: ndc[0], color }, // 1
-        Vertex { position: ndc[1], color }, // 2
-        Vertex { position: ndc[2], color }, // 3
-        Vertex { position: ndc[3], color }, // 4
-    ];
+    let v = |position| Vertex { position, normal: FRONT_NORMAL, uv: NO_UV, color };
+    let vertices = vec![v(cn), v(ndc[0]), v(ndc[1]), v(ndc[2]), v(ndc[3])];
     let indices = vec![0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1];
 
     (vertices, indices)
 }
 
-/// Disc: kurbo Circle → centroid fan over sampled outline.
 fn tessellate_disc(s: &DiscStimulus, half_w: f32, half_h: f32) -> (Vec<Vertex>, Vec<u32>) {
     let path = kurbo::Circle::new(kurbo::Point::ZERO, s.radius.live as f64).to_path(1.0);
     tessellate_filled_path(&path, s.transform.live, s.appearance.live.fill_color, half_w, half_h)
 }
 
-/// Ellipse: kurbo Ellipse → centroid fan over sampled outline.
 fn tessellate_ellipse(s: &EllipseStimulus, half_w: f32, half_h: f32) -> (Vec<Vertex>, Vec<u32>) {
     let [rx, ry] = s.radii.live;
     let path = kurbo::Ellipse::new(
@@ -98,7 +89,6 @@ fn tessellate_ellipse(s: &EllipseStimulus, half_w: f32, half_h: f32) -> (Vec<Ver
 
 // ── Shared helper ─────────────────────────────────────────────────────────────
 
-/// Sample a closed kurbo path, apply `transform`, convert to NDC, build a centroid fan.
 fn tessellate_filled_path(
     path: &kurbo::BezPath,
     transform: Transform2D,
@@ -107,7 +97,7 @@ fn tessellate_filled_path(
     half_h: f32,
 ) -> (Vec<Vertex>, Vec<u32>) {
     let affine = transform.to_affine();
-    let mut outline: Vec<[f32; 2]> = Vec::new();
+    let mut outline: Vec<[f32; 3]> = Vec::new();
 
     for seg in path.segments() {
         match seg {
@@ -134,13 +124,13 @@ fn tessellate_filled_path(
         return (vec![], vec![]);
     }
 
-    // Centroid = transform applied to local origin
     let c = affine * kurbo::Point::ZERO;
     let cn = px_to_ndc(c.x as f32, c.y as f32, half_w, half_h);
 
-    let mut vertices = vec![Vertex { position: cn, color }];
-    for pt in &outline {
-        vertices.push(Vertex { position: *pt, color });
+    let v = |position| Vertex { position, normal: FRONT_NORMAL, uv: NO_UV, color };
+    let mut vertices = vec![v(cn)];
+    for &pt in &outline {
+        vertices.push(v(pt));
     }
 
     let n = outline.len() as u32;

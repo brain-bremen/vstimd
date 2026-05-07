@@ -40,13 +40,23 @@ impl VkPipeline {
             vk::VertexInputAttributeDescription::default()
                 .location(0)
                 .binding(0)
-                .format(vk::Format::R32G32_SFLOAT)
+                .format(vk::Format::R32G32B32_SFLOAT)
                 .offset(0),
             vk::VertexInputAttributeDescription::default()
                 .location(1)
                 .binding(0)
+                .format(vk::Format::R32G32B32_SFLOAT)
+                .offset(12),
+            vk::VertexInputAttributeDescription::default()
+                .location(2)
+                .binding(0)
+                .format(vk::Format::R32G32_SFLOAT)
+                .offset(24),
+            vk::VertexInputAttributeDescription::default()
+                .location(3)
+                .binding(0)
                 .format(vk::Format::R32G32B32A32_SFLOAT)
-                .offset(8),
+                .offset(32),
         ];
         let vertex_input = vk::PipelineVertexInputStateCreateInfo::default()
             .vertex_binding_descriptions(std::slice::from_ref(&binding))

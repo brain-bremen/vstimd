@@ -1,3 +1,4 @@
+pub mod geom;
 pub mod ipc;
 pub mod proto;
 pub mod render;
