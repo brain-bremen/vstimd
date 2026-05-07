@@ -94,6 +94,12 @@ impl State {
             Some(4096), // max texture side
         );
 
+        let hz = window
+            .current_monitor()
+            .and_then(|m| m.refresh_rate_millihertz())
+            .map(|mhz| mhz as f64 / 1000.0)
+            .unwrap_or(60.0);
+
         Self {
             window,
             ctx,
@@ -101,7 +107,7 @@ impl State {
             gpu_buffers,
             egui_renderer,
             scene,
-            frame_stats: FrameStats::new(60.0),
+            frame_stats: FrameStats::new(hz),
             frame_index: 0,
             egui_ctx,
             egui_winit,
@@ -294,6 +300,14 @@ impl ApplicationHandler for WinitApp {
                 KeyCode::F1 => {
                     if let Some(state) = &mut self.state {
                         state.show_overlay = !state.show_overlay;
+                    }
+                }
+                KeyCode::F2 => {
+                    if let Some(state) = &self.state {
+                        let mut sc = state.scene.write().expect("scene lock");
+                        sc.photodiode.enabled = !sc.photodiode.enabled;
+                        sc.photodiode.flicker = true;
+                        sc.photodiode.lit = false;
                     }
                 }
                 KeyCode::KeyD => {

@@ -2,7 +2,9 @@ use std::sync::{Arc, RwLock};
 
 use ash::vk;
 
-use crate::render::tess;
+use crate::render::tess::{self, tessellate_photodiode};
+
+const PHOTODIODE_HANDLE: u32 = u32::MAX;
 use crate::scene::SceneState;
 use crate::timing::{FrameStats, FrameTick};
 
@@ -74,12 +76,15 @@ pub fn render_frame(
         }
         sc.screen_size = screen_size;
         sc.frame_rate = fps;
-        gpu_buffers.meshes.retain(|h, _| sc.stimuli.contains_key(h));
+        gpu_buffers.meshes.retain(|h, _| *h == PHOTODIODE_HANDLE || sc.stimuli.contains_key(h));
         let handles: Vec<u32> = sc.stimuli.keys().copied().collect();
         for handle in handles {
             let (verts, idxs) = tess::tessellate_stimulus(&sc.stimuli[&handle], screen_size);
             gpu_buffers.upload(handle, &ctx.device, &verts, &idxs);
         }
+        sc.photodiode.advance();
+        let (pd_verts, pd_idxs) = tessellate_photodiode(&sc.photodiode, screen_size);
+        gpu_buffers.upload(PHOTODIODE_HANDLE, &ctx.device, &pd_verts, &pd_idxs);
     } // write lock dropped — ZMQ thread can run
 
     let frame = &ctx.frames[*frame_index % ctx.frames.len()];
@@ -175,6 +180,20 @@ pub fn render_frame(
                     ctx.device
                         .cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
                 }
+            }
+        }
+        // Photodiode corner square is drawn on top of all stimuli.
+        if let Some(mesh) = gpu_buffers.meshes.get(&PHOTODIODE_HANDLE) {
+            if mesh.index_count > 0 {
+                ctx.device
+                    .cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
+                ctx.device.cmd_bind_index_buffer(
+                    cb,
+                    mesh.index_buffer,
+                    0,
+                    vk::IndexType::UINT32,
+                );
+                ctx.device.cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
             }
         }
         drop(sc);

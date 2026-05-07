@@ -2,6 +2,7 @@ use kurbo::ParamCurve as _;
 use kurbo::Shape as _;
 
 use crate::geom::Vertex;
+use crate::scene::photodiode::PhotoDiodeState;
 use crate::scene::stimulus::{
     DiscStimulus, EllipseStimulus, RectStimulus, Stimulus, Transform2D,
 };
@@ -85,6 +86,42 @@ fn tessellate_ellipse(s: &EllipseStimulus, half_w: f32, half_h: f32) -> (Vec<Ver
     )
     .to_path(1.0);
     tessellate_filled_path(&path, s.transform.live, s.appearance.live.fill_color, half_w, half_h)
+}
+
+// ── Photodiode corner square ──────────────────────────────────────────────────
+
+/// Tessellate the photodiode indicator as a 60×60 px square in a screen corner.
+/// Returns empty vecs when the photodiode is disabled.
+pub fn tessellate_photodiode(
+    state: &PhotoDiodeState,
+    screen_size: (u32, u32),
+) -> (Vec<Vertex>, Vec<u32>) {
+    if !state.enabled {
+        return (vec![], vec![]);
+    }
+    let color: [f32; 4] = if state.lit {
+        [1.0, 1.0, 1.0, 1.0]
+    } else {
+        [0.0, 0.0, 0.0, 1.0]
+    };
+    let size = 60.0_f32;
+    let half_w = screen_size.0 as f32 * 0.5;
+    let half_h = screen_size.1 as f32 * 0.5;
+    // Pixel-space corners (Y-up, bottom = −half_h).
+    let (x0, x1, y0, y1) = if state.position == 0 {
+        (-half_w, -half_w + size, -half_h, -half_h + size)
+    } else {
+        (half_w - size, half_w, -half_h, -half_h + size)
+    };
+    let v = |x, y| Vertex {
+        position: px_to_ndc(x, y, half_w, half_h),
+        normal: FRONT_NORMAL,
+        uv: NO_UV,
+        color,
+    };
+    let vertices = vec![v(x0, y0), v(x1, y0), v(x1, y1), v(x0, y1)];
+    let indices = vec![0, 1, 2, 0, 2, 3];
+    (vertices, indices)
 }
 
 // ── Shared helper ─────────────────────────────────────────────────────────────

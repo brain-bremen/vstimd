@@ -8,6 +8,7 @@ use std::path::Path;
 pub enum AppKey {
     Escape,
     F1,
+    F2,
     D,
 }
 
@@ -77,6 +78,7 @@ impl InputState {
                         1 => keys.push(AppKey::Escape),  // KEY_ESC
                         32 => keys.push(AppKey::D),      // KEY_D
                         59 => keys.push(AppKey::F1),     // KEY_F1
+                        60 => keys.push(AppKey::F2),     // KEY_F2
                         _ => {}
                     }
                 }

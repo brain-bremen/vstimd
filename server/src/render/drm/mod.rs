@@ -42,7 +42,7 @@ impl DrmRenderState {
         let display_guard = DisplayGuard::acquire();
 
         // Initialise Vulkan — VK_KHR_display acquires DRM master internally.
-        let (ctx, _display_info) = init::init();
+        let (ctx, display_info) = init::init();
         let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass);
         let gpu_buffers = GpuBuffers::new(&ctx.instance, ctx.physical_device);
         let egui_renderer = VkEguiRenderer::new(
@@ -62,7 +62,7 @@ impl DrmRenderState {
             egui_ctx,
             input,
             scene,
-            frame_stats: FrameStats::new(60.0),
+            frame_stats: FrameStats::new(display_info.refresh_mhz as f64 / 1000.0),
             show_overlay: false,
             display_guard,
         }
@@ -76,6 +76,12 @@ impl DrmRenderState {
                     AppKey::Escape => return,
                     AppKey::D => crate::render::spawn_demo_stimuli(&self.scene),
                     AppKey::F1 => self.show_overlay = !self.show_overlay,
+                    AppKey::F2 => {
+                        let mut sc = self.scene.write().expect("scene lock");
+                        sc.photodiode.enabled = !sc.photodiode.enabled;
+                        sc.photodiode.flicker = true;
+                        sc.photodiode.lit = false;
+                    }
                 }
             }
 

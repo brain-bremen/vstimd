@@ -76,9 +76,13 @@ impl FrameStats {
     pub fn on_present(&mut self, vblank_time: std::time::Instant) -> u32 {
         let dropped = if let Some(last) = self.last_present {
             let dur_ns = vblank_time.duration_since(last).as_nanos() as u64;
-            let threshold = self.expected_frame_ns * 3 / 2;
+            // 5/4 threshold: trigger if the interval exceeds 1.25× the expected period.
+            // Using round-to-nearest division avoids the truncation bug where
+            // 2 × period computes as 1.999× and floors to 1 → sub(1) = 0.
+            let threshold = self.expected_frame_ns * 5 / 4;
             let d = if dur_ns > threshold && self.expected_frame_ns > 0 {
-                let n = (dur_ns / self.expected_frame_ns).saturating_sub(1) as u32;
+                let n = ((dur_ns + self.expected_frame_ns / 2) / self.expected_frame_ns)
+                    .saturating_sub(1) as u32;
                 self.drop_count += n as u64;
                 n
             } else {
@@ -96,6 +100,17 @@ impl FrameStats {
         self.last_present = Some(vblank_time);
         self.frame_index += 1;
         dropped
+    }
+
+    /// Frame durations in chronological order (oldest first).
+    pub fn durations_recent_ns(&self) -> impl Iterator<Item = u64> + '_ {
+        let n = self.valid_count.min(FRAME_HISTORY_SIZE);
+        let start = (self.ring_head + FRAME_HISTORY_SIZE - n) % FRAME_HISTORY_SIZE;
+        (0..n).map(move |i| self.durations_ns[(start + i) % FRAME_HISTORY_SIZE])
+    }
+
+    pub fn expected_ns(&self) -> u64 {
+        self.expected_frame_ns
     }
 
     pub fn summary(&self) -> FrameSummary {
