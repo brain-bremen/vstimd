@@ -29,6 +29,8 @@ pub struct FrameTick {
     /// Extra vblanks elapsed beyond the expected one since the previous tick.
     /// 0 = on time.  1 = one dropped frame (GPU overran its budget once).
     pub dropped_frames: u32,
+    /// Per-phase breakdown for profiling (see `FramePhases`).
+    pub phases: FramePhases,
 }
 
 pub struct FrameSummary {
@@ -39,6 +41,17 @@ pub struct FrameSummary {
     pub max_ms: f64,
     pub drop_count: u64,
     pub frame_index: u64,
+}
+
+/// Wall-clock time (µs) spent in each phase of `render_frame`.
+/// Accumulated per frame and available for logging or overlay display.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FramePhases {
+    pub tessellate_us: u32, // scene write-lock: tess + GPU upload
+    pub fence_us: u32,      // wait_for_fences
+    pub acquire_us: u32,    // acquire_next_image
+    pub record_us: u32,     // command buffer record
+    pub submit_us: u32,     // queue_submit + queue_present
 }
 
 pub struct FrameStats {

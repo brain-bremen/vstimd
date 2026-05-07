@@ -6,7 +6,7 @@ use crate::render::tess::{self, tessellate_photodiode};
 
 const PHOTODIODE_HANDLE: u32 = u32::MAX;
 use crate::scene::SceneState;
-use crate::timing::{FrameStats, FrameTick};
+use crate::timing::{FramePhases, FrameStats, FrameTick};
 
 use super::buffers::GpuBuffers;
 use super::context::VkContext;
@@ -67,6 +67,7 @@ pub fn render_frame(
         std::time::Instant::now()
     };
     // -- Update: tessellate scene into GPU buffers ----------------------------
+    let t_tess_start = std::time::Instant::now();
     {
         let fps = frame_stats.summary().fps as f32;
         let screen_size = (ctx.extent.width, ctx.extent.height);
@@ -76,20 +77,34 @@ pub fn render_frame(
         }
         sc.screen_size = screen_size;
         sc.frame_rate = fps;
+        // When the screen size changes all NDC coordinates are stale.
+        if sc.last_uploaded_size != screen_size {
+            sc.last_uploaded_size = screen_size;
+            for stim in sc.stimuli.values_mut() {
+                stim.flags_mut().mark_dirty();
+            }
+        }
         gpu_buffers.meshes.retain(|h, _| *h == PHOTODIODE_HANDLE || sc.stimuli.contains_key(h));
         let handles: Vec<u32> = sc.stimuli.keys().copied().collect();
         for handle in handles {
-            let (verts, idxs) = tess::tessellate_stimulus(&sc.stimuli[&handle], screen_size);
+            let stim = &sc.stimuli[&handle];
+            if !stim.flags().dirty && gpu_buffers.meshes.contains_key(&handle) {
+                continue;
+            }
+            let (verts, idxs) = tess::tessellate_stimulus(stim, screen_size);
             gpu_buffers.upload(handle, &ctx.device, &verts, &idxs);
+            sc.stimuli[&handle].flags_mut().dirty = false;
         }
         sc.photodiode.advance();
         let (pd_verts, pd_idxs) = tessellate_photodiode(&sc.photodiode, screen_size);
         gpu_buffers.upload(PHOTODIODE_HANDLE, &ctx.device, &pd_verts, &pd_idxs);
     } // write lock dropped — ZMQ thread can run
+    let tessellate_us = t_tess_start.elapsed().as_micros() as u32;
 
     let frame = &ctx.frames[*frame_index % ctx.frames.len()];
 
     // -- Wait for this slot's previous GPU work -------------------------------
+    let t_fence_start = std::time::Instant::now();
     unsafe {
         ctx.device
             .wait_for_fences(&[frame.in_flight], true, u64::MAX)
@@ -100,8 +115,10 @@ pub fn render_frame(
         // call to render_frame would then wait on it forever. Reset only after
         // a successful acquire, immediately before queue_submit.
     }
+    let fence_us = t_fence_start.elapsed().as_micros() as u32;
 
     // -- Acquire swapchain image ----------------------------------------------
+    let t_acquire_start = std::time::Instant::now();
     let (image_index, _suboptimal) = match unsafe {
         ctx.swapchain_loader.acquire_next_image(
             ctx.swapchain,
@@ -114,8 +131,10 @@ pub fn render_frame(
         Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => return None, // fence still signaled
         Err(e) => panic!("acquire_next_image: {e}"),
     };
+    let acquire_us = t_acquire_start.elapsed().as_micros() as u32;
 
     // -- Record command buffer ------------------------------------------------
+    let t_record_start = std::time::Instant::now();
     let cb = frame.command_buffer;
     unsafe {
         ctx.device
@@ -238,8 +257,10 @@ pub fn render_frame(
             .end_command_buffer(cb)
             .expect("end_command_buffer");
     }
+    let record_us = t_record_start.elapsed().as_micros() as u32;
 
     // -- Submit ---------------------------------------------------------------
+    let t_submit_start = std::time::Instant::now();
     // Reset the fence here — after a successful acquire — so that an early
     // return above (OUT_OF_DATE) never leaves it in the reset-but-unsignaled
     // state that would deadlock the next wait_for_fences call.
@@ -293,6 +314,8 @@ pub fn render_frame(
         Err(e) => panic!("queue_present: {e}"),
     }
 
+    let submit_us = t_submit_start.elapsed().as_micros() as u32;
+
     let dropped_frames = frame_stats.on_present(vblank_time);
     if dropped_frames > 0 {
         eprintln!(
@@ -307,5 +330,12 @@ pub fn render_frame(
         frame: this_present_id,
         vblank_time,
         dropped_frames,
+        phases: FramePhases {
+            tessellate_us,
+            fence_us,
+            acquire_us,
+            record_us,
+            submit_us,
+        },
     })
 }

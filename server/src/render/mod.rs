@@ -2,7 +2,7 @@ pub mod vertex;
 pub use vertex::Vertex;
 
 pub(crate) mod overlay;
-pub(crate) mod tess;
+pub mod tess;
 pub(crate) mod vk;
 
 #[cfg(target_os = "linux")]

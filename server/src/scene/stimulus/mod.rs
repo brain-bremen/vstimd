@@ -141,6 +141,7 @@ impl Stimulus {
     /// Call at the frame boundary when `pending_flip` is set.
     pub fn flip(&mut self) {
         self.flags_mut().get_copy();
+        self.flags_mut().mark_dirty();
         if let Some(t) = self.transform_mut() {
             t.flip();
         }
@@ -192,18 +193,18 @@ impl Stimulus {
             let angle = t.live.angle;
             t.set(deferred, Transform2D { pos: [x, y], angle });
         }
+        if !deferred {
+            self.flags_mut().mark_dirty();
+        }
     }
 
     pub fn set_angle(&mut self, deferred: bool, degrees: f32) {
         if let Some(t) = self.transform_mut() {
             let pos = t.live.pos;
-            t.set(
-                deferred,
-                Transform2D {
-                    pos,
-                    angle: degrees,
-                },
-            );
+            t.set(deferred, Transform2D { pos, angle: degrees });
+        }
+        if !deferred {
+            self.flags_mut().mark_dirty();
         }
     }
 
@@ -259,7 +260,7 @@ impl Stimulus {
     /// Set a type-specific animatable parameter by index.
     /// Returns `false` if the index is unsupported for this stimulus type.
     pub fn set_anim_param(&mut self, index: u8, value: f32) -> bool {
-        match self {
+        let changed = match self {
             Stimulus::WgslShader(s) => {
                 let i = index as usize;
                 if i < 8 {
@@ -279,6 +280,10 @@ impl Stimulus {
                 true
             }
             _ => false,
+        };
+        if changed {
+            self.flags_mut().mark_dirty();
         }
+        changed
     }
 }

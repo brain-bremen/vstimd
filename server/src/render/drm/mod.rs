@@ -13,6 +13,7 @@ use crate::timing::FrameStats;
 use self::display_guard::DisplayGuard;
 use self::input::{AppKey, InputState};
 use crate::render::overlay::build_overlay_ui;
+use crate::timing::FramePhases;
 
 /// Bare-metal Linux render state — drives the display directly via
 /// `VK_KHR_display` without a compositor.
@@ -28,6 +29,7 @@ pub struct DrmRenderState {
     input: InputState,
     scene: Arc<RwLock<SceneState>>,
     frame_stats: FrameStats,
+    last_phases: FramePhases,
     show_overlay: bool,
     /// display_guard and vt_guard are Option<_> so they can survive the
     /// DrmRenderState and be dropped in the correct order.  The compiler
@@ -63,6 +65,7 @@ impl DrmRenderState {
             input,
             scene,
             frame_stats: FrameStats::new(display_info.refresh_mhz as f64 / 1000.0),
+            last_phases: FramePhases::default(),
             show_overlay: false,
             display_guard,
         }
@@ -109,8 +112,9 @@ impl DrmRenderState {
                     .collect(),
                     ..Default::default()
                 };
+                let phases = self.last_phases;
                 let output = self.egui_ctx.run_ui(raw_input, |ctx| {
-                    build_overlay_ui(ctx, &self.scene, &self.frame_stats);
+                    build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases);
                 });
                 let ppp = output.pixels_per_point;
                 let textures_delta = output.textures_delta;
@@ -130,7 +134,7 @@ impl DrmRenderState {
                 };
 
             // `None` means the swapchain is out of date (rare in DRM mode).
-            let _tick = render_frame(
+            if let Some(t) = render_frame(
                 &self.ctx,
                 &self.pipeline,
                 &mut self.gpu_buffers,
@@ -139,7 +143,9 @@ impl DrmRenderState {
                 &mut self.frame_stats,
                 egui_renderer,
                 egui_data,
-            );
+            ) {
+                self.last_phases = t.phases;
+            }
         }
         // When the loop exits (consuming `self`), fields drop in declaration
         // order: ctx → pipeline → gpu_buffers → input → scene → frame_stats

@@ -63,6 +63,9 @@ pub struct SceneState {
     /// Measured frame rate, updated by the render thread each frame.
     pub frame_rate: f32,
     pub screen_size: (u32, u32),
+    /// Screen size at which meshes were last tessellated. When this changes all
+    /// stimuli are re-uploaded (NDC coordinates depend on screen dimensions).
+    pub last_uploaded_size: (u32, u32),
     pub error_mask: u16,
     pub error_code: i16,
 
@@ -89,6 +92,7 @@ impl SceneState {
             default_outline: [0.0, 0.0, 0.0, 1.0],
             frame_rate: 60.0,
             screen_size: (0, 0),
+            last_uploaded_size: (0, 0),
             error_mask: 0,
             error_code: 0,
             command_log: std::collections::VecDeque::new(),

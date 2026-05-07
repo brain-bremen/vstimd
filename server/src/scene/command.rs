@@ -120,6 +120,7 @@ impl SceneState {
                     stim.flags_mut().enabled_copy = cmd.enabled;
                 } else {
                     stim.flags_mut().enabled = cmd.enabled;
+                    stim.flags_mut().mark_dirty();
                 }
                 proto::Response {
                     handle: -1,

@@ -12,6 +12,7 @@ use crate::render::overlay::build_overlay_ui;
 use crate::render::vk::{
     EguiFrameData, GpuBuffers, VkContext, VkEguiRenderer, VkPipeline, render_frame,
 };
+use crate::timing::FramePhases;
 use crate::scene::SceneState;
 use crate::timing::{FrameStats, FrameTick};
 
@@ -58,6 +59,7 @@ struct State {
     window: Arc<Window>,
     scene: Arc<RwLock<SceneState>>,
     frame_stats: FrameStats,
+    last_phases: FramePhases,
     frame_index: usize,
     egui_ctx: egui::Context,
     show_overlay: bool,
@@ -108,6 +110,7 @@ impl State {
             egui_renderer,
             scene,
             frame_stats: FrameStats::new(hz),
+            last_phases: FramePhases::default(),
             frame_index: 0,
             egui_ctx,
             egui_winit,
@@ -119,8 +122,9 @@ impl State {
         // Build the egui overlay if enabled.
         if self.show_overlay {
             let raw_input = self.egui_winit.take_egui_input(&self.window);
+            let phases = self.last_phases;
             let output = self.egui_ctx.run_ui(raw_input, |ctx| {
-                build_overlay_ui(ctx, &self.scene, &self.frame_stats);
+                build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases);
             });
             self.egui_winit
                 .handle_platform_output(&self.window, output.platform_output);
@@ -173,9 +177,9 @@ impl State {
                 };
                 self.ctx.recreate_swapchain(extent);
             }
-            Some(_tick) => {
-                // Tick is available here for stimulus scheduling.
-                // TODO: forward to scene / scheduler once that layer exists.
+            Some(ref t) => {
+                self.last_phases = t.phases;
+                // TODO: forward tick to scene / scheduler once that layer exists.
             }
         }
     }

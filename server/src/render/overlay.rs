@@ -1,18 +1,29 @@
 use std::sync::{Arc, RwLock};
 
 use crate::scene::SceneState;
-use crate::timing::FrameStats;
+use crate::timing::{FramePhases, FrameStats};
 
 pub fn build_overlay_ui(
     ctx: &egui::Context,
     scene: &Arc<RwLock<SceneState>>,
     frame_stats: &FrameStats,
+    last_phases: FramePhases,
 ) {
     egui::Window::new("Frame Timing").show(ctx, |ui| {
         let s = frame_stats.summary();
         ui.label(format!("FPS: {:.1}  drops: {}", s.fps, s.drop_count));
         ui.label(format!("frame: {:.2} ms  jitter: ±{:.2} ms", s.mean_ms, s.std_ms));
         ui.label(format!("min: {:.2} ms  max: {:.2} ms", s.min_ms, s.max_ms));
+        ui.separator();
+        ui.label("Last frame phases (µs):");
+        ui.label(format!(
+            "  tess/upload {:>5}  fence {:>5}  acquire {:>5}",
+            last_phases.tessellate_us, last_phases.fence_us, last_phases.acquire_us,
+        ));
+        ui.label(format!(
+            "  record      {:>5}  submit {:>5}",
+            last_phases.record_us, last_phases.submit_us,
+        ));
 
         // Frame-time sparkline — each bar = one frame, red = missed vblank.
         let durations: Vec<f64> = frame_stats
