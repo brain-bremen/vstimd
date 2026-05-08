@@ -1,10 +1,10 @@
-"""wonderlamp_client — Python client for wonderlamp_server.
+"""wonderlamp — Python client for wonderlamp_server.
 
 Talks to the server over ZMQ using protobuf encoding.
 
 Example::
 
-    from wonderlamp_client import Connection
+    from wonderlamp import Connection
 
     with Connection() as conn:
         handle = conn.create_rect(x=-200, y=0, width=300, height=200,
@@ -14,6 +14,7 @@ Example::
 """
 
 from ._connection import Connection
+from . import visual
 
-__all__ = ["Connection"]
+__all__ = ["Connection", "visual"]
 

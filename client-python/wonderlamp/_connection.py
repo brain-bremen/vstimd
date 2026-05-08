@@ -47,6 +47,28 @@ class Connection:
 
     # ── commands ──────────────────────────────────────────────────────────────
 
+    def create_circle(
+        self,
+        *,
+        x: float = 0.0,
+        y: float = 0.0,
+        radius: float = 50.0,
+        r: float = 1.0,
+        g: float = 1.0,
+        b: float = 1.0,
+        a: float = 1.0,
+    ) -> int:
+        """Create a disc stimulus and return its handle."""
+        req = pb.Request(
+            handle=0,
+            create_circle=pb.CreateCircle(
+                center=pb.Vec2(x=x, y=y),
+                radius=radius,
+                fill=pb.Color(r=r, g=g, b=b, a=a),
+            ),
+        )
+        return self._send(req).handle
+
     def create_rect(
         self,
         *,

@@ -461,7 +461,7 @@ wheels = [
 ]
 
 [[package]]
-name = "wonderlamp-client"
+name = "wonderlamp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

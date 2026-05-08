@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wonderlamp_client"
+name = "wonderlamp"
 version = "0.1.0"
 description = "Python client for wonderlamp_server (protobuf + ZMQ)"
 requires-python = ">=3.10"
@@ -13,8 +13,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "grpcio-tools>=1.62"]  # grpcio-tools: regenerate _proto/ stubs
+dev = ["pytest>=8", "grpcio-tools>=1.62"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["wonderlamp_client*"]
+include = ["wonderlamp*"]

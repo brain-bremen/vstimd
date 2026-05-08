@@ -17,7 +17,7 @@ import argparse
 import sys
 import time
 
-from wonderlamp_client import Connection
+from wonderlamp import Connection
 
 
 def main() -> None:
