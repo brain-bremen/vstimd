@@ -12,7 +12,8 @@ dependencies = [
     "protobuf>=5",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
+# grpcio-tools bundles protoc and is required for `make proto`
 dev = ["pytest>=8", "grpcio-tools>=1.62"]
 
 [tool.setuptools.packages.find]

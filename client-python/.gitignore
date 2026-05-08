@@ -4,3 +4,7 @@ __pycache__/
 .venv/
 dist/
 build/
+
+# Generated protobuf stubs — regenerate with: make proto
+wonderlamp/_proto/wonderlamp_pb2.py
+wonderlamp/_proto/wonderlamp_pb2.pyi

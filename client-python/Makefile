@@ -1,12 +1,22 @@
-.PHONY: build publish test test-integration test-e2e clean
+PROTO_SRC  := ../proto/wonderlamp.proto
+PROTO_OUT  := wonderlamp/_proto
 
-build:
+.PHONY: build publish proto test test-integration test-e2e clean
+
+proto:
+	uv run python -m grpc_tools.protoc \
+		--proto_path=../proto \
+		--python_out=$(PROTO_OUT) \
+		--pyi_out=$(PROTO_OUT) \
+		$(PROTO_SRC)
+
+build: proto
 	uv build
 
 publish:
 	uv publish
 
-test:
+test: proto
 	uv pip install -r tests/requirements-psychopy.txt
 	uv pip install psychopy --no-deps
 	uv run pytest tests/

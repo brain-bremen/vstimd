@@ -4,9 +4,9 @@ requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
     "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.11' and sys_platform == 'win32'",
     "python_full_version >= '3.14' and sys_platform != 'win32'",
     "python_full_version >= '3.11' and python_full_version < '3.14' and sys_platform != 'win32'",
-    "python_full_version < '3.11' and sys_platform == 'win32'",
     "python_full_version < '3.11' and sys_platform != 'win32'",
 ]
 
@@ -469,7 +469,7 @@ dependencies = [
     { name = "pyzmq" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "grpcio-tools" },
     { name = "pytest" },
@@ -477,9 +477,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "grpcio-tools", marker = "extra == 'dev'", specifier = ">=1.62" },
     { name = "protobuf", specifier = ">=5" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pyzmq", specifier = ">=25" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "grpcio-tools", specifier = ">=1.62" },
+    { name = "pytest", specifier = ">=8" },
+]

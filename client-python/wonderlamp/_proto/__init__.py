@@ -1,5 +1,2 @@
-# Generated protobuf stubs for wonderlamp.proto.
-# Regenerate with (from repo root):
-#   protoc --proto_path=proto \
-#          --python_out=client-python/wonderlamp/_proto \
-#          proto/wonderlamp.proto
+# Generated protobuf stubs — do not edit.
+# Regenerate with: make proto  (requires grpcio-tools, declared in [dependency-groups] dev)
