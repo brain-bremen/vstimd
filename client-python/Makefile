@@ -1,7 +1,7 @@
 PROTO_SRC  := ../proto/wonderlamp.proto
 PROTO_OUT  := wonderlamp/_proto
 
-.PHONY: build publish proto test test-integration test-e2e clean
+.PHONY: build publish proto test test-integration test-e2e test-e2e-null clean
 
 proto:
 	uv run python -m grpc_tools.protoc \
@@ -26,6 +26,9 @@ test-integration:
 
 test-e2e: proto
 	uv run pytest tests/test_e2e.py -v
+
+test-e2e-null: proto
+	uv run pytest tests/test_e2e_null.py -v
 
 clean:
 	rm -rf dist/ .venv/

@@ -1,12 +1,11 @@
-"""E2E tests against a real wonderlamp_server with visible rendering.
+"""E2E tests against wonderlamp_server in null (no-display) mode.
 
-Skipped in CI and when no display is available.
+Runs in CI and on any machine — no display or GPU required.
 
-    make test-e2e
-    uv run pytest tests/test_e2e.py --server tcp://192.168.1.10:5555
+    make test-e2e-null
+    uv run pytest tests/test_e2e_null.py
 """
 
-import os
 import pathlib
 import subprocess
 import time
@@ -39,30 +38,23 @@ def _reachable(address: str, timeout_ms: int = 500) -> bool:
 
 
 @pytest.fixture(scope="session")
-def server_address(request: pytest.FixtureRequest) -> str:
-    return request.config.getoption("--server")
+def server_address() -> str:
+    return _DEFAULT_ADDRESS
 
 
 @pytest.fixture(scope="session", autouse=True)
 def server_process(server_address: str):
-    """Start the real server; skip in CI or without a display."""
-    if os.environ.get("CI"):
-        pytest.skip("e2e tests skipped in CI")
-
-    has_display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-    if not has_display:
-        pytest.skip("e2e tests require a display (no DISPLAY/WAYLAND_DISPLAY set)")
-
+    """Build and start the server in null mode. Never skipped."""
     if _reachable(server_address):
         yield
         return
 
     result = subprocess.run(["cargo", "build", "--release"], cwd=_REPO_ROOT)
     if result.returncode != 0:
-        pytest.skip(f"cargo build --release failed (exit {result.returncode})")
+        pytest.fail(f"cargo build --release failed (exit {result.returncode})")
 
     server_bin = _REPO_ROOT / "target" / "release" / "wonderlamp_server"
-    proc = subprocess.Popen([str(server_bin)])
+    proc = subprocess.Popen([str(server_bin), "--null"])
 
     for _ in range(20):
         if _reachable(server_address):
@@ -70,7 +62,7 @@ def server_process(server_address: str):
         time.sleep(0.5)
     else:
         proc.terminate()
-        pytest.skip("server did not become ready in time")
+        pytest.fail("null server did not become ready in time")
 
     yield
     proc.terminate()

@@ -36,6 +36,10 @@ fn main() {
             let mut app = WinitApp::new(scene, window_mode, log_buffer);
             event_loop.run_app(&mut app).unwrap();
         }
+        RenderTarget::Null => {
+            log::info!("wonderlamp: null renderer — ZMQ server running, no display");
+            std::thread::park();
+        }
     }
 }
 
@@ -44,6 +48,7 @@ fn main() {
 struct Args {
     render_target: RenderTarget,
     verbose: bool,
+    null: bool,
 }
 
 /// Automatically detect the best render target for the current platform.
@@ -76,11 +81,13 @@ fn detect_render_target(window_mode: WindowMode) -> RenderTarget {
 fn parse_args() -> Args {
     let mut window_mode = WindowMode::default();
     let mut verbose = false;
+    let mut null = false;
 
     let mut args = std::env::args().skip(1).peekable();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--verbose" | "-v" => verbose = true,
+            "--null" => null = true,
             "--windowed" | "-w" => {
                 let size = args.next().and_then(|s| {
                     let (w, h) = s.split_once('x')?;
@@ -104,12 +111,17 @@ fn parse_args() -> Args {
         }
     }
 
-    let render_target = detect_render_target(window_mode);
+    let render_target = if null || std::env::var("WONDERLAMP_NULL").is_ok() {
+        RenderTarget::Null
+    } else {
+        detect_render_target(window_mode)
+    };
     log::info!("wonderlamp: render target: {:?}", render_target);
 
     Args {
         render_target,
         verbose,
+        null,
     }
 }
 
@@ -118,6 +130,7 @@ fn print_usage() {
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -w, --windowed <WxH>      Start in windowed mode with size WxH (desktop only)");
+    eprintln!("      --null                No rendering; ZMQ server only (also: WONDERLAMP_NULL=1)");
     eprintln!("  -v, --verbose             Enable debug logging (overridden by RUST_LOG)");
     eprintln!("  -h, --help                Show this help message");
     eprintln!();

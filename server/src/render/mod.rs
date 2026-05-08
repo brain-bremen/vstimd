@@ -35,6 +35,7 @@ impl Default for WindowMode {
 pub enum RenderTarget {
     Drm,
     Desktop(WindowMode),
+    Null,
 }
 
 pub(crate) fn spawn_demo_stimuli(
