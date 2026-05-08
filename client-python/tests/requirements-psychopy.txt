@@ -1,0 +1,6 @@
+numpy
+scipy
+pandas
+pillow
+pyglet
+json_tricks
