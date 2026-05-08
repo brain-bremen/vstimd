@@ -56,9 +56,12 @@ jobs:
         with:
           submodules: false
 
+      - name: Install Xvfb
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends xvfb
+
       - uses: astral-sh/setup-uv@v5
 
-      - run: make test
+      - run: xvfb-run -a make test
 
   python-null-e2e:
     runs-on: ubuntu-latest
