@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Callable
 
 from wonderlamp._proto import common_pb2, service_pb2, stimuli_pb2
+from ._models import StimulusInfo
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
@@ -171,3 +172,13 @@ class StimuliClient:
             set_ellipse_size=stimuli_pb2.SetEllipseSize(width=width, height=height),
         )
         self._send(req)
+
+    # ── Query ─────────────────────────────────────────────────────────────────
+
+    def query(self, handle: int) -> StimulusInfo:
+        """Return current server-side properties for the given stimulus handle."""
+        req = service_pb2.Request(
+            stimulus=handle,
+            query_stimulus=stimuli_pb2.QueryStimulus(),
+        )
+        return StimulusInfo.from_proto(self._send(req).stimulus_info)
