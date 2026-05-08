@@ -1,6 +1,6 @@
 use super::deferred::Deferred;
 use super::state::SceneState;
-use super::stimulus::RectStimulus;
+use super::stimulus::{DiscStimulus, RectStimulus};
 use super::stimulus::Stimulus;
 use super::stimulus::{ShapeAppearance, StimulusFlags, Transform2D};
 use crate::proto;
@@ -10,6 +10,9 @@ fn command_summary(req: &proto::Request) -> String {
     match &req.body {
         Some(proto::request::Body::CreateRect(c)) => {
             format!("CreateRect {:.0}×{:.0}", c.width, c.height)
+        }
+        Some(proto::request::Body::CreateCircle(c)) => {
+            format!("CreateCircle r={:.0}", c.radius)
         }
         Some(proto::request::Body::SetEnabled(c)) => {
             format!("SetEnabled({})", if c.enabled { "on" } else { "off" })
@@ -52,6 +55,7 @@ impl SceneState {
     fn handle_system_command(&mut self, body: proto::request::Body) -> proto::Response {
         match body {
             proto::request::Body::CreateRect(cmd) => self.cmd_create_rect(cmd),
+            proto::request::Body::CreateCircle(cmd) => self.cmd_create_circle(cmd),
             _ => proto::Response {
                 handle: 0,
                 error: "command requires a stimulus handle (handle > 0)".into(),
@@ -65,16 +69,52 @@ impl SceneState {
         body: proto::request::Body,
     ) -> proto::Response {
         match body {
-            proto::request::Body::CreateRect(_) => proto::Response {
-                handle: 0,
-                error: "CreateRect is a system command (use handle = 0)".into(),
-            },
+            proto::request::Body::CreateRect(_) | proto::request::Body::CreateCircle(_) => {
+                proto::Response {
+                    handle: 0,
+                    error: "create commands are system commands (use handle = 0)".into(),
+                }
+            }
             proto::request::Body::SetEnabled(cmd) => self.cmd_set_enabled(handle, cmd),
             proto::request::Body::Delete(_) => self.cmd_delete(handle),
         }
     }
 
     // ── CreateRect ───────────────────────────────────────────────────────────
+
+    fn cmd_create_circle(&mut self, cmd: proto::CreateCircle) -> proto::Response {
+        let center = cmd.center.unwrap_or_default();
+        let radius = if cmd.radius == 0.0 { 50.0 } else { cmd.radius };
+        let fill = match cmd.fill {
+            Some(c) => [c.r, c.g, c.b, c.a],
+            None => self.default_fill,
+        };
+
+        let handle = self.alloc_stim_handle();
+        self.stimuli.insert(
+            handle,
+            Stimulus::Disc(DiscStimulus {
+                flags: StimulusFlags {
+                    enabled: true,
+                    ..Default::default()
+                },
+                transform: Deferred::new(Transform2D {
+                    pos: [center.x, center.y],
+                    angle: 0.0,
+                }),
+                appearance: Deferred::new(ShapeAppearance {
+                    fill_color: fill,
+                    ..Default::default()
+                }),
+                radius: Deferred::new(radius),
+            }),
+        );
+
+        proto::Response {
+            handle: handle as i32,
+            error: String::new(),
+        }
+    }
 
     fn cmd_create_rect(&mut self, cmd: proto::CreateRect) -> proto::Response {
         let center = cmd.center.unwrap_or_default();
