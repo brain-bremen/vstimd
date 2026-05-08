@@ -18,18 +18,18 @@ publish:
 	uv publish
 
 test: proto
-	uv pip install -r tests/requirements-psychopy.txt
+	uv pip install -r tests/unit/requirements-psychopy.txt
 	uv pip install psychopy --no-deps
-	uv run pytest tests/
+	uv run pytest tests/unit/
 
 test-integration:
 	@echo "Not implemented yet: integration tests with MockServer"
 
 test-e2e: proto
-	uv run pytest tests/test_e2e.py -v
+	uv run pytest tests/e2e/test_e2e.py -v
 
 test-e2e-null: proto
-	uv run pytest tests/test_e2e_null.py -v
+	uv run pytest tests/e2e/test_e2e_null.py tests/e2e/test_psychopy_visual_null.py -v
 
 clean:
 	rm -rf dist/ .venv/

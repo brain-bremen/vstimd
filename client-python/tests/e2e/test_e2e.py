@@ -3,7 +3,7 @@
 Skipped in CI and when no display is available.
 
     make test-e2e
-    uv run pytest tests/test_e2e.py --server tcp://192.168.1.10:5555
+    uv run pytest tests/e2e/test_e2e.py --server tcp://192.168.1.10:5555
 """
 
 import os
@@ -12,30 +12,13 @@ import subprocess
 import time
 
 import pytest
-import zmq
 
 from wonderlamp import Connection
 from wonderlamp._proto import wonderlamp_pb2 as pb
 from ._e2e_cases import *  # noqa: F401, F403
+from .conftest import reachable
 
-_REPO_ROOT = pathlib.Path(__file__).parents[2]
-_DEFAULT_ADDRESS = "tcp://localhost:5555"
-
-
-def _reachable(address: str, timeout_ms: int = 500) -> bool:
-    ctx = zmq.Context.instance()
-    sock = ctx.socket(zmq.REQ)
-    sock.setsockopt(zmq.LINGER, 0)
-    sock.setsockopt(zmq.RCVTIMEO, timeout_ms)
-    sock.connect(address)
-    try:
-        sock.send(pb.Request(handle=0).SerializeToString())
-        sock.recv()
-        return True
-    except zmq.Again:
-        return False
-    finally:
-        sock.close()
+_REPO_ROOT = pathlib.Path(__file__).parents[3]
 
 
 @pytest.fixture(scope="session")
@@ -53,7 +36,7 @@ def server_process(server_address: str):
     if not has_display:
         pytest.skip("e2e tests require a display (no DISPLAY/WAYLAND_DISPLAY set)")
 
-    if _reachable(server_address):
+    if reachable(server_address):
         yield
         return
 
@@ -65,7 +48,7 @@ def server_process(server_address: str):
     proc = subprocess.Popen([str(server_bin)])
 
     for _ in range(20):
-        if _reachable(server_address):
+        if reachable(server_address):
             break
         time.sleep(0.5)
     else:

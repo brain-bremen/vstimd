@@ -1,21 +1,8 @@
-"""Shared pytest configuration and fixtures."""
+"""Shared pytest configuration for unit tests."""
 
 import importlib.util
-import os
 import sys
 from unittest.mock import MagicMock
-
-import pytest
-
-_E2E_DEFAULT = os.environ.get("WONDERLAMP_SERVER", "tcp://localhost:5555")
-
-
-def pytest_addoption(parser: pytest.Parser) -> None:
-    parser.addoption(
-        "--server",
-        default=_E2E_DEFAULT,
-        help=f"ZMQ address of the wonderlamp_server for e2e tests (default: {_E2E_DEFAULT})",
-    )
 
 _OPTIONAL_MODULES = [
     "arabic_reshaper",
