@@ -1,0 +1,31 @@
+// Project-local debug tasks for the wonderlamp server.
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+[
+  {
+    "adapter": "CodeLLDB",
+    "label": "cargo run -p wonderlamp_server -- -w 1280x720",
+    "build": {
+      "label": "cargo run -p wonderlamp_server",
+      "command": "cargo",
+      "args": ["build", "--package", "wonderlamp_server"],
+      "env": {
+        "RUSTC_TOOLCHAIN": "/usr",
+      },
+      "cwd": "${ZED_WORKTREE_ROOT}",
+      "use_new_terminal": false,
+      "allow_concurrent_runs": false,
+      "reveal": "always",
+      "reveal_target": "dock",
+      "hide": "never",
+      "tags": [],
+      "shell": "system",
+      "show_summary": false,
+      "show_command": false,
+      "save": "none",
+      "hooks": [],
+    },
+    "sourceLanguages": ["rust"],
+  },
+]
