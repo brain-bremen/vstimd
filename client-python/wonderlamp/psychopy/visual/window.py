@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .._connection import Connection
+from ..._connection import Connection
 from ._colors import normalize_color
 from ._types import ColorInput, MonitorProtocol
 

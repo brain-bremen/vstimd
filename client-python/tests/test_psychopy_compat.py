@@ -5,16 +5,16 @@ import inspect
 
 import pytest
 
-import wonderlamp.visual
+import wonderlamp.psychopy.visual
 
 psychopy_visual = pytest.importorskip("psychopy.visual")
 
 # (psychopy_class, wonderlamp_class, xfail_reason or None)
 CLASSES = [
-    (psychopy_visual.Rect,   wonderlamp.visual.Rect,   None),
-    (psychopy_visual.Circle, wonderlamp.visual.Circle, None),
-    (psychopy_visual.Window, wonderlamp.visual.Window,
-     "wonderlamp.visual.Window is a remote connection stub; "
+    (psychopy_visual.Rect,   wonderlamp.psychopy.visual.Rect,   None),
+    (psychopy_visual.Circle, wonderlamp.psychopy.visual.Circle, None),
+    (psychopy_visual.Window, wonderlamp.psychopy.visual.Window,
+     "wonderlamp.psychopy.visual.Window is a remote connection stub; "
      "rendering params not yet implemented"),
 ]
 

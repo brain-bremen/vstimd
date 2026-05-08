@@ -14,7 +14,7 @@ Example::
 """
 
 from ._connection import Connection
-from . import visual
+from . import psychopy
 
-__all__ = ["Connection", "visual"]
+__all__ = ["Connection", "psychopy"]
 
