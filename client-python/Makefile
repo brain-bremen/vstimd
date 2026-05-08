@@ -24,8 +24,8 @@ test: proto
 test-integration:
 	@echo "Not implemented yet: integration tests with MockServer"
 
-test-e2e:
-	@echo "Not implemented yet: e2e tests against a real wonderlamp_server"
+test-e2e: proto
+	uv run pytest tests/test_e2e.py -v
 
 clean:
 	rm -rf dist/ .venv/
