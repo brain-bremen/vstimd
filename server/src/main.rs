@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 #[cfg(target_os = "linux")]
 use wonderlamp_server::render::DrmRenderState;
-use wonderlamp_server::render::{WindowMode, WinitApp};
+use wonderlamp_server::render::{RenderTarget, WindowMode, WinitApp};
 use wonderlamp_server::scene::SceneState;
 
 fn main() {
@@ -27,13 +27,13 @@ fn main() {
             log::error!("DRM/console mode is only available on Linux");
             std::process::exit(1);
         }
-        RenderTarget::Desktop => {
+        RenderTarget::Desktop(window_mode) => {
             let event_loop = winit::event_loop::EventLoop::new().unwrap_or_else(|e| {
                 log::error!("wonderlamp: failed to create event loop: {e}");
                 std::process::exit(1);
             });
             event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-            let mut app = WinitApp::new(scene, args.window_mode, log_buffer);
+            let mut app = WinitApp::new(scene, window_mode, log_buffer);
             event_loop.run_app(&mut app).unwrap();
         }
     }
@@ -41,15 +41,8 @@ fn main() {
 
 // ── Argument parsing ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RenderTarget {
-    Drm,
-    Desktop,
-}
-
 struct Args {
     render_target: RenderTarget,
-    window_mode: WindowMode,
     verbose: bool,
 }
 
@@ -59,10 +52,10 @@ struct Args {
 /// - **Windows/macOS:** Always desktop (winit)
 /// - **Linux with DISPLAY or WAYLAND_DISPLAY:** Desktop session → winit
 /// - **Linux without display env vars:** Bare console → DRM
-fn detect_render_target() -> RenderTarget {
+fn detect_render_target(window_mode: WindowMode) -> RenderTarget {
     #[cfg(not(target_os = "linux"))]
     {
-        RenderTarget::Desktop
+        RenderTarget::Desktop(window_mode)
     }
 
     #[cfg(target_os = "linux")]
@@ -72,7 +65,7 @@ fn detect_render_target() -> RenderTarget {
 
         if has_display {
             log::info!("wonderlamp: detected desktop session (DISPLAY or WAYLAND_DISPLAY set)");
-            RenderTarget::Desktop
+            RenderTarget::Desktop(window_mode)
         } else {
             log::info!("wonderlamp: detected console environment (no display server)");
             RenderTarget::Drm
@@ -111,12 +104,11 @@ fn parse_args() -> Args {
         }
     }
 
-    let render_target = detect_render_target();
+    let render_target = detect_render_target(window_mode);
     log::info!("wonderlamp: render target: {:?}", render_target);
 
     Args {
         render_target,
-        window_mode,
         verbose,
     }
 }

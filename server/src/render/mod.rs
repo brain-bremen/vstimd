@@ -1,6 +1,12 @@
 pub mod vertex;
 pub use vertex::Vertex;
 
+pub mod display_info;
+pub use display_info::StimulusDisplayInfo;
+
+pub mod system_info;
+pub use system_info::{query_local_ip, SystemInfo};
+
 pub(crate) mod overlay;
 pub mod tess;
 pub(crate) mod vk;
@@ -11,7 +17,25 @@ pub mod winit_vk;
 
 #[cfg(target_os = "linux")]
 pub use drm::DrmRenderState;
-pub use winit_vk::{WindowMode, WinitApp};
+pub use winit_vk::WinitApp;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowMode {
+    Fullscreen,
+    Windowed { width: u32, height: u32 },
+}
+
+impl Default for WindowMode {
+    fn default() -> Self {
+        Self::Fullscreen
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderTarget {
+    Drm,
+    Desktop(WindowMode),
+}
 
 pub(crate) fn spawn_demo_stimuli(
     scene: &std::sync::Arc<std::sync::RwLock<crate::scene::SceneState>>,

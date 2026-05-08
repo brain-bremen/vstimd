@@ -4,22 +4,7 @@ use crate::log_buffer::LogBuffer;
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats};
 
-pub struct SystemInfo {
-    pub screen_width: u32,
-    pub screen_height: u32,
-    pub refresh_hz: f64,
-    pub local_ip: String,
-}
-
-/// Resolve the default-route local IP by connecting a UDP socket (no packets sent).
-pub fn query_local_ip() -> String {
-    (|| -> Option<String> {
-        let s = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
-        s.connect("8.8.8.8:80").ok()?;
-        Some(s.local_addr().ok()?.ip().to_string())
-    })()
-    .unwrap_or_else(|| "unknown".to_owned())
-}
+pub use super::system_info::SystemInfo;
 
 pub fn build_overlay_ui(
     ctx: &egui::Context,
@@ -30,9 +15,12 @@ pub fn build_overlay_ui(
     log_buffer: &LogBuffer,
 ) {
     egui::Window::new("System").show(ctx, |ui| {
-        ui.label(format!("Screen: {}×{}", sys.screen_width, sys.screen_height));
-        ui.label(format!("Refresh: {:.3} Hz", sys.refresh_hz));
-        ui.label(format!("IP: {}", sys.local_ip));
+        ui.label(format!(
+            "Screen: {}×{}@{:.3} Hz",
+            sys.display.width_px, sys.display.height_px, sys.display.refresh_hz,
+        ));
+        ui.label(format!("Host: {}  IP: {}", sys.hostname, sys.local_ip));
+        ui.label(format!("Backend: {:?}", sys.backend));
     });
 
     egui::Window::new("Frame Timing").show(ctx, |ui| {

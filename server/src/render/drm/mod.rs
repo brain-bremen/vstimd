@@ -13,7 +13,8 @@ use crate::timing::FrameStats;
 
 use self::display_guard::DisplayGuard;
 use self::input::{AppKey, InputState};
-use crate::render::overlay::{SystemInfo, build_overlay_ui, query_local_ip};
+use crate::render::overlay::build_overlay_ui;
+use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, query_local_ip};
 use crate::timing::FramePhases;
 
 /// Bare-metal Linux render state — drives the display directly via
@@ -32,7 +33,7 @@ pub struct DrmRenderState {
     frame_stats: FrameStats,
     last_phases: FramePhases,
     show_overlay: bool,
-    refresh_hz: f64,
+    display_info: StimulusDisplayInfo,
     local_ip: String,
     log_buffer: LogBuffer,
     /// display_guard and vt_guard are Option<_> so they can survive the
@@ -114,10 +115,10 @@ impl DrmRenderState {
             egui_ctx,
             input,
             scene,
-            frame_stats: FrameStats::new(display_info.refresh_mhz as f64 / 1000.0),
+            frame_stats: FrameStats::new(display_info.refresh_hz),
             last_phases: FramePhases::default(),
             show_overlay: false,
-            refresh_hz: display_info.refresh_mhz as f64 / 1000.0,
+            display_info,
             local_ip: query_local_ip(),
             log_buffer,
             display_guard,
@@ -167,10 +168,11 @@ impl DrmRenderState {
                 };
                 let phases = self.last_phases;
                 let sys = SystemInfo {
-                    screen_width: self.ctx.extent.width,
-                    screen_height: self.ctx.extent.height,
-                    refresh_hz: self.refresh_hz,
+                    display: self.display_info.clone(),
+                    backend: RenderTarget::Drm,
                     local_ip: self.local_ip.clone(),
+                    hostname: String::new(),
+                    gpu_name: String::new(),
                 };
                 let output = self.egui_ctx.run_ui(raw_input, |ctx| {
                     build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases, &sys, &self.log_buffer);

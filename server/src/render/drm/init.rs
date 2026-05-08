@@ -1,18 +1,13 @@
 use ash::vk;
 
 use crate::render::vk::{VkContext, build_context};
-
-pub struct DisplayInfo {
-    pub width: u32,
-    pub height: u32,
-    pub refresh_mhz: u32,
-}
+use crate::render::StimulusDisplayInfo;
 
 /// Initialise Vulkan for bare-metal display via `VK_KHR_display`.
 ///
 /// Enumerates connected displays, prompts the user to pick a mode, creates the
 /// display surface, and returns a fully initialised `VkContext`.
-pub fn init() -> (VkContext, DisplayInfo) {
+pub fn init() -> (VkContext, StimulusDisplayInfo) {
     let entry = unsafe { ash::Entry::load().expect("failed to load libvulkan.so") };
 
     let app_info = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_1);
@@ -102,20 +97,15 @@ pub fn init() -> (VkContext, DisplayInfo) {
     let extent = vk::Extent2D { width, height };
     let ctx = build_context(entry, instance, surface, surface_loader, extent);
 
-    log::info!(
-        "wonderlamp: display {}×{}  {}.{:03} Hz",
-        width,
-        height,
-        chosen.parameters.refresh_rate / 1000,
-        chosen.parameters.refresh_rate % 1000,
-    );
+    let refresh_hz = chosen.parameters.refresh_rate as f64 / 1000.0;
+    log::info!("wonderlamp: display {}×{}  {:.3} Hz", width, height, refresh_hz);
 
     (
         ctx,
-        DisplayInfo {
-            width,
-            height,
-            refresh_mhz: chosen.parameters.refresh_rate,
+        StimulusDisplayInfo {
+            width_px: width,
+            height_px: height,
+            refresh_hz,
         },
     )
 }

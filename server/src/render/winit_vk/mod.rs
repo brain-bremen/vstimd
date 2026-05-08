@@ -9,7 +9,8 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::log_buffer::LogBuffer;
-use crate::render::overlay::{SystemInfo, build_overlay_ui, query_local_ip};
+use crate::render::overlay::build_overlay_ui;
+use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, WindowMode, query_local_ip};
 use crate::render::vk::{
     EguiFrameData, GpuBuffers, VkContext, VkEguiRenderer, VkPipeline, render_frame,
 };
@@ -28,20 +29,6 @@ use crate::timing::{FrameStats, FrameTick};
 // MAILBOX decouples the render loop from the display clock (GPU runs uncapped,
 // frames overwrite each other) — the exact opposite of what we want. FIFO is
 // guaranteed to be available on every Vulkan implementation.
-
-// ── Window creation options ───────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WindowMode {
-    Fullscreen,
-    Windowed { width: u32, height: u32 },
-}
-
-impl Default for WindowMode {
-    fn default() -> Self {
-        Self::Fullscreen
-    }
-}
 
 // ── Per-window Vulkan state ───────────────────────────────────────────────────
 
@@ -65,6 +52,7 @@ struct State {
     egui_ctx: egui::Context,
     show_overlay: bool,
     refresh_hz: f64,
+    window_mode: WindowMode,
     local_ip: String,
     log_buffer: LogBuffer,
 }
@@ -74,6 +62,7 @@ impl State {
         window: Arc<Window>,
         scene: Arc<RwLock<SceneState>>,
         event_loop: &ActiveEventLoop,
+        window_mode: WindowMode,
         log_buffer: LogBuffer,
     ) -> Self {
         let ctx = init::init(&window);
@@ -117,6 +106,7 @@ impl State {
             egui_winit,
             show_overlay: false,
             refresh_hz: hz,
+            window_mode,
             local_ip: query_local_ip(),
             log_buffer,
         }
@@ -129,10 +119,15 @@ impl State {
             let phases = self.last_phases;
             let size = self.window.inner_size();
             let sys = SystemInfo {
-                screen_width: size.width,
-                screen_height: size.height,
-                refresh_hz: self.refresh_hz,
+                display: StimulusDisplayInfo {
+                    width_px: size.width,
+                    height_px: size.height,
+                    refresh_hz: self.refresh_hz,
+                },
+                backend: RenderTarget::Desktop(self.window_mode),
                 local_ip: self.local_ip.clone(),
+                hostname: String::new(),
+                gpu_name: String::new(),
             };
             let output = self.egui_ctx.run_ui(raw_input, |ctx| {
                 build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases, &sys, &self.log_buffer);
@@ -280,7 +275,7 @@ impl ApplicationHandler for WinitApp {
             let window = Arc::new(event_loop.create_window(attrs).unwrap());
             let scene = self.scene.take().expect("scene already consumed");
             let log_buffer = self.log_buffer.take().expect("log_buffer already consumed");
-            self.state = Some(State::new(window, scene, event_loop, log_buffer));
+            self.state = Some(State::new(window, scene, event_loop, self.window_mode, log_buffer));
         }
     }
 
