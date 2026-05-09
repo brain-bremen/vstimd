@@ -32,11 +32,14 @@ def server_process(server_address: str):
         yield
         return
 
-    result = subprocess.run(["cargo", "build", "--release"], cwd=_REPO_ROOT)
-    if result.returncode != 0:
-        pytest.fail(f"cargo build --release failed (exit {result.returncode})")
-
     server_bin = _REPO_ROOT / "target" / "release" / "wonderlamp_server"
+    if not server_bin.exists():
+        result = subprocess.run(["cargo", "build", "--release"], cwd=_REPO_ROOT)
+        if result.returncode != 0:
+            pytest.fail(f"cargo build --release failed (exit {result.returncode})")
+    if not server_bin.exists():
+        pytest.fail(f"server binary not found at {server_bin}")
+
     proc = subprocess.Popen([str(server_bin), "--null"])
 
     for _ in range(20):
