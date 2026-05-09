@@ -28,6 +28,7 @@ pub struct EguiFrameData<'a> {
 ///
 /// Returns `None` when the swapchain is out of date; the caller must call
 /// `ctx.recreate_swapchain(new_extent)` before the next call.
+#[allow(clippy::too_many_arguments)]
 pub fn render_frame(
     ctx: &VkContext,
     pipeline: &VkPipeline,

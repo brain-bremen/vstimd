@@ -9,8 +9,6 @@ struct VkEguiTexture {
     image: vk::Image,
     memory: vk::DeviceMemory,
     view: vk::ImageView,
-    width: u32,
-    height: u32,
 }
 
 impl VkEguiTexture {
@@ -437,12 +435,11 @@ impl VkEguiRenderer {
                 image,
                 memory,
                 view,
-                width,
-                height,
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn upload_texture_data(
         &self,
         device: &ash::Device,
@@ -602,6 +599,7 @@ impl VkEguiRenderer {
 
     /// Upload pixel data into a sub-region of an existing texture that is
     /// currently in `SHADER_READ_ONLY_OPTIMAL` layout.
+    #[allow(clippy::too_many_arguments)]
     fn update_texture_region(
         &self,
         device: &ash::Device,

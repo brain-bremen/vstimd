@@ -19,16 +19,11 @@ pub mod winit_vk;
 pub use drm::DrmRenderState;
 pub use winit_vk::WinitApp;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WindowMode {
+    #[default]
     Fullscreen,
     Windowed { width: u32, height: u32 },
-}
-
-impl Default for WindowMode {
-    fn default() -> Self {
-        Self::Fullscreen
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
