@@ -48,7 +48,6 @@ fn main() {
 struct Args {
     render_target: RenderTarget,
     verbose: bool,
-    null: bool,
 }
 
 /// Automatically detect the best render target for the current platform.
@@ -121,7 +120,6 @@ fn parse_args() -> Args {
     Args {
         render_target,
         verbose,
-        null,
     }
 }
 
