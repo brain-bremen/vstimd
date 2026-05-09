@@ -205,7 +205,7 @@ impl Stimulus {
 
     pub fn move_to(&mut self, deferred: bool, x: f32, y: f32) {
         if let Some(t) = self.transform_mut() {
-            let angle = t.live.angle;
+            let angle = if deferred { t.copy.angle } else { t.live.angle };
             t.set(deferred, Transform2D { pos: [x, y], angle });
         }
         if !deferred {
@@ -215,7 +215,7 @@ impl Stimulus {
 
     pub fn set_angle(&mut self, deferred: bool, degrees: f32) {
         if let Some(t) = self.transform_mut() {
-            let pos = t.live.pos;
+            let pos = if deferred { t.copy.pos } else { t.live.pos };
             t.set(deferred, Transform2D { pos, angle: degrees });
         }
         if !deferred {

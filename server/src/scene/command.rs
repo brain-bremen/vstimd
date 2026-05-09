@@ -339,8 +339,12 @@ impl SceneState {
             ),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
-                    let prev = app.live;
-                    app.set(self.deferred_mode, ShapeAppearance { fill_color: c, ..prev });
+                    let deferred = self.deferred_mode;
+                    let prev = if deferred { app.copy } else { app.live };
+                    app.set(deferred, ShapeAppearance { fill_color: c, ..prev });
+                    if !deferred {
+                        stim.flags_mut().mark_dirty();
+                    }
                     ok_ack()
                 }
                 None => err(
@@ -364,9 +368,13 @@ impl SceneState {
             ),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
-                    let mut prev = app.live;
+                    let deferred = self.deferred_mode;
+                    let mut prev = if deferred { app.copy } else { app.live };
                     prev.fill_color[3] = cmd.opacity;
-                    app.set(self.deferred_mode, prev);
+                    app.set(deferred, prev);
+                    if !deferred {
+                        stim.flags_mut().mark_dirty();
+                    }
                     ok_ack()
                 }
                 None => err(
@@ -464,8 +472,12 @@ impl SceneState {
             ),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
-                    let prev = app.live;
-                    app.set(self.deferred_mode, ShapeAppearance { draw_mode: mode, ..prev });
+                    let deferred = self.deferred_mode;
+                    let prev = if deferred { app.copy } else { app.live };
+                    app.set(deferred, ShapeAppearance { draw_mode: mode, ..prev });
+                    if !deferred {
+                        stim.flags_mut().mark_dirty();
+                    }
                     ok_ack()
                 }
                 None => err(
@@ -499,8 +511,12 @@ impl SceneState {
             ),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
-                    let prev = app.live;
-                    app.set(self.deferred_mode, ShapeAppearance { outline_color: c, ..prev });
+                    let deferred = self.deferred_mode;
+                    let prev = if deferred { app.copy } else { app.live };
+                    app.set(deferred, ShapeAppearance { outline_color: c, ..prev });
+                    if !deferred {
+                        stim.flags_mut().mark_dirty();
+                    }
                     ok_ack()
                 }
                 None => err(
@@ -528,11 +544,15 @@ impl SceneState {
             ),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
-                    let prev = app.live;
+                    let deferred = self.deferred_mode;
+                    let prev = if deferred { app.copy } else { app.live };
                     app.set(
-                        self.deferred_mode,
+                        deferred,
                         ShapeAppearance { stroke_width: cmd.line_width, ..prev },
                     );
+                    if !deferred {
+                        stim.flags_mut().mark_dirty();
+                    }
                     ok_ack()
                 }
                 None => err(
