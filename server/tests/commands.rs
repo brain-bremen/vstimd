@@ -38,6 +38,13 @@ fn delete_req(handle: u32) -> proto::Request {
     }
 }
 
+fn set_deferred_mode_req(active: bool, cancel: bool) -> proto::Request {
+    proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::SetDeferredMode(proto::SetDeferredMode { active, cancel })),
+    }
+}
+
 fn is_ok(resp: &proto::Response) -> bool {
     resp.code == proto::ErrorCode::Ok as i32
 }
@@ -253,6 +260,172 @@ fn test_set_fill_color() {
     assert!(is_ok(&resp));
     let app = scene.stimuli.get(&h).unwrap().appearance().unwrap();
     assert_eq!(app.live.fill_color, [1.0, 0.0, 0.5, 0.8]);
+}
+
+#[test]
+fn test_immediate_mode_composes_mutations_and_marks_dirty() {
+    let mut scene = SceneState::new();
+    let h = scene
+        .handle_request(create_rect_req(sys(), proto::CreateRect::default()))
+        .handle as u32;
+    scene.stimuli.get_mut(&h).unwrap().flags_mut().dirty = false;
+
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetPosition(proto::SetPosition { x: 15.0, y: 25.0 })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetOrientation(proto::SetOrientation { angle_deg: 30.0 })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetFillColor(proto::SetFillColor {
+            color: Some(proto::Color { r: 0.1, g: 0.2, b: 0.3, a: 0.4 }),
+        })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetAlpha(proto::SetAlpha { opacity: 0.9 })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetDrawMode(proto::SetDrawMode {
+            mode: proto::DrawMode::Outlined as i32,
+        })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetOutlineColor(proto::SetOutlineColor {
+            color: Some(proto::Color { r: 0.8, g: 0.7, b: 0.6, a: 0.5 }),
+        })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetOutlineWidth(proto::SetOutlineWidth { line_width: 7.0 })),
+    });
+    assert!(is_ok(&resp));
+
+    let stim = scene.stimuli.get(&h).unwrap();
+    let t = stim.transform().unwrap();
+    assert_eq!(t.live.pos, [15.0, 25.0]);
+    assert_eq!(t.live.angle, 30.0);
+
+    let app = stim.appearance().unwrap();
+    assert_eq!(app.live.fill_color, [0.1, 0.2, 0.3, 0.9]);
+    assert!(app.live.draw_mode == wonderlamp_server::scene::DrawMode::Stroke);
+    assert_eq!(app.live.outline_color, [0.8, 0.7, 0.6, 0.5]);
+    assert_eq!(app.live.stroke_width, 7.0);
+    assert!(stim.flags().dirty);
+}
+
+#[test]
+fn test_deferred_mode_stages_composed_mutations_until_flip() {
+    let mut scene = SceneState::new();
+    let h = scene
+        .handle_request(create_rect_req(sys(), proto::CreateRect::default()))
+        .handle as u32;
+
+    let stim_obj = scene.stimuli.get_mut(&h).unwrap();
+    if let Some(t) = stim_obj.transform_mut() {
+        t.live = wonderlamp_server::scene::Transform2D { pos: [1.0, 2.0], angle: 3.0 };
+    }
+    if let Some(app) = stim_obj.appearance_mut() {
+        app.live.fill_color = [0.11, 0.12, 0.13, 0.14];
+        app.live.outline_color = [0.21, 0.22, 0.23, 0.24];
+        app.live.stroke_width = 2.5;
+        app.live.draw_mode = wonderlamp_server::scene::DrawMode::FillAndStroke;
+    }
+    stim_obj.flags_mut().dirty = false;
+
+    let resp = scene.handle_request(set_deferred_mode_req(true, false));
+    assert!(is_ok(&resp));
+    assert!(scene.deferred_mode);
+
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetPosition(proto::SetPosition { x: 15.0, y: 25.0 })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetOrientation(proto::SetOrientation { angle_deg: 30.0 })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetFillColor(proto::SetFillColor {
+            color: Some(proto::Color { r: 0.1, g: 0.2, b: 0.3, a: 0.4 }),
+        })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetAlpha(proto::SetAlpha { opacity: 0.9 })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetDrawMode(proto::SetDrawMode {
+            mode: proto::DrawMode::Outlined as i32,
+        })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetOutlineColor(proto::SetOutlineColor {
+            color: Some(proto::Color { r: 0.8, g: 0.7, b: 0.6, a: 0.5 }),
+        })),
+    });
+    assert!(is_ok(&resp));
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetOutlineWidth(proto::SetOutlineWidth { line_width: 7.0 })),
+    });
+    assert!(is_ok(&resp));
+
+    let stim = scene.stimuli.get(&h).unwrap();
+    let t = stim.transform().unwrap();
+    assert_eq!(t.live.pos, [1.0, 2.0]);
+    assert_eq!(t.live.angle, 3.0);
+    assert_eq!(t.copy.pos, [15.0, 25.0]);
+    assert_eq!(t.copy.angle, 30.0);
+
+    let app = stim.appearance().unwrap();
+    assert_eq!(app.live.fill_color, [0.11, 0.12, 0.13, 0.14]);
+    assert_eq!(app.live.outline_color, [0.21, 0.22, 0.23, 0.24]);
+    assert_eq!(app.live.stroke_width, 2.5);
+    assert!(app.live.draw_mode == wonderlamp_server::scene::DrawMode::FillAndStroke);
+    assert_eq!(app.copy.fill_color, [0.1, 0.2, 0.3, 0.9]);
+    assert_eq!(app.copy.outline_color, [0.8, 0.7, 0.6, 0.5]);
+    assert_eq!(app.copy.stroke_width, 7.0);
+    assert!(app.copy.draw_mode == wonderlamp_server::scene::DrawMode::Stroke);
+    assert!(!stim.flags().dirty);
+
+    let resp = scene.handle_request(set_deferred_mode_req(false, false));
+    assert!(is_ok(&resp));
+    assert!(!scene.deferred_mode);
+    assert!(scene.pending_flip);
+
+    scene.apply_flip();
+    assert!(!scene.pending_flip);
+
+    let stim = scene.stimuli.get(&h).unwrap();
+    let t = stim.transform().unwrap();
+    assert_eq!(t.live.pos, [15.0, 25.0]);
+    assert_eq!(t.live.angle, 30.0);
+    let app = stim.appearance().unwrap();
+    assert_eq!(app.live.fill_color, [0.1, 0.2, 0.3, 0.9]);
+    assert_eq!(app.live.outline_color, [0.8, 0.7, 0.6, 0.5]);
+    assert_eq!(app.live.stroke_width, 7.0);
+    assert!(app.live.draw_mode == wonderlamp_server::scene::DrawMode::Stroke);
+    assert!(stim.flags().dirty);
 }
 
 #[test]
