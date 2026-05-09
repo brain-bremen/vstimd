@@ -20,8 +20,5 @@ pub fn query_local_ip() -> String {
 }
 
 pub fn query_hostname() -> String {
-    (|| -> Option<String> {
-        std::env::var("HOSTNAME").ok()
-    })()
-    .unwrap_or_else(|| "unknown".to_owned())
+    std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".to_owned())
 }

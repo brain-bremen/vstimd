@@ -28,9 +28,7 @@ struct TtyKbdGuard {
 
 impl TtyKbdGuard {
     fn acquire() -> Option<Self> {
-        let fd = unsafe {
-            libc::open(b"/dev/tty\0".as_ptr() as *const libc::c_char, libc::O_RDWR | libc::O_CLOEXEC)
-        };
+        let fd = unsafe { libc::open(c"/dev/tty".as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
         if fd < 0 {
             log::warn!("wonderlamp: could not open /dev/tty — keys may echo to terminal");
             return None;
@@ -119,17 +117,17 @@ impl InputState {
         }
 
         let mut keys = Vec::new();
-        while let Some(event) = self.ctx.next() {
-            if let input::Event::Keyboard(kb) = event {
-                if kb.key_state() == input::event::keyboard::KeyState::Pressed {
-                    // Evdev key codes (from linux/input-event-codes.h)
-                    match kb.key() {
-                        1 => keys.push(AppKey::Escape),  // KEY_ESC
-                        32 => keys.push(AppKey::D),      // KEY_D
-                        59 => keys.push(AppKey::F1),     // KEY_F1
-                        60 => keys.push(AppKey::F2),     // KEY_F2
-                        _ => {}
-                    }
+        for event in self.ctx.by_ref() {
+            if let input::Event::Keyboard(kb) = event
+                && kb.key_state() == input::event::keyboard::KeyState::Pressed
+            {
+                // Evdev key codes (from linux/input-event-codes.h)
+                match kb.key() {
+                    1 => keys.push(AppKey::Escape),  // KEY_ESC
+                    32 => keys.push(AppKey::D),      // KEY_D
+                    59 => keys.push(AppKey::F1),     // KEY_F1
+                    60 => keys.push(AppKey::F2),     // KEY_F2
+                    _ => {}
                 }
             }
         }

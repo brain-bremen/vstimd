@@ -57,6 +57,16 @@ struct State {
     log_buffer: LogBuffer,
 }
 
+impl Drop for State {
+    fn drop(&mut self) {
+        unsafe {
+            self.egui_renderer.destroy(&self.ctx.device);
+            self.gpu_buffers.destroy_all(&self.ctx.device);
+            self.pipeline.destroy(&self.ctx.device);
+        }
+    }
+}
+
 impl State {
     fn new(
         window: Arc<Window>,

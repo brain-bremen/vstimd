@@ -24,6 +24,7 @@ pub struct VkContext {
     pub swapchain: vk::SwapchainKHR,
     pub swapchain_loader: ash::khr::swapchain::Device,
     pub graphics_queue: vk::Queue,
+    #[allow(dead_code)]
     pub graphics_queue_family: u32,
     pub device: ash::Device,
     pub surface_loader: ash::khr::surface::Instance,
@@ -44,8 +45,10 @@ pub struct VkContext {
     pub next_present_id: std::cell::Cell<u64>,
     /// Loader for VK_GOOGLE_display_timing.  None when the extension is absent.
     /// Used to query the actual display refresh period from the driver.
+    #[allow(dead_code)]
     pub display_timing: Option<ash::google::display_timing::Device>,
     pub instance: ash::Instance,
+    #[allow(dead_code)]
     pub entry: ash::Entry,
 }
 
@@ -130,6 +133,7 @@ impl VkContext {
 
     /// Query the display refresh period in nanoseconds via VK_GOOGLE_display_timing.
     /// Returns None if the extension is unavailable or the query fails.
+    #[allow(dead_code)]
     pub fn query_refresh_cycle_duration_ns(&self) -> Option<u64> {
         let loader = self.display_timing.as_ref()?;
         let result = unsafe { loader.get_refresh_cycle_duration(self.swapchain) };
@@ -139,6 +143,7 @@ impl VkContext {
 
 /// Pick the best available present mode from a priority list.
 /// Falls back to `FIFO` (always guaranteed by the Vulkan spec) if none match.
+#[allow(dead_code)]
 pub fn select_present_mode(
     surface_loader: &ash::khr::surface::Instance,
     physical_device: vk::PhysicalDevice,
@@ -468,6 +473,7 @@ pub fn create_framebuffers(
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_swapchain(
     swapchain_loader: &ash::khr::swapchain::Device,
     surface_loader: &ash::khr::surface::Instance,
