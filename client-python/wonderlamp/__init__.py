@@ -15,6 +15,12 @@ Example::
         print(info.version)
 """
 
+# Extend the package search path so that `from wonderlamp.v1 import ...`
+# in the generated proto stubs resolves to _proto/wonderlamp/v1/ without
+# shadowing this package's own namespace.
+import os as _os
+__path__ = list(__path__) + [_os.path.join(_os.path.dirname(__file__), "_proto", "wonderlamp")]
+
 from ._connection import Connection
 from .system import ServerInfo, ServerVersion
 from .exceptions import (

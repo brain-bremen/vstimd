@@ -1,28 +1,30 @@
 syntax = "proto3";
 package wonderlamp.v1;
 
-import "v1/stimuli.proto";
-import "v1/system.proto";
+import "wonderlamp/v1/stimuli_2d.proto";
+import "wonderlamp/v1/system.proto";
 
 // ── Error codes ───────────────────────────────────────────────────────────────
 
 enum ErrorCode {
+  // Default zero value (buf linter); field was never set / malformed response.
+  ERROR_CODE_UNSPECIFIED         = 0;
   // Success. Always set on non-error responses.
-  ERROR_CODE_OK                  = 0;
+  ERROR_CODE_OK                  = 1;
   // Unexpected server-side error.
-  ERROR_CODE_UNKNOWN             = 1;
+  ERROR_CODE_UNKNOWN             = 2;
   // The stimulus handle does not exist.
-  ERROR_CODE_HANDLE_NOT_FOUND    = 2;
-  // The mutation is not applicable to this stimulus type (e.g. SetDiscRadius on Rect).
-  ERROR_CODE_WRONG_STIMULUS_TYPE = 3;
+  ERROR_CODE_HANDLE_NOT_FOUND    = 3;
+  // The mutation is not applicable to this stimulus type (e.g. SetDiscRadiusRequest on Rect).
+  ERROR_CODE_WRONG_STIMULUS_TYPE = 4;
   // A system command was sent with a stimulus handle, or vice versa.
-  ERROR_CODE_WRONG_TARGET        = 4;
+  ERROR_CODE_WRONG_TARGET        = 5;
   // Could not create the stimulus (resource exhaustion, etc.).
-  ERROR_CODE_CREATION_FAILED     = 5;
+  ERROR_CODE_CREATION_FAILED     = 6;
   // A field value is out of range or logically invalid.
-  ERROR_CODE_INVALID_ARGUMENT    = 6;
+  ERROR_CODE_INVALID_ARGUMENT    = 7;
   // Command exists but is not supported in the current configuration.
-  ERROR_CODE_NOT_SUPPORTED       = 7;
+  ERROR_CODE_NOT_SUPPORTED       = 8;
 }
 
 // ── Request routing ───────────────────────────────────────────────────────────
@@ -44,34 +46,34 @@ message Request {
 
   oneof body {
     // ── Stimulus creation (system target only) ──────────────────────────────
-    CreateRect    create_rect    = 10;
-    CreateCircle  create_circle  = 11;
-    CreateEllipse create_ellipse = 12;
+    CreateRectRequest    create_rect    = 10;
+    CreateCircleRequest  create_circle  = 11;
+    CreateEllipseRequest create_ellipse = 12;
 
     // ── Stimulus mutations (stimulus target only) ───────────────────────────
-    SetEnabled     set_enabled      = 30;
-    Delete         delete           = 31;
-    SetPosition    set_position     = 32;
-    SetOrientation set_orientation  = 33;
-    SetFillColor   set_fill_color   = 34;
-    SetAlpha       set_alpha        = 35;
-    SetRectSize    set_rect_size    = 36;
-    SetDiscRadius  set_disc_radius  = 37;
-    SetEllipseSize set_ellipse_size = 38;
-    SetDrawMode    set_draw_mode    = 39;
-    SetOutlineColor set_outline_color = 40;
-    SetOutlineWidth set_outline_width = 41;
+    SetEnabledRequest     set_enabled      = 30;
+    DeleteRequest         delete           = 31;
+    SetPositionRequest    set_position     = 32;
+    SetOrientationRequest set_orientation  = 33;
+    SetFillColorRequest   set_fill_color   = 34;
+    SetAlphaRequest       set_alpha        = 35;
+    SetRectSizeRequest    set_rect_size    = 36;
+    SetDiscRadiusRequest  set_disc_radius  = 37;
+    SetEllipseSizeRequest set_ellipse_size = 38;
+    SetDrawModeRequest    set_draw_mode    = 39;
+    SetOutlineColorRequest set_outline_color = 40;
+    SetOutlineWidthRequest set_outline_width = 41;
 
     // ── System mutations (system target only) ───────────────────────────────
-    SetBackground   set_background   = 60;
-    SetDeferredMode set_deferred_mode = 61;
-    DeleteAll       delete_all       = 62;
-    SetAllEnabled   set_all_enabled  = 63;
+    SetBackgroundRequest   set_background   = 60;
+    SetDeferredModeRequest set_deferred_mode = 61;
+    DeleteAllRequest       delete_all       = 62;
+    SetAllEnabledRequest   set_all_enabled  = 63;
 
     // ── Queries ─────────────────────────────────────────────────────────────
-    QueryServerInfo query_server_info = 80;  // system target
-    QueryStimulus   query_stimulus    = 81;  // stimulus target
-    ListStimuli     list_stimuli      = 82;  // system target
+    QueryServerInfoRequest query_server_info = 80;  // system target
+    QueryStimulusRequest   query_stimulus    = 81;  // stimulus target
+    ListStimuliRequest     list_stimuli      = 82;  // system target
   }
 }
 
@@ -92,9 +94,9 @@ message Response {
 
   // Query payload — present only on successful query responses.
   oneof body {
-    ServerInfo   server_info   = 10;
-    StimulusInfo stimulus_info = 11;
-    StimulusList stimulus_list = 12;
+    QueryServerInfoResponse server_info   = 10;
+    QueryStimulusResponse   stimulus_info = 11;
+    ListStimuliResponse     stimulus_list = 12;
   }
 }
 
@@ -106,6 +108,6 @@ message Response {
 service WonderlampService {
   // Execute a single command.
   rpc Execute(Request) returns (Response);
-  // Execute a deferred batch: stream N commands, end with SetDeferredMode{active:false}.
+  // Execute a deferred batch: stream N commands, end with SetDeferredModeRequest{active:false}.
   rpc ExecuteBatch(stream Request) returns (Response);
 }

@@ -1,12 +1,12 @@
 syntax = "proto3";
 package wonderlamp.v1;
 
-import "v1/common.proto";
+import "wonderlamp/v1/common.proto";
 
 // ── System mutations ──────────────────────────────────────────────────────────
 
 // System command: set the background clear colour.
-message SetBackground {
+message SetBackgroundRequest {
   Color color = 1;
 }
 
@@ -14,28 +14,28 @@ message SetBackground {
 // - active=true           → begin deferred mode (snapshot all live state)
 // - active=false          → end deferred mode (schedule atomic flip on next vsync)
 // - active=false, cancel=true → cancel deferred mode (discard pending changes)
-message SetDeferredMode {
+message SetDeferredModeRequest {
   bool active = 1;
   bool cancel = 2;
 }
 
 // System command: remove all stimuli from the scene (except protected ones).
-message DeleteAll {}
+message DeleteAllRequest {}
 
 // System command: enable or disable all stimuli (except protected ones).
-message SetAllEnabled {
+message SetAllEnabledRequest {
   bool enabled = 1;
 }
 
 // ── System queries ────────────────────────────────────────────────────────────
 
 // System command: query server/display properties.
-// Returns ServerInfo in Response.body.
-message QueryServerInfo {}
+// Returns QueryServerInfoResponse in Response.body.
+message QueryServerInfoRequest {}
 
 // System command: list all stimuli in scene order.
-// Returns StimulusList in Response.body.
-message ListStimuli {}
+// Returns ListStimuliResponse in Response.body.
+message ListStimuliRequest {}
 
 // ── System query response payloads ────────────────────────────────────────────
 
@@ -46,8 +46,8 @@ message Version {
   uint32 patch = 3;
 }
 
-// Response payload for QueryServerInfo.
-message ServerInfo {
+// Response payload for QueryServerInfoRequest.
+message QueryServerInfoResponse {
   uint32  width            = 1;   // display width in pixels
   uint32  height           = 2;   // display height in pixels
   float   frame_rate       = 3;   // measured frame rate in Hz
@@ -56,14 +56,14 @@ message ServerInfo {
   Version version          = 6;
 }
 
-// One row in a StimulusList.
+// One row in a ListStimuliResponse.
 message StimulusEntry {
   uint32       handle        = 1;
   StimulusType stimulus_type = 2;
   bool         enabled       = 3;
 }
 
-// Response payload for ListStimuli.
-message StimulusList {
+// Response payload for ListStimuliRequest.
+message ListStimuliResponse {
   repeated StimulusEntry entries = 1;
 }

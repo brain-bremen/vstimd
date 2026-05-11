@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from wonderlamp._proto import common_pb2, service_pb2, stimuli_pb2
+from wonderlamp._proto import common_pb2, service_pb2, stimuli_2d_pb2 as stimuli_pb2
 from ._models import StimulusInfo
 
 
@@ -32,7 +32,7 @@ class StimuliClient:
         """Create a rectangle stimulus and return its handle."""
         req = service_pb2.Request(
             system=service_pb2.SystemTarget(),
-            create_rect=stimuli_pb2.CreateRect(
+            create_rect=stimuli_pb2.CreateRectRequest(
                 center=common_pb2.Vec2(x=x, y=y),
                 width=width,
                 height=height,
@@ -55,7 +55,7 @@ class StimuliClient:
         """Create a disc stimulus and return its handle."""
         req = service_pb2.Request(
             system=service_pb2.SystemTarget(),
-            create_circle=stimuli_pb2.CreateCircle(
+            create_circle=stimuli_pb2.CreateCircleRequest(
                 center=common_pb2.Vec2(x=x, y=y),
                 radius=radius,
                 fill=common_pb2.Color(r=r, g=g, b=b, a=a),
@@ -79,7 +79,7 @@ class StimuliClient:
         """Create an ellipse stimulus and return its handle."""
         req = service_pb2.Request(
             system=service_pb2.SystemTarget(),
-            create_ellipse=stimuli_pb2.CreateEllipse(
+            create_ellipse=stimuli_pb2.CreateEllipseRequest(
                 center=common_pb2.Vec2(x=x, y=y),
                 width=width,
                 height=height,
@@ -94,12 +94,12 @@ class StimuliClient:
     def set_enabled(self, handle: int, enabled: bool) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_enabled=stimuli_pb2.SetEnabled(enabled=enabled),
+            set_enabled=stimuli_pb2.SetEnabledRequest(enabled=enabled),
         )
         self._send(req)
 
     def delete(self, handle: int) -> None:
-        req = service_pb2.Request(stimulus=handle, delete=stimuli_pb2.Delete())
+        req = service_pb2.Request(stimulus=handle, delete=stimuli_pb2.DeleteRequest())
         self._send(req)
 
     # ── Transform ─────────────────────────────────────────────────────────────
@@ -107,14 +107,14 @@ class StimuliClient:
     def set_position(self, handle: int, x: float, y: float) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_position=stimuli_pb2.SetPosition(x=x, y=y),
+            set_position=stimuli_pb2.SetPositionRequest(x=x, y=y),
         )
         self._send(req)
 
     def set_orientation(self, handle: int, angle_deg: float) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_orientation=stimuli_pb2.SetOrientation(angle_deg=angle_deg),
+            set_orientation=stimuli_pb2.SetOrientationRequest(angle_deg=angle_deg),
         )
         self._send(req)
 
@@ -123,21 +123,21 @@ class StimuliClient:
     def set_fill_color(self, handle: int, r: float, g: float, b: float, a: float = 1.0) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_fill_color=stimuli_pb2.SetFillColor(color=common_pb2.Color(r=r, g=g, b=b, a=a)),
+            set_fill_color=stimuli_pb2.SetFillColorRequest(color=common_pb2.Color(r=r, g=g, b=b, a=a)),
         )
         self._send(req)
 
     def set_alpha(self, handle: int, opacity: float) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_alpha=stimuli_pb2.SetAlpha(opacity=opacity),
+            set_alpha=stimuli_pb2.SetAlphaRequest(opacity=opacity),
         )
         self._send(req)
 
     def set_outline_color(self, handle: int, r: float, g: float, b: float, a: float = 1.0) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_outline_color=stimuli_pb2.SetOutlineColor(
+            set_outline_color=stimuli_pb2.SetOutlineColorRequest(
                 color=common_pb2.Color(r=r, g=g, b=b, a=a)
             ),
         )
@@ -146,7 +146,7 @@ class StimuliClient:
     def set_outline_width(self, handle: int, line_width: float) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_outline_width=stimuli_pb2.SetOutlineWidth(line_width=line_width),
+            set_outline_width=stimuli_pb2.SetOutlineWidthRequest(line_width=line_width),
         )
         self._send(req)
 
@@ -155,21 +155,21 @@ class StimuliClient:
     def set_rect_size(self, handle: int, width: float, height: float) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_rect_size=stimuli_pb2.SetRectSize(width=width, height=height),
+            set_rect_size=stimuli_pb2.SetRectSizeRequest(width=width, height=height),
         )
         self._send(req)
 
     def set_disc_radius(self, handle: int, radius: float) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_disc_radius=stimuli_pb2.SetDiscRadius(radius=radius),
+            set_disc_radius=stimuli_pb2.SetDiscRadiusRequest(radius=radius),
         )
         self._send(req)
 
     def set_ellipse_size(self, handle: int, width: float, height: float) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_ellipse_size=stimuli_pb2.SetEllipseSize(width=width, height=height),
+            set_ellipse_size=stimuli_pb2.SetEllipseSizeRequest(width=width, height=height),
         )
         self._send(req)
 
@@ -179,6 +179,6 @@ class StimuliClient:
         """Return current server-side properties for the given stimulus handle."""
         req = service_pb2.Request(
             stimulus=handle,
-            query_stimulus=stimuli_pb2.QueryStimulus(),
+            query_stimulus=stimuli_pb2.QueryStimulusRequest(),
         )
         return StimulusInfo.from_proto(self._send(req).stimulus_info)

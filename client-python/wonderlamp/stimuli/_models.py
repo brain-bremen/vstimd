@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Union
 
-from wonderlamp._proto import common_pb2, stimuli_pb2
+from wonderlamp._proto import common_pb2, stimuli_2d_pb2 as stimuli_pb2
 
 
 class StimulusType(Enum):
@@ -94,7 +94,7 @@ class StimulusInfo:
     params: StimulusParams | None
 
     @classmethod
-    def from_proto(cls, proto: stimuli_pb2.StimulusInfo) -> StimulusInfo:
+    def from_proto(cls, proto: stimuli_pb2.QueryStimulusResponse) -> StimulusInfo:
         shape_which = proto.params.WhichOneof("shape") if proto.HasField("params") else None
         if shape_which == "rect":
             params: StimulusParams | None = RectParams(

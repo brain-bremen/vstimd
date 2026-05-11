@@ -1,5 +1,5 @@
-PROTO_SRC  := ../proto/v1/common.proto ../proto/v1/stimuli.proto \
-              ../proto/v1/system.proto ../proto/v1/service.proto
+PROTO_SRC  := ../proto/wonderlamp/v1/common.proto ../proto/wonderlamp/v1/stimuli_2d.proto \
+              ../proto/wonderlamp/v1/system.proto ../proto/wonderlamp/v1/service.proto
 PROTO_OUT  := wonderlamp/_proto
 
 .PHONY: build publish proto test test-integration test-e2e test-e2e-null clean

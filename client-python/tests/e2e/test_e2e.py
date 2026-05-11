@@ -14,7 +14,6 @@ import time
 import pytest
 
 from wonderlamp import Connection
-from wonderlamp._proto import wonderlamp_pb2 as pb
 from ._e2e_cases import *  # noqa: F401, F403
 from .conftest import reachable
 

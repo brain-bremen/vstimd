@@ -81,7 +81,7 @@ fn test_zmq_create_rect() {
                 &mut client,
                 proto::Request {
                     target: Some(sys()),
-                    body: Some(request::Body::CreateRect(proto::CreateRect {
+                    body: Some(request::Body::CreateRect(proto::CreateRectRequest {
                         center: Some(proto::Vec2 { x: 10.0, y: -20.0 }),
                         width: 200.0,
                         height: 100.0,
@@ -108,7 +108,7 @@ fn test_zmq_lifecycle() {
                 &mut client,
                 proto::Request {
                     target: Some(sys()),
-                    body: Some(request::Body::CreateRect(proto::CreateRect {
+                    body: Some(request::Body::CreateRect(proto::CreateRectRequest {
                         width: 100.0,
                         height: 50.0,
                         ..Default::default()
@@ -126,7 +126,7 @@ fn test_zmq_lifecycle() {
                 &mut client,
                 proto::Request {
                     target: Some(stim(handle)),
-                    body: Some(request::Body::SetEnabled(proto::SetEnabled { enabled: false })),
+                    body: Some(request::Body::SetEnabled(proto::SetEnabledRequest { enabled: false })),
                 },
             )
             .await;
@@ -140,7 +140,7 @@ fn test_zmq_lifecycle() {
                 &mut client,
                 proto::Request {
                     target: Some(stim(handle)),
-                    body: Some(request::Body::SetEnabled(proto::SetEnabled { enabled: true })),
+                    body: Some(request::Body::SetEnabled(proto::SetEnabledRequest { enabled: true })),
                 },
             )
             .await;
@@ -153,7 +153,7 @@ fn test_zmq_lifecycle() {
                 &mut client,
                 proto::Request {
                     target: Some(stim(handle)),
-                    body: Some(request::Body::Delete(proto::Delete {})),
+                    body: Some(request::Body::Delete(proto::DeleteRequest {})),
                 },
             )
             .await;
@@ -173,7 +173,7 @@ fn test_zmq_error_on_bad_handle() {
                 &mut client,
                 proto::Request {
                     target: Some(stim(9999)),
-                    body: Some(request::Body::Delete(proto::Delete {})),
+                    body: Some(request::Body::Delete(proto::DeleteRequest {})),
                 },
             )
             .await;
@@ -196,7 +196,7 @@ fn test_zmq_multiple_stimuli() {
                     &mut client,
                     proto::Request {
                         target: Some(sys()),
-                        body: Some(request::Body::CreateRect(proto::CreateRect {
+                        body: Some(request::Body::CreateRect(proto::CreateRectRequest {
                             width: 50.0 * (i + 1) as f32,
                             height: 50.0,
                             ..Default::default()
@@ -222,7 +222,7 @@ fn test_zmq_multiple_stimuli() {
                 &mut client,
                 proto::Request {
                     target: Some(stim(middle)),
-                    body: Some(request::Body::Delete(proto::Delete {})),
+                    body: Some(request::Body::Delete(proto::DeleteRequest {})),
                 },
             )
             .await;

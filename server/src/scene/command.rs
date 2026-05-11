@@ -95,11 +95,15 @@ fn command_summary(req: &proto::Request) -> String {
 
 // ── DrawMode conversion ───────────────────────────────────────────────────────
 
-fn proto_draw_mode_to_scene(mode: i32) -> SceneDrawMode {
-    match proto::DrawMode::try_from(mode).unwrap_or(proto::DrawMode::Filled) {
-        proto::DrawMode::Filled => SceneDrawMode::Fill,
-        proto::DrawMode::Outlined => SceneDrawMode::Stroke,
-        proto::DrawMode::FilledAndOutlined => SceneDrawMode::FillAndStroke,
+fn proto_draw_mode_to_scene(mode: i32) -> Result<SceneDrawMode, proto::Response> {
+    match proto::DrawMode::try_from(mode).unwrap_or(proto::DrawMode::Unspecified) {
+        proto::DrawMode::Unspecified => Err(err(
+            proto::ErrorCode::InvalidArgument,
+            "draw_mode must be set explicitly (UNSPECIFIED is not a valid value)",
+        )),
+        proto::DrawMode::Filled => Ok(SceneDrawMode::Fill),
+        proto::DrawMode::Outlined => Ok(SceneDrawMode::Stroke),
+        proto::DrawMode::FilledAndOutlined => Ok(SceneDrawMode::FillAndStroke),
     }
 }
 
@@ -189,7 +193,7 @@ impl SceneState {
 
     // ── CreateRect ────────────────────────────────────────────────────────────
 
-    fn cmd_create_rect(&mut self, cmd: proto::CreateRect) -> proto::Response {
+    fn cmd_create_rect(&mut self, cmd: proto::CreateRectRequest) -> proto::Response {
         let center = cmd.center.unwrap_or_default();
         let width = if cmd.width == 0.0 { 100.0 } else { cmd.width };
         let height = if cmd.height == 0.0 { 100.0 } else { cmd.height };
@@ -213,7 +217,7 @@ impl SceneState {
 
     // ── CreateCircle ──────────────────────────────────────────────────────────
 
-    fn cmd_create_circle(&mut self, cmd: proto::CreateCircle) -> proto::Response {
+    fn cmd_create_circle(&mut self, cmd: proto::CreateCircleRequest) -> proto::Response {
         let center = cmd.center.unwrap_or_default();
         let radius = if cmd.radius == 0.0 { 50.0 } else { cmd.radius };
         let fill = color_or_default(cmd.fill, self.default_fill);
@@ -236,7 +240,7 @@ impl SceneState {
 
     // ── CreateEllipse ─────────────────────────────────────────────────────────
 
-    fn cmd_create_ellipse(&mut self, cmd: proto::CreateEllipse) -> proto::Response {
+    fn cmd_create_ellipse(&mut self, cmd: proto::CreateEllipseRequest) -> proto::Response {
         let center = cmd.center.unwrap_or_default();
         let width = if cmd.width == 0.0 { 100.0 } else { cmd.width };
         let height = if cmd.height == 0.0 { 100.0 } else { cmd.height };
@@ -263,7 +267,7 @@ impl SceneState {
 
     // ── SetEnabled ────────────────────────────────────────────────────────────
 
-    fn cmd_set_enabled(&mut self, handle: u32, cmd: proto::SetEnabled) -> proto::Response {
+    fn cmd_set_enabled(&mut self, handle: u32, cmd: proto::SetEnabledRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
             Some(stim) => {
                 if self.deferred_mode {
@@ -295,7 +299,7 @@ impl SceneState {
 
     // ── SetPosition ───────────────────────────────────────────────────────────
 
-    fn cmd_set_position(&mut self, handle: u32, cmd: proto::SetPosition) -> proto::Response {
+    fn cmd_set_position(&mut self, handle: u32, cmd: proto::SetPositionRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
             Some(stim) => {
                 stim.move_to(self.deferred_mode, cmd.x, cmd.y);
@@ -310,7 +314,7 @@ impl SceneState {
 
     // ── SetOrientation ────────────────────────────────────────────────────────
 
-    fn cmd_set_orientation(&mut self, handle: u32, cmd: proto::SetOrientation) -> proto::Response {
+    fn cmd_set_orientation(&mut self, handle: u32, cmd: proto::SetOrientationRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
             Some(stim) => {
                 stim.set_angle(self.deferred_mode, cmd.angle_deg);
@@ -325,7 +329,7 @@ impl SceneState {
 
     // ── SetFillColor ──────────────────────────────────────────────────────────
 
-    fn cmd_set_fill_color(&mut self, handle: u32, cmd: proto::SetFillColor) -> proto::Response {
+    fn cmd_set_fill_color(&mut self, handle: u32, cmd: proto::SetFillColorRequest) -> proto::Response {
         let c = match cmd.color {
             Some(c) => [c.r, c.g, c.b, c.a],
             None => {
@@ -360,7 +364,7 @@ impl SceneState {
 
     // ── SetAlpha ──────────────────────────────────────────────────────────────
 
-    fn cmd_set_alpha(&mut self, handle: u32, cmd: proto::SetAlpha) -> proto::Response {
+    fn cmd_set_alpha(&mut self, handle: u32, cmd: proto::SetAlphaRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
             None => err(
                 proto::ErrorCode::HandleNotFound,
@@ -390,7 +394,7 @@ impl SceneState {
 
     // ── SetRectSize ───────────────────────────────────────────────────────────
 
-    fn cmd_set_rect_size(&mut self, handle: u32, cmd: proto::SetRectSize) -> proto::Response {
+    fn cmd_set_rect_size(&mut self, handle: u32, cmd: proto::SetRectSizeRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
             None => err(
                 proto::ErrorCode::HandleNotFound,
@@ -412,7 +416,7 @@ impl SceneState {
 
     // ── SetDiscRadius ─────────────────────────────────────────────────────────
 
-    fn cmd_set_disc_radius(&mut self, handle: u32, cmd: proto::SetDiscRadius) -> proto::Response {
+    fn cmd_set_disc_radius(&mut self, handle: u32, cmd: proto::SetDiscRadiusRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
             None => err(
                 proto::ErrorCode::HandleNotFound,
@@ -437,7 +441,7 @@ impl SceneState {
     fn cmd_set_ellipse_size(
         &mut self,
         handle: u32,
-        cmd: proto::SetEllipseSize,
+        cmd: proto::SetEllipseSizeRequest,
     ) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
             None => err(
@@ -463,8 +467,11 @@ impl SceneState {
 
     // ── SetDrawMode ───────────────────────────────────────────────────────────
 
-    fn cmd_set_draw_mode(&mut self, handle: u32, cmd: proto::SetDrawMode) -> proto::Response {
-        let mode = proto_draw_mode_to_scene(cmd.mode);
+    fn cmd_set_draw_mode(&mut self, handle: u32, cmd: proto::SetDrawModeRequest) -> proto::Response {
+        let mode = match proto_draw_mode_to_scene(cmd.mode) {
+            Ok(m) => m,
+            Err(e) => return e,
+        };
         match self.stimuli.get_mut(&handle) {
             None => err(
                 proto::ErrorCode::HandleNotFound,
@@ -496,7 +503,7 @@ impl SceneState {
     fn cmd_set_outline_color(
         &mut self,
         handle: u32,
-        cmd: proto::SetOutlineColor,
+        cmd: proto::SetOutlineColorRequest,
     ) -> proto::Response {
         let c = match cmd.color {
             Some(c) => [c.r, c.g, c.b, c.a],
@@ -535,7 +542,7 @@ impl SceneState {
     fn cmd_set_outline_width(
         &mut self,
         handle: u32,
-        cmd: proto::SetOutlineWidth,
+        cmd: proto::SetOutlineWidthRequest,
     ) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
             None => err(
@@ -568,7 +575,7 @@ impl SceneState {
 
     // ── SetBackground ─────────────────────────────────────────────────────────
 
-    fn cmd_set_background(&mut self, cmd: proto::SetBackground) -> proto::Response {
+    fn cmd_set_background(&mut self, cmd: proto::SetBackgroundRequest) -> proto::Response {
         let c = match cmd.color {
             Some(c) => [c.r, c.g, c.b, c.a],
             None => {
@@ -581,7 +588,7 @@ impl SceneState {
 
     // ── SetDeferredMode ───────────────────────────────────────────────────────
 
-    fn cmd_set_deferred_mode(&mut self, cmd: proto::SetDeferredMode) -> proto::Response {
+    fn cmd_set_deferred_mode(&mut self, cmd: proto::SetDeferredModeRequest) -> proto::Response {
         if cmd.active {
             self.begin_deferred();
         } else if cmd.cancel {
@@ -601,7 +608,7 @@ impl SceneState {
 
     // ── SetAllEnabled ─────────────────────────────────────────────────────────
 
-    fn cmd_set_all_enabled(&mut self, cmd: proto::SetAllEnabled) -> proto::Response {
+    fn cmd_set_all_enabled(&mut self, cmd: proto::SetAllEnabledRequest) -> proto::Response {
         self.set_all_enabled(cmd.enabled, false);
         ok_ack()
     }
@@ -611,12 +618,12 @@ impl SceneState {
     fn cmd_query_server_info(&self) -> proto::Response {
         let bg = self.background.live;
         let version = parse_cargo_version();
-        ok_body(proto::response::Body::ServerInfo(proto::ServerInfo {
+        ok_body(proto::response::Body::ServerInfo(proto::QueryServerInfoResponse {
             width: self.screen_size.0,
             height: self.screen_size.1,
             frame_rate: self.frame_rate,
             background_color: Some(proto::Color { r: bg[0], g: bg[1], b: bg[2], a: bg[3] }),
-            backend: proto::Backend::Unknown as i32,
+            backend: proto::Backend::Unspecified as i32,
             version: Some(version),
         }))
     }
@@ -689,10 +696,10 @@ impl SceneState {
                     })),
                 }),
             ),
-            _ => (proto::StimulusType::Unknown as i32, None),
+            _ => (proto::StimulusType::Unspecified as i32, None),
         };
 
-        ok_body(proto::response::Body::StimulusInfo(proto::StimulusInfo {
+        ok_body(proto::response::Body::StimulusInfo(proto::QueryStimulusResponse {
             stimulus_type,
             enabled: stim.flags().enabled,
             pos: Some(proto::Vec2 { x: pos[0], y: pos[1] }),
@@ -720,12 +727,12 @@ impl SceneState {
                     Stimulus::Bitmap(_) | Stimulus::BitmapSeq(_) => proto::StimulusType::Bitmap,
                     Stimulus::WgslShader(_) => proto::StimulusType::Shader,
                     Stimulus::Particle(_) => proto::StimulusType::Particle,
-                    _ => proto::StimulusType::Unknown,
+                    _ => proto::StimulusType::Unspecified,
                 } as i32;
                 proto::StimulusEntry { handle, stimulus_type, enabled: stim.flags().enabled }
             })
             .collect();
-        ok_body(proto::response::Body::StimulusList(proto::StimulusList { entries }))
+        ok_body(proto::response::Body::StimulusList(proto::ListStimuliResponse { entries }))
     }
 }
 
