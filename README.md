@@ -21,11 +21,12 @@ stimulus server and Andreas Kreiter's **VStim** project.
 
 ## Goals
 
-- Spiritual successor to the C++ StimServer, using ZeroMQ in place of Windows named pipes for cross-platform IPC
-- GPU-accelerated 2-D and 3-D stimulus rendering via **Vulkan** (ash 0.38)
-- Low-latency rendering loop with no blocking on the render thread
+- stable and low-latency rendering of visual stimuli for psychophysics
+  experiments
+- cross-platform client support (Linux, Windows, macOS) with different API
+  flavours (PsychoPy, Bonsai, StimServer)
 - Deterministic event logging for experiment replay and analysis
-- Shared-memory position input (gaze/joystick) to avoid ZeroMQ round-trip latency
+  latency
 
 ## Quick Start
 
