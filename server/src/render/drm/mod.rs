@@ -27,6 +27,9 @@ pub struct DrmRenderState {
     ctx: VkContext,
     pipeline: VkPipeline,
     grating_pipeline: VkGratingPipeline,
+    wireframe_pipeline: VkPipeline,
+    wireframe_grating: VkGratingPipeline,
+    wireframe: bool,
     gpu_buffers: GpuBuffers,
     egui_renderer: VkEguiRenderer,
     egui_ctx: egui::Context,
@@ -49,6 +52,8 @@ impl Drop for DrmRenderState {
     fn drop(&mut self) {
         self.egui_renderer.destroy(&self.ctx.device);
         self.gpu_buffers.destroy_all(&self.ctx.device);
+        self.wireframe_grating.destroy(&self.ctx.device);
+        self.wireframe_pipeline.destroy(&self.ctx.device);
         self.grating_pipeline.destroy(&self.ctx.device);
         self.pipeline.destroy(&self.ctx.device);
     }
@@ -107,8 +112,29 @@ impl DrmRenderState {
 
         // Initialise Vulkan — VK_KHR_display acquires DRM master internally.
         let (ctx, display_info) = init::init();
-        let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass);
-        let grating_pipeline = VkGratingPipeline::new(&ctx.device, ctx.render_pass);
+        let wf_mode = if ctx.supports_wireframe {
+            ash::vk::PolygonMode::LINE
+        } else {
+            ash::vk::PolygonMode::FILL
+        };
+        let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, ash::vk::PolygonMode::FILL);
+        let grating_pipeline = VkGratingPipeline::new(&ctx.device, ctx.render_pass, ash::vk::PolygonMode::FILL);
+        let wireframe_pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, wf_mode);
+        let wireframe_grating = VkGratingPipeline::new(&ctx.device, ctx.render_pass, wf_mode);
+
+        ctx.set_debug_name(pipeline.pipeline, "solid_pipeline");
+        ctx.set_debug_name(grating_pipeline.pipeline, "grating_pipeline");
+        ctx.set_debug_name(wireframe_pipeline.pipeline, "solid_wireframe_pipeline");
+        ctx.set_debug_name(wireframe_grating.pipeline, "grating_wireframe_pipeline");
+        ctx.set_debug_name(ctx.render_pass, "render_pass");
+        ctx.set_debug_name(ctx.egui_render_pass, "egui_render_pass");
+        for (i, frame) in ctx.frames.iter().enumerate() {
+            ctx.set_debug_name(frame.command_buffer, &format!("frame[{i}]_cmd"));
+        }
+        for (i, img) in ctx.swapchain_images.iter().enumerate() {
+            ctx.set_debug_name(*img, &format!("swapchain[{i}]"));
+        }
+
         let gpu_buffers = GpuBuffers::new(&ctx.instance, ctx.physical_device);
         let egui_renderer = VkEguiRenderer::new(
             &ctx.device,
@@ -123,6 +149,9 @@ impl DrmRenderState {
             ctx,
             pipeline,
             grating_pipeline,
+            wireframe_pipeline,
+            wireframe_grating,
+            wireframe: false,
             gpu_buffers,
             egui_renderer,
             egui_ctx,
@@ -151,6 +180,15 @@ impl DrmRenderState {
                         sc.photodiode.enabled = !sc.photodiode.enabled;
                         sc.photodiode.flicker = true;
                         sc.photodiode.lit = false;
+                    }
+                    AppKey::F3 => {
+                        if self.ctx.supports_wireframe {
+                            self.wireframe = !self.wireframe;
+                            log::info!(
+                                "vstimd: wireframe {}",
+                                if self.wireframe { "ON" } else { "OFF" }
+                            );
+                        }
                     }
                 }
             }
@@ -186,6 +224,7 @@ impl DrmRenderState {
                     local_ip: self.local_ip.clone(),
                     hostname: String::new(),
                     gpu_name: String::new(),
+                    wireframe: None,
                 };
                 let output = self.egui_ctx.run_ui(raw_input, |ctx| {
                     build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases, &sys, &self.log_buffer);
@@ -208,10 +247,15 @@ impl DrmRenderState {
                 };
 
             // `None` means the swapchain is out of date (rare in DRM mode).
+            let (pipe, grate) = if self.wireframe {
+                (&self.wireframe_pipeline, &self.wireframe_grating)
+            } else {
+                (&self.pipeline, &self.grating_pipeline)
+            };
             if let Some(t) = render_frame(
                 &self.ctx,
-                &self.pipeline,
-                &self.grating_pipeline,
+                pipe,
+                grate,
                 &mut self.gpu_buffers,
                 &self.scene,
                 &mut frame_index,

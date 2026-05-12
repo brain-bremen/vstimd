@@ -50,6 +50,10 @@ pub struct VkContext {
     pub instance: ash::Instance,
     #[allow(dead_code)]
     pub entry: ash::Entry,
+    /// True when the physical device supports `fillModeNonSolid` (wireframe rendering).
+    pub supports_wireframe: bool,
+    /// Device-level VK_EXT_debug_utils loader; None when the instance extension is absent.
+    pub debug_utils: Option<ash::ext::debug_utils::Device>,
 }
 
 impl Drop for VkContext {
@@ -131,6 +135,30 @@ impl VkContext {
         self.next_present_id.set(1);
     }
 
+    /// Attach a debug name to any Vulkan handle (no-op when debug_utils is absent).
+    pub fn set_debug_name<T: vk::Handle>(&self, object: T, name: &str) {
+        let Some(ref du) = self.debug_utils else { return };
+        let Ok(cname) = std::ffi::CString::new(name) else { return };
+        let info = vk::DebugUtilsObjectNameInfoEXT::default()
+            .object_handle(object)
+            .object_name(&cname);
+        unsafe { du.set_debug_utils_object_name(&info).ok() };
+    }
+
+    /// Begin a labelled command-buffer section visible in RenderDoc (no-op when absent).
+    pub fn cmd_begin_label(&self, cb: vk::CommandBuffer, label: &str, color: [f32; 4]) {
+        let Some(ref du) = self.debug_utils else { return };
+        let Ok(cname) = std::ffi::CString::new(label) else { return };
+        let info = vk::DebugUtilsLabelEXT::default().label_name(&cname).color(color);
+        unsafe { du.cmd_begin_debug_utils_label(cb, &info) };
+    }
+
+    /// End a labelled command-buffer section (no-op when absent).
+    pub fn cmd_end_label(&self, cb: vk::CommandBuffer) {
+        let Some(ref du) = self.debug_utils else { return };
+        unsafe { du.cmd_end_debug_utils_label(cb) };
+    }
+
     /// Query the display refresh period in nanoseconds via VK_GOOGLE_display_timing.
     /// Returns None if the extension is unavailable or the query fails.
     #[allow(dead_code)]
@@ -175,6 +203,7 @@ pub fn build_context(
     surface: vk::SurfaceKHR,
     surface_loader: ash::khr::surface::Instance,
     desired_extent: vk::Extent2D,
+    debug_utils_enabled: bool,
 ) -> VkContext {
     // -- Physical device + queue family + timing-extension probe -------------
     let physical_devices = unsafe {
@@ -233,6 +262,13 @@ pub fn build_context(
     let use_present_wait = has_ext("VK_KHR_present_id") && has_ext("VK_KHR_present_wait");
     let use_display_timing = has_ext("VK_GOOGLE_display_timing");
 
+    // -- Physical device features ---------------------------------------------
+    let phys_features = unsafe { instance.get_physical_device_features(physical_device) };
+    let supports_wireframe = phys_features.fill_mode_non_solid == vk::TRUE;
+    if supports_wireframe {
+        log::info!("vstimd: fillModeNonSolid supported — wireframe toggle available");
+    }
+
     // -- Logical device -------------------------------------------------------
     let queue_priorities = [1.0_f32];
     let queue_info = vk::DeviceQueueCreateInfo::default()
@@ -252,9 +288,12 @@ pub fn build_context(
     let mut present_id_feat = vk::PhysicalDevicePresentIdFeaturesKHR::default().present_id(true);
     let mut present_wait_feat =
         vk::PhysicalDevicePresentWaitFeaturesKHR::default().present_wait(true);
+    let enabled_features = vk::PhysicalDeviceFeatures::default()
+        .fill_mode_non_solid(supports_wireframe);
     let mut device_info = vk::DeviceCreateInfo::default()
         .queue_create_infos(std::slice::from_ref(&queue_info))
-        .enabled_extension_names(&device_exts);
+        .enabled_extension_names(&device_exts)
+        .enabled_features(&enabled_features);
     if use_present_wait {
         device_info = device_info
             .push_next(&mut present_id_feat)
@@ -347,6 +386,13 @@ pub fn build_context(
         })
         .collect();
 
+    // -- VK_EXT_debug_utils device loader ------------------------------------
+    let debug_utils = debug_utils_enabled
+        .then(|| ash::ext::debug_utils::Device::new(&instance, &device));
+    if debug_utils.is_some() {
+        log::info!("vstimd: VK_EXT_debug_utils enabled — RenderDoc labels/names active");
+    }
+
     // -- Render pass + framebuffers -------------------------------------------
     let render_pass = create_render_pass(&device, format);
     let egui_render_pass = create_egui_render_pass(&device, format);
@@ -376,6 +422,8 @@ pub fn build_context(
         display_timing: display_timing_loader,
         instance,
         entry,
+        supports_wireframe,
+        debug_utils,
     }
 }
 

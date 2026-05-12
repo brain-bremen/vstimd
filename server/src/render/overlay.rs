@@ -21,6 +21,9 @@ pub fn build_overlay_ui(
         ));
         ui.label(format!("Host: {}  IP: {}", sys.hostname, sys.local_ip));
         ui.label(format!("Backend: {:?}", sys.backend));
+        if let Some(wf) = sys.wireframe {
+            ui.label(format!("Wireframe [F3]: {}", if wf { "ON" } else { "off" }));
+        }
     });
 
     egui::Window::new("Frame Timing").show(ctx, |ui| {

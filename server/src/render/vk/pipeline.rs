@@ -44,7 +44,7 @@ pub struct VkPipeline {
 }
 
 impl VkPipeline {
-    pub fn new(device: &ash::Device, render_pass: vk::RenderPass) -> Self {
+    pub fn new(device: &ash::Device, render_pass: vk::RenderPass, polygon_mode: vk::PolygonMode) -> Self {
         let spv_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/solid.spv"));
         let spv_u32: Vec<u32> = spv_bytes
             .chunks_exact(4)
@@ -109,7 +109,7 @@ impl VkPipeline {
             .scissor_count(1);
 
         let rasteriser = vk::PipelineRasterizationStateCreateInfo::default()
-            .polygon_mode(vk::PolygonMode::FILL)
+            .polygon_mode(polygon_mode)
             .cull_mode(vk::CullModeFlags::NONE)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .line_width(1.0);
@@ -171,7 +171,7 @@ pub struct VkGratingPipeline {
 }
 
 impl VkGratingPipeline {
-    pub fn new(device: &ash::Device, render_pass: vk::RenderPass) -> Self {
+    pub fn new(device: &ash::Device, render_pass: vk::RenderPass, polygon_mode: vk::PolygonMode) -> Self {
         let spv_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/grating.spv"));
         let spv_u32: Vec<u32> = spv_bytes
             .chunks_exact(4)
@@ -225,7 +225,7 @@ impl VkGratingPipeline {
             .scissor_count(1);
 
         let rasteriser = vk::PipelineRasterizationStateCreateInfo::default()
-            .polygon_mode(vk::PolygonMode::FILL)
+            .polygon_mode(polygon_mode)
             .cull_mode(vk::CullModeFlags::NONE)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .line_width(1.0);

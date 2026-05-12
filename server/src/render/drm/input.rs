@@ -9,6 +9,7 @@ pub enum AppKey {
     Escape,
     F1,
     F2,
+    F3,
     D,
 }
 
@@ -127,6 +128,7 @@ impl InputState {
                     32 => keys.push(AppKey::D),      // KEY_D
                     59 => keys.push(AppKey::F1),     // KEY_F1
                     60 => keys.push(AppKey::F2),     // KEY_F2
+                    61 => keys.push(AppKey::F3),     // KEY_F3
                     _ => {}
                 }
             }

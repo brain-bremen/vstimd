@@ -7,6 +7,8 @@ pub struct SystemInfo {
     pub local_ip: String,
     pub hostname: String,
     pub gpu_name: String,
+    /// Some(true/false) when wireframe toggle is supported; None on DRM or unsupported GPU.
+    pub wireframe: Option<bool>,
 }
 
 /// Resolve the default-route local IP by connecting a UDP socket (no packets sent).

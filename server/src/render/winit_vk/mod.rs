@@ -42,6 +42,9 @@ struct State {
     ctx: VkContext,
     pipeline: VkPipeline,
     grating_pipeline: VkGratingPipeline,
+    wireframe_pipeline: VkPipeline,
+    wireframe_grating: VkGratingPipeline,
+    wireframe: bool,
     gpu_buffers: GpuBuffers,
     egui_renderer: VkEguiRenderer,
     egui_winit: egui_winit::State, // holds display-handle references
@@ -63,6 +66,8 @@ impl Drop for State {
     fn drop(&mut self) {
         self.egui_renderer.destroy(&self.ctx.device);
         self.gpu_buffers.destroy_all(&self.ctx.device);
+        self.wireframe_grating.destroy(&self.ctx.device);
+        self.wireframe_pipeline.destroy(&self.ctx.device);
         self.grating_pipeline.destroy(&self.ctx.device);
         self.pipeline.destroy(&self.ctx.device);
     }
@@ -81,8 +86,29 @@ impl State {
         // the screen clock.
         log::info!("vstimd: present mode: FIFO");
 
-        let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass);
-        let grating_pipeline = VkGratingPipeline::new(&ctx.device, ctx.render_pass);
+        let wf_mode = if ctx.supports_wireframe {
+            ash::vk::PolygonMode::LINE
+        } else {
+            ash::vk::PolygonMode::FILL
+        };
+        let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, ash::vk::PolygonMode::FILL);
+        let grating_pipeline = VkGratingPipeline::new(&ctx.device, ctx.render_pass, ash::vk::PolygonMode::FILL);
+        let wireframe_pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, wf_mode);
+        let wireframe_grating = VkGratingPipeline::new(&ctx.device, ctx.render_pass, wf_mode);
+
+        ctx.set_debug_name(pipeline.pipeline, "solid_pipeline");
+        ctx.set_debug_name(grating_pipeline.pipeline, "grating_pipeline");
+        ctx.set_debug_name(wireframe_pipeline.pipeline, "solid_wireframe_pipeline");
+        ctx.set_debug_name(wireframe_grating.pipeline, "grating_wireframe_pipeline");
+        ctx.set_debug_name(ctx.render_pass, "render_pass");
+        ctx.set_debug_name(ctx.egui_render_pass, "egui_render_pass");
+        for (i, frame) in ctx.frames.iter().enumerate() {
+            ctx.set_debug_name(frame.command_buffer, &format!("frame[{i}]_cmd"));
+        }
+        for (i, img) in ctx.swapchain_images.iter().enumerate() {
+            ctx.set_debug_name(*img, &format!("swapchain[{i}]"));
+        }
+
         let gpu_buffers = GpuBuffers::new(&ctx.instance, ctx.physical_device);
         let egui_renderer = VkEguiRenderer::new(
             &ctx.device,
@@ -109,6 +135,9 @@ impl State {
             ctx,
             pipeline,
             grating_pipeline,
+            wireframe_pipeline,
+            wireframe_grating,
+            wireframe: false,
             gpu_buffers,
             egui_renderer,
             scene,
@@ -126,6 +155,12 @@ impl State {
     }
 
     fn render(&mut self) {
+        let (pipe, grate) = if self.wireframe {
+            (&self.wireframe_pipeline, &self.wireframe_grating)
+        } else {
+            (&self.pipeline, &self.grating_pipeline)
+        };
+
         // Build the egui overlay if enabled.
         if self.show_overlay {
             let raw_input = self.egui_winit.take_egui_input(&self.window);
@@ -141,6 +176,7 @@ impl State {
                 local_ip: self.local_ip.clone(),
                 hostname: String::new(),
                 gpu_name: String::new(),
+                wireframe: self.ctx.supports_wireframe.then_some(self.wireframe),
             };
             let output = self.egui_ctx.run_ui(raw_input, |ctx| {
                 build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases, &sys, &self.log_buffer);
@@ -161,8 +197,8 @@ impl State {
 
             let tick = render_frame(
                 &self.ctx,
-                &self.pipeline,
-                &self.grating_pipeline,
+                pipe,
+                grate,
                 &mut self.gpu_buffers,
                 &self.scene,
                 &mut self.frame_index,
@@ -174,8 +210,8 @@ impl State {
         } else {
             let tick = render_frame(
                 &self.ctx,
-                &self.pipeline,
-                &self.grating_pipeline,
+                pipe,
+                grate,
                 &mut self.gpu_buffers,
                 &self.scene,
                 &mut self.frame_index,
@@ -336,6 +372,17 @@ impl ApplicationHandler for WinitApp {
                         sc.photodiode.enabled = !sc.photodiode.enabled;
                         sc.photodiode.flicker = true;
                         sc.photodiode.lit = false;
+                    }
+                }
+                KeyCode::F3 => {
+                    if let Some(state) = &mut self.state
+                        && state.ctx.supports_wireframe
+                    {
+                        state.wireframe = !state.wireframe;
+                        log::info!(
+                            "vstimd: wireframe {}",
+                            if state.wireframe { "ON" } else { "OFF" }
+                        );
                     }
                 }
                 KeyCode::KeyD => {

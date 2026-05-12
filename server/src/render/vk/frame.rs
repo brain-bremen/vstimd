@@ -237,6 +237,7 @@ pub fn render_frame(
         };
 
         // ── Pass 1: solid stimuli ─────────────────────────────────────────────
+        ctx.cmd_begin_label(cb, "solid stimuli", [0.3, 0.7, 1.0, 1.0]);
         if !solid_draws.is_empty() {
             ctx.device
                 .cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
@@ -249,8 +250,10 @@ pub fn render_frame(
                 ctx.device.cmd_draw_indexed(cb, index_count, 1, 0, 0, 0);
             }
         }
+        ctx.cmd_end_label(cb);
 
         // ── Pass 2: grating stimuli ───────────────────────────────────────────
+        ctx.cmd_begin_label(cb, "grating stimuli", [0.8, 0.5, 0.1, 1.0]);
         if !grating_draws.is_empty() {
             ctx.device.cmd_bind_pipeline(
                 cb,
@@ -274,6 +277,7 @@ pub fn render_frame(
                 ctx.device.cmd_draw_indexed(cb, index_count, 1, 0, 0, 0);
             }
         }
+        ctx.cmd_end_label(cb);
 
         ctx.device.cmd_end_render_pass(cb);
 
@@ -299,6 +303,7 @@ pub fn render_frame(
             ctx.device
                 .cmd_begin_render_pass(cb, &egui_rp_info, vk::SubpassContents::INLINE);
 
+            ctx.cmd_begin_label(cb, "egui overlay", [0.5, 0.9, 0.3, 1.0]);
             // Paint egui
             renderer.paint(
                 &ctx.device,
@@ -307,6 +312,7 @@ pub fn render_frame(
                 (ctx.extent.width, ctx.extent.height),
                 data.pixels_per_point,
             );
+            ctx.cmd_end_label(cb);
 
             ctx.device.cmd_end_render_pass(cb);
         }
