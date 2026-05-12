@@ -36,9 +36,15 @@ pub enum RenderTarget {
 pub(crate) fn spawn_demo_stimuli(
     scene: &std::sync::Arc<std::sync::RwLock<crate::scene::SceneState>>,
 ) {
+    use rand::Rng;
+    use rand::rng;
+    use rand::RngExt;
     use crate::scene::{
         Deferred, DiscStimulus, RectStimulus, ShapeAppearance, Stimulus, StimulusFlags, Transform2D,
     };
+
+    let mut rng = rand::rng();
+
 
     let mut sc = scene.write().expect("scene lock poisoned");
     let h1 = sc.alloc_stim_handle();
@@ -50,7 +56,7 @@ pub(crate) fn spawn_demo_stimuli(
                 ..Default::default()
             },
             transform: Deferred::new(Transform2D {
-                pos: [-150.0, 0.0],
+                pos: [rng.random_range(-500.0..500.0), rng.random_range(-500.0..500.0)],
                 angle: 0.0,
             }),
             appearance: Deferred::new(ShapeAppearance {
@@ -69,7 +75,7 @@ pub(crate) fn spawn_demo_stimuli(
                 ..Default::default()
             },
             transform: Deferred::new(Transform2D {
-                pos: [150.0, 0.0],
+                pos: [rng.random_range(-500.0..500.0), rng.random_range(-500.0..500.0)],
                 angle: 30.0,
             }),
             appearance: Deferred::new(ShapeAppearance {
