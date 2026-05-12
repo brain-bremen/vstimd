@@ -53,8 +53,8 @@ impl SceneState {
         let width = if cmd.width == 0.0 { 200.0 } else { cmd.width };
         let height = if cmd.height == 0.0 { 200.0 } else { cmd.height };
         let sf = if cmd.sf == 0.0 { 0.05 } else { cmd.sf };
-        let contrast = if cmd.contrast == 0.0 { 1.0 } else { cmd.contrast };
-        let opacity = if cmd.opacity == 0.0 { 1.0 } else { cmd.opacity };
+        let contrast = cmd.contrast;
+        let opacity = cmd.opacity;
 
         let color = match cmd.color {
             Some(c) => [c.r, c.g, c.b, opacity],

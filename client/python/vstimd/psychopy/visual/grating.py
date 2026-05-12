@@ -192,7 +192,7 @@ class GratingStim:
             phase=self._phase,
             angle=self._ori,
             contrast=self._contrast,
-            r=rgba[0], g=rgba[1], b=rgba[2], a=rgba[3],
+            r=rgba[0], g=rgba[1], b=rgba[2], opacity=rgba[3],
             waveform=waveform,
             mask=mask_type,
             mask_param=mask_param,

@@ -64,11 +64,11 @@ message CreateGratingRequest {
   float        sf          = 4;  // spatial frequency in cycles/pixel (0 → default 0.05)
   float        phase       = 5;  // static phase offset [0, 1] (default 0)
   float        angle       = 6;  // stripe orientation in degrees CCW (default 0)
-  float        contrast    = 7;  // contrast in [0, 1] (0 → default 1)
+  float        contrast    = 7;  // contrast in [0, 1] (0 is valid: zero contrast renders a flat field)
   Color        color       = 8;  // grating peak colour (absent → white)
   WaveformType waveform    = 9;  // carrier waveform (default SIN)
   MaskType     mask        = 10; // aperture mask (default NONE)
-  float        opacity     = 11; // global opacity [0, 1] (0 → default 1)
+  float        opacity     = 11; // global opacity [0, 1] (0 is valid: fully transparent)
   // Mask-specific parameter (interpreted per mask type; 0 → use default):
   //   gauss:     SD in normalized units where patch radius = 1 (default 0.333)
   //   raisedCos: fringe proportion [0, 1] (default 0.2, matching PsychoPy)
