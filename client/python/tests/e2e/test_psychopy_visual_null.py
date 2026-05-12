@@ -13,6 +13,7 @@ import time
 import pytest
 
 import vstimd.psychopy.visual as visual
+
 from ._psychopy_visual_cases import *  # noqa: F401, F403
 from .conftest import reachable
 
@@ -53,6 +54,11 @@ def server_process(server_address: str):
     yield
     proc.terminate()
     proc.wait(timeout=5)
+
+
+@pytest.fixture
+def step_delay() -> float:
+    return 0.0
 
 
 @pytest.fixture(scope="session")
