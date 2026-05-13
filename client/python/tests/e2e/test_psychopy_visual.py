@@ -34,7 +34,11 @@ def server_process(server_address: str):
     if os.environ.get("CI"):
         pytest.skip("e2e tests skipped in CI")
 
-    has_display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    has_display = (
+        sys.platform == "win32"
+        or os.environ.get("DISPLAY")
+        or os.environ.get("WAYLAND_DISPLAY")
+    )
     if not has_display:
         pytest.skip("e2e tests require a display (no DISPLAY/WAYLAND_DISPLAY set)")
 
