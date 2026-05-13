@@ -8,6 +8,7 @@ Runs in CI and on any machine — no display or GPU required.
 
 import pathlib
 import subprocess
+import sys
 import time
 
 import pytest
@@ -32,7 +33,8 @@ def server_process(server_address: str):
         yield
         return
 
-    server_bin = _REPO_ROOT / "target" / "release" / "vstimd"
+    exe = "vstimd.exe" if sys.platform == "win32" else "vstimd"
+    server_bin = _REPO_ROOT / "target" / "release" / exe
     if not server_bin.exists():
         result = subprocess.run(["cargo", "build", "--release"], cwd=_REPO_ROOT)
         if result.returncode != 0:

@@ -9,6 +9,8 @@ Skipped in CI and when no display is available.
 import os
 import pathlib
 import subprocess
+import sys
+import tempfile
 import time
 
 import pytest
@@ -43,8 +45,9 @@ def server_process(server_address: str):
     if result.returncode != 0:
         pytest.skip(f"cargo build --release failed (exit {result.returncode})")
 
-    server_bin = _REPO_ROOT / "target" / "release" / "vstimd"
-    log_path = pathlib.Path("/tmp/vstimd_e2e.log")
+    exe = "vstimd.exe" if sys.platform == "win32" else "vstimd"
+    server_bin = _REPO_ROOT / "target" / "release" / exe
+    log_path = pathlib.Path(tempfile.gettempdir()) / "vstimd_e2e.log"
     log_file = log_path.open("w")
     env = os.environ.copy()
     env.setdefault("RUST_LOG", "debug")
