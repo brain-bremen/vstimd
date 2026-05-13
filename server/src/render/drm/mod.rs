@@ -275,6 +275,8 @@ impl DrmRenderState {
                         log::warn!(
                             "vstimd: disabling DRM vblank clock for this session after wait_vblank error"
                         );
+                        // One-way fallback: once wait_vblank fails, stop issuing
+                        // the ioctl and use GPU-completion timestamps instead.
                         self.drm_vblank = None;
                         None
                     }
