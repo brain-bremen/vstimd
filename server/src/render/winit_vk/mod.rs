@@ -439,22 +439,42 @@ impl ApplicationHandler for WinitApp {
 
 /// Determine the display refresh rate by trying several methods in order:
 ///
-/// 1. DRM kernel interface (Linux only) — reads the active connector mode
-///    directly from the kernel, compositor-independent.
-/// 2. winit `video_modes()` filtered by current window resolution.
-/// 3. winit `refresh_rate_millihertz()` on the current monitor.
+/// 1. DRM kernel interface (Linux bare-metal only) — reads the active connector
+///    mode directly from the kernel. Skipped when a compositor is running.
+/// 2. winit `refresh_rate_millihertz()` — queries the active compositor mode.
+/// 3. winit `video_modes()` filtered by current window resolution — fallback.
 ///
 /// Panics if the refresh rate cannot be determined. No silent fallback is
 /// allowed — an unknown rate would cause drop detection to produce garbage.
 fn detect_refresh_hz(window: &Window) -> f64 {
-    // 1. DRM kernel interface (Linux only).
+    // 1. DRM kernel interface (Linux only, bare-metal only).
+    // Skip when a compositor is running: DRM iterates connectors in kernel
+    // order and has no way to match one to the window's monitor. On a
+    // multi-monitor system it will pick the wrong connector.
     #[cfg(target_os = "linux")]
-    if let Some(hz) = query_refresh_hz_from_drm() {
-        log::info!("vstimd: display clock (DRM): {hz:.3} Hz");
+    if std::env::var_os("DISPLAY").is_none() && std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        if let Some(hz) = query_refresh_hz_from_drm() {
+            log::info!("vstimd: display clock (DRM): {hz:.3} Hz");
+            return hz;
+        }
+    }
+
+    // 2. refresh_rate_millihertz() — queries the active XRandR/compositor mode.
+    // Preferred over video_modes() because it reflects what the compositor is
+    // actually running, not just what modes the monitor supports.
+    if let Some(mhz) = window
+        .current_monitor()
+        .and_then(|m| m.refresh_rate_millihertz())
+    {
+        let hz = mhz as f64 / 1000.0;
+        log::info!("vstimd: display clock (monitor API): {hz:.3} Hz");
         return hz;
     }
 
-    // 2. winit video_modes() — works on X11 and some Wayland compositors.
+    // 3. winit video_modes() — fallback; filtered by the window's current size.
+    // Unreliable at construction time: inner_size() may be a platform default
+    // (e.g. 800×600) before the compositor applies fullscreen, which can match
+    // a wrong VESA mode (800×600@75 Hz) instead of the native rate.
     if let Some(hz) = window.current_monitor().and_then(|m| {
         let size = window.inner_size();
         m.video_modes()
@@ -464,16 +484,6 @@ fn detect_refresh_hz(window: &Window) -> f64 {
             .map(|mhz| mhz as f64 / 1000.0)
     }) {
         log::info!("vstimd: display clock (video_modes): {hz:.3} Hz");
-        return hz;
-    }
-
-    // 3. refresh_rate_millihertz() directly.
-    if let Some(mhz) = window
-        .current_monitor()
-        .and_then(|m| m.refresh_rate_millihertz())
-    {
-        let hz = mhz as f64 / 1000.0;
-        log::info!("vstimd: display clock (monitor API): {hz:.3} Hz");
         return hz;
     }
 
