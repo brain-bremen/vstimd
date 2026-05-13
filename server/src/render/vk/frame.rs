@@ -40,15 +40,35 @@ pub fn render_frame(
     frame_stats: &mut FrameStats,
     mut egui_renderer: Option<&mut VkEguiRenderer>,
     egui_data: Option<EguiFrameData>,
+    screen_clock: Option<std::time::Instant>,
 ) -> Option<FrameTick> {
-    // ── Waitable screen clock (VK_KHR_present_wait) ───────────────────────────
-    // Block until the previously presented frame is confirmed on-screen.
-    // The Instant captured here is the best available proxy for the vblank
-    // that just fired — this is the "tick" that starts work on the new frame.
-    // On the first call (no prior present) we fall through immediately and
-    // use the current time as a starting-point approximation.
     let this_present_id = ctx.next_present_id.get();
-    let vblank_time = if let (Some(pw), true) = (&ctx.present_wait, this_present_id > 1) {
+
+    // -- Wait for this slot's previous GPU work (must precede upload) ----------
+    // Moved before tessellation so gpu_buffers.upload() (which destroys old
+    // vk::Buffer/DeviceMemory) is only called once the GPU has finished reading
+    // the previous frame's buffers.
+    let frame = &ctx.frames[*frame_index % ctx.frames.len()];
+    let t_fence_start = std::time::Instant::now();
+    unsafe {
+        ctx.device
+            .wait_for_fences(&[frame.in_flight], true, u64::MAX)
+            .expect("fence wait");
+        // NOTE: do NOT reset the fence here. If acquire_next_image fails with
+        // OUT_OF_DATE below, we return early without ever calling queue_submit,
+        // which means the fence would stay reset-but-never-signaled. The next
+        // call to render_frame would then wait on it forever. Reset only after
+        // a successful acquire, immediately before queue_submit.
+    }
+    let fence_us = t_fence_start.elapsed().as_micros() as u32;
+
+    // ── Screen clock ──────────────────────────────────────────────────────────
+    // Priority 1: DRM vblank time pre-computed by the caller (DRM mode).
+    // Priority 2: VK_KHR_present_wait (winit mode when extension is present).
+    // Priority 3: Instant::now() — GPU-completion time only (inaccurate).
+    let vblank_time = if let Some(t) = screen_clock {
+        t
+    } else if let (Some(pw), true) = (&ctx.present_wait, this_present_id > 1) {
         unsafe {
             match pw.wait_for_present(ctx.swapchain, this_present_id - 1, 3_000_000_000) {
                 Ok(()) => {}
@@ -66,9 +86,9 @@ pub fn render_frame(
         }
         std::time::Instant::now()
     } else {
-        // First frame or no present_wait support: use current time.
         std::time::Instant::now()
     };
+
     // -- Update: tessellate scene into GPU buffers ----------------------------
     let t_tess_start = std::time::Instant::now();
     {
@@ -134,22 +154,6 @@ pub fn render_frame(
         }
     } // write lock dropped — ZMQ thread can run
     let tessellate_us = t_tess_start.elapsed().as_micros() as u32;
-
-    let frame = &ctx.frames[*frame_index % ctx.frames.len()];
-
-    // -- Wait for this slot's previous GPU work -------------------------------
-    let t_fence_start = std::time::Instant::now();
-    unsafe {
-        ctx.device
-            .wait_for_fences(&[frame.in_flight], true, u64::MAX)
-            .expect("fence wait");
-        // NOTE: do NOT reset the fence here. If acquire_next_image fails with
-        // OUT_OF_DATE below, we return early without ever calling queue_submit,
-        // which means the fence would stay reset-but-never-signaled. The next
-        // call to render_frame would then wait on it forever. Reset only after
-        // a successful acquire, immediately before queue_submit.
-    }
-    let fence_us = t_fence_start.elapsed().as_micros() as u32;
 
     // -- Acquire swapchain image ----------------------------------------------
     let t_acquire_start = std::time::Instant::now();

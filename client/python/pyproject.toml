@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "vstimd"
 version = "0.1.0"
 description = "Python client for vstimd (protobuf + ZMQ)"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "pyzmq>=25",
     "protobuf>=5",

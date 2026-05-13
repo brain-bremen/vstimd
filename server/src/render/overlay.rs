@@ -4,7 +4,7 @@ use crate::log_buffer::LogBuffer;
 use crate::scene::{SceneState, Stimulus};
 use crate::timing::{FramePhases, FrameStats};
 
-pub use super::system_info::SystemInfo;
+pub use super::system_info::{ClockSource, SystemInfo};
 use super::benchmark::BenchmarkState;
 
 pub fn build_overlay_ui(
@@ -23,6 +23,13 @@ pub fn build_overlay_ui(
         ));
         ui.label(format!("Host: {}  IP: {}", sys.hostname, sys.local_ip));
         ui.label(format!("Backend: {:?}", sys.backend));
+        let (clock_label, clock_color) = match sys.clock_source {
+            ClockSource::DrmVblank     => ("Clock: DRM vblank",                     egui::Color32::from_rgb(80, 200, 80)),
+            ClockSource::PresentWait   => ("Clock: VK_KHR_present_wait",            egui::Color32::from_rgb(80, 200, 80)),
+            ClockSource::DisplayTiming => ("Clock: VK_GOOGLE_display_timing",       egui::Color32::YELLOW),
+            ClockSource::GpuCompletion => ("Clock: GPU-completion (inaccurate)",    egui::Color32::RED),
+        };
+        ui.colored_label(clock_color, clock_label);
         if let Some(wf) = sys.wireframe {
             ui.label(format!("Wireframe [F3]: {}", if wf { "ON" } else { "off" }));
         }
