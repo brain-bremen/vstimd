@@ -39,7 +39,6 @@ pub(crate) fn spawn_demo_stimuli(
     scene: &std::sync::Arc<std::sync::RwLock<crate::scene::SceneState>>,
 ) {
     use rand::Rng;
-    use rand::rng;
     use rand::RngExt;
     use crate::scene::{
         Deferred, DiscStimulus, GratingParams, GratingStimulus, RectStimulus, ShapeAppearance,
