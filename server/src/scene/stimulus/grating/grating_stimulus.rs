@@ -105,6 +105,105 @@ impl GratingStimulus {
 
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scene::stimulus::grating::grating_params::GratingParams;
+
+    fn default_stim() -> GratingStimulus {
+        GratingStimulus::new([0.0, 0.0], 0.0, [100.0, 100.0], [1.0, 1.0, 1.0, 1.0], GratingParams::default())
+    }
+
+    // ── set_phase ──────────────────────────────────────────────────────────────
+
+    #[test]
+    fn set_phase_immediate_resets_accum() {
+        let mut s = default_stim();
+        s.phase_accum = 3.14;
+        s.set_phase(false, 0.5);
+        assert_eq!(s.phase_accum, 0.0);
+        assert_eq!(s.params.live.phase, 0.5);
+    }
+
+    #[test]
+    fn set_phase_deferred_preserves_accum() {
+        let mut s = default_stim();
+        s.phase_accum = 3.14;
+        s.set_phase(true, 0.5);
+        assert_eq!(s.phase_accum, 3.14);
+        // live untouched, copy updated
+        assert_ne!(s.params.live.phase, 0.5);
+        assert_eq!(s.params.copy.phase, 0.5);
+    }
+
+    // ── deferred mode branching ────────────────────────────────────────────────
+
+    #[test]
+    fn set_sf_immediate_writes_live() {
+        let mut s = default_stim();
+        let original_sf = s.params.live.sf; // 0.05 default
+        s.set_sf(false, 0.1);
+        assert_eq!(s.params.live.sf, 0.1);
+        // immediate write leaves copy untouched
+        assert_eq!(s.params.copy.sf, original_sf);
+    }
+
+    #[test]
+    fn set_sf_deferred_writes_copy_not_live() {
+        let mut s = default_stim();
+        let original_live = s.params.live.sf;
+        s.set_sf(true, 0.99);
+        assert_eq!(s.params.live.sf, original_live);
+        assert_eq!(s.params.copy.sf, 0.99);
+    }
+
+    #[test]
+    fn set_drift_decoupled_inverts_to_coupled() {
+        let mut s = default_stim();
+        s.set_drift_decoupled(false, true);
+        assert!(!s.params.live.drift_coupled);
+        s.set_drift_decoupled(false, false);
+        assert!(s.params.live.drift_coupled);
+    }
+
+    // ── grating_phase_inc ──────────────────────────────────────────────────────
+
+    #[test]
+    fn phase_inc_zero_fps_returns_zero() {
+        let s = default_stim();
+        assert_eq!(grating_phase_inc(&s, 0.0), 0.0);
+        assert_eq!(grating_phase_inc(&s, -1.0), 0.0);
+    }
+
+    #[test]
+    fn phase_inc_coupled_is_speed_over_fps() {
+        let mut s = default_stim();
+        s.params.live.drift_speed = 2.0;
+        s.params.live.drift_coupled = true;
+        let inc = grating_phase_inc(&s, 60.0);
+        assert!((inc - 2.0 / 60.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn phase_inc_decoupled_projects_onto_grating_axis() {
+        let mut s = GratingStimulus::new(
+            [0.0, 0.0],
+            45.0,                            // grating orientation 45°
+            [100.0, 100.0],
+            [1.0; 4],
+            GratingParams { drift_speed: 1.0, drift_coupled: false, drift_angle: 45.0, ..GratingParams::default() },
+        );
+        // drift_angle == grating_angle → cos(0) = 1 → inc = speed/fps
+        let inc = grating_phase_inc(&s, 60.0);
+        assert!((inc - 1.0 / 60.0).abs() < 1e-6);
+
+        // 90° offset → cos(90°) ≈ 0
+        s.params.live.drift_angle = 135.0; // 135 - 45 = 90°
+        let inc_perp = grating_phase_inc(&s, 60.0);
+        assert!(inc_perp.abs() < 1e-6);
+    }
+}
+
 // ── Grating render helpers ────────────────────────────────────────────────────
 
 /// Per-frame phase increment (cycles) for the drift accumulator.
