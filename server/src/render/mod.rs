@@ -5,7 +5,7 @@ pub mod display_info;
 pub use display_info::StimulusDisplayInfo;
 
 pub mod system_info;
-pub use system_info::{query_local_ip, SystemInfo};
+pub use system_info::{SystemInfo, query_local_ip};
 
 pub(crate) mod benchmark;
 pub use benchmark::BenchmarkState;
@@ -25,7 +25,10 @@ pub use winit_vk::WinitApp;
 pub enum WindowMode {
     #[default]
     Fullscreen,
-    Windowed { width: u32, height: u32 },
+    Windowed {
+        width: u32,
+        height: u32,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,15 +41,13 @@ pub enum RenderTarget {
 pub(crate) fn spawn_demo_stimuli(
     scene: &std::sync::Arc<std::sync::RwLock<crate::scene::SceneState>>,
 ) {
-    use rand::Rng;
-    use rand::RngExt;
     use crate::scene::{
         Deferred, DiscStimulus, GratingParams, GratingStimulus, RectStimulus, ShapeAppearance,
         Stimulus, StimulusFlags, Transform2D, Waveform,
     };
+    use rand::RngExt;
 
     let mut rng = rand::rng();
-
 
     let mut sc = scene.write().expect("scene lock poisoned");
     let h1 = sc.alloc_stim_handle();
@@ -58,7 +59,10 @@ pub(crate) fn spawn_demo_stimuli(
                 ..Default::default()
             },
             transform: Deferred::new(Transform2D {
-                pos: [rng.random_range(-500.0..500.0), rng.random_range(-500.0..500.0)],
+                pos: [
+                    rng.random_range(-500.0..500.0),
+                    rng.random_range(-500.0..500.0),
+                ],
                 angle: 0.0,
             }),
             appearance: Deferred::new(ShapeAppearance {
@@ -77,7 +81,10 @@ pub(crate) fn spawn_demo_stimuli(
                 ..Default::default()
             },
             transform: Deferred::new(Transform2D {
-                pos: [rng.random_range(-500.0..500.0), rng.random_range(-500.0..500.0)],
+                pos: [
+                    rng.random_range(-500.0..500.0),
+                    rng.random_range(-500.0..500.0),
+                ],
                 angle: 30.0,
             }),
             appearance: Deferred::new(ShapeAppearance {
@@ -91,8 +98,14 @@ pub(crate) fn spawn_demo_stimuli(
     sc.stimuli.insert(
         h3,
         Stimulus::Grating(GratingStimulus {
-            flags: StimulusFlags { enabled: true, ..Default::default() },
-            transform: Deferred::new(Transform2D { pos: [0.0, 0.0], angle: 0.0 }),
+            flags: StimulusFlags {
+                enabled: true,
+                ..Default::default()
+            },
+            transform: Deferred::new(Transform2D {
+                pos: [100.0, -200.0],
+                angle: 0.0,
+            }),
             color: Deferred::new([1.0, 1.0, 1.0, 1.0]),
             size: Deferred::new([100.0, 100.0]),
             params: Deferred::new(GratingParams {

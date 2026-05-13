@@ -1,18 +1,55 @@
-use crate::render::Vertex;
 use ash::vk;
+use crate::render::Vertex;
 
-pub struct VkPipeline {
+// ── Push-constant layout for the grating pipeline ────────────────────────────
+
+/// Must match the `PushConstants` struct in `shaders/grating.wgsl` (std430).
+///
+/// Layout (80 bytes):
+///   offset  0: screen_half  [f32; 2]
+///   offset  8: center_px    [f32; 2]
+///   offset 16: half_size    [f32; 2]
+///   offset 24: sf           f32
+///   offset 28: phase        f32
+///   offset 32: ori_rad      f32
+///   offset 36: contrast     f32
+///   offset 40: _pad_color   [u32; 2]  ← 8-byte gap: vec4 requires 16-byte alignment
+///   offset 48: color        [f32; 4]
+///   offset 64: waveform     u32
+///   offset 68: mask_type    u32
+///   offset 72: mask_param   f32   (SD for gauss; fringe width for raisedCos; 0 = use default)
+///   offset 76: _pad         u32
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GratingPushConstants {
+    pub screen_half: [f32; 2],
+    pub center_px: [f32; 2],
+    pub half_size: [f32; 2],
+    pub sf: f32,
+    pub phase: f32,
+    pub ori_rad: f32,
+    pub contrast: f32,
+    pub _pad_color: [u32; 2],
+    pub color: [f32; 4],
+    pub waveform: u32,
+    pub mask_type: u32,
+    pub mask_param: f32,
+    pub _pad: u32,
+}
+// ── Grating pipeline ──────────────────────────────────────────────────────────
+
+pub struct VkGratingPipeline {
     pub pipeline: vk::Pipeline,
     pub layout: vk::PipelineLayout,
 }
 
-impl VkPipeline {
+impl VkGratingPipeline {
     pub fn new(
         device: &ash::Device,
         render_pass: vk::RenderPass,
         polygon_mode: vk::PolygonMode,
     ) -> Self {
-        let spv_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/solid.spv"));
+        let spv_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/grating.spv"));
         let spv_u32: Vec<u32> = spv_bytes
             .chunks_exact(4)
             .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
@@ -21,7 +58,7 @@ impl VkPipeline {
         let shader_module = unsafe {
             device
                 .create_shader_module(&shader_info, None)
-                .expect("failed to create shader module")
+                .expect("grating: shader module")
         };
 
         let entry_vs = c"vs_main";
@@ -37,6 +74,7 @@ impl VkPipeline {
                 .name(entry_fs),
         ];
 
+        // Vertex input — same layout as the solid pipeline.
         let binding = vk::VertexInputBindingDescription::default()
             .binding(0)
             .stride(std::mem::size_of::<Vertex>() as u32)
@@ -97,11 +135,17 @@ impl VkPipeline {
         let blend_state = vk::PipelineColorBlendStateCreateInfo::default()
             .attachments(std::slice::from_ref(&blend_attachment));
 
-        let layout_info = vk::PipelineLayoutCreateInfo::default();
+        // Push constant range covers the full GratingPushConstants struct.
+        let push_range = vk::PushConstantRange::default()
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
+            .offset(0)
+            .size(std::mem::size_of::<GratingPushConstants>() as u32);
+        let layout_info = vk::PipelineLayoutCreateInfo::default()
+            .push_constant_ranges(std::slice::from_ref(&push_range));
         let layout = unsafe {
             device
                 .create_pipeline_layout(&layout_info, None)
-                .expect("failed to create layout")
+                .expect("grating: pipeline layout")
         };
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()
@@ -119,7 +163,7 @@ impl VkPipeline {
         let pipeline = unsafe {
             device
                 .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
-                .expect("failed to create graphics pipeline")[0]
+                .expect("grating: graphics pipeline")[0]
         };
 
         unsafe { device.destroy_shader_module(shader_module, None) };

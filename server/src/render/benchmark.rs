@@ -1,9 +1,6 @@
 use std::sync::{Arc, RwLock};
 
-use crate::scene::{
-    Deferred, GratingParams, GratingStimulus, SceneState, Stimulus, StimulusFlags, Transform2D,
-    Waveform,
-};
+use crate::scene::{GratingParams, GratingStimulus, SceneState, Stimulus, Waveform};
 use crate::timing::FrameStats;
 
 pub struct BenchmarkResult {
@@ -65,21 +62,20 @@ impl BenchmarkState {
                     let angle = (col * rows + row) as f32 * (180.0 / (cols * rows) as f32);
 
                     let h = sc.alloc_stim_handle();
-                    sc.stimuli.insert(h, Stimulus::Grating(GratingStimulus {
-                        flags: StimulusFlags { enabled: true, ..Default::default() },
-                        transform: Deferred::new(Transform2D { pos: [cx, cy], angle }),
-                        color: Deferred::new([1.0, 1.0, 1.0, 1.0]),
-                        size: Deferred::new([stim_w / 2.0, stim_h / 2.0]),
-                        params: Deferred::new(GratingParams {
+                    sc.stimuli.insert(h, Stimulus::Grating(GratingStimulus::new(
+                        [cx, cy],
+                        angle,
+                        [stim_w / 2.0, stim_h / 2.0],
+                        [1.0, 1.0, 1.0, 1.0],
+                        GratingParams {
                             sf: 0.05,
                             contrast: 1.0,
                             drift_speed: 1.0,
                             waveform: Waveform::Sin,
                             drift_coupled: true,
                             ..Default::default()
-                        }),
-                        phase_accum: 0.0,
-                    }));
+                        },
+                    )));
                     handles.push(h);
                 }
             }

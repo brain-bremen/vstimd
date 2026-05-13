@@ -5,7 +5,7 @@
 pub struct StimulusFlags {
     pub enabled: bool,
     pub enabled_copy: bool,
-    pub protected: bool,  // survives RemoveAll
+    pub protected: bool, // survives RemoveAll
     /// Set on creation, mutation, or flip. Cleared by the render thread after
     /// tessellation+upload. Prevents redundant vkAllocateMemory every frame.
     pub dirty: bool,
@@ -47,7 +47,7 @@ impl StimulusFlags {
 #[derive(Clone, Copy)]
 pub struct Transform2D {
     pub pos: [f32; 2],
-    pub angle: f32,
+    pub angle: f32, // ccw degrees, 0 = right, 90 = up
 }
 
 impl Default for Transform2D {

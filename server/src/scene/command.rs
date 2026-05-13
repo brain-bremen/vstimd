@@ -2,46 +2,13 @@ use super::deferred::Deferred;
 use super::state::SceneState;
 use super::stimulus::{DiscStimulus, EllipseStimulus, RectStimulus, Stimulus};
 use super::stimulus::{DrawMode as SceneDrawMode, ShapeAppearance, StimulusFlags, Transform2D};
+use super::stimulus::grating::{
+    GratingStimulus, grating_params_from_proto, grating_query_params, proto_to_mask,
+    proto_to_waveform,
+};
+use crate::ipc::{err, err_not_found, err_wrong_type, ok_ack, ok_body, ok_handle};
 use crate::proto;
 use crate::proto::request;
-
-// ── Response helpers ──────────────────────────────────────────────────────────
-
-fn ok_ack() -> proto::Response {
-    proto::Response {
-        handle: -1,
-        code: proto::ErrorCode::Ok as i32,
-        error: String::new(),
-        body: None,
-    }
-}
-
-fn ok_handle(h: u32) -> proto::Response {
-    proto::Response {
-        handle: h as i32,
-        code: proto::ErrorCode::Ok as i32,
-        error: String::new(),
-        body: None,
-    }
-}
-
-fn ok_body(body: proto::response::Body) -> proto::Response {
-    proto::Response {
-        handle: -1,
-        code: proto::ErrorCode::Ok as i32,
-        error: String::new(),
-        body: Some(body),
-    }
-}
-
-fn err(code: proto::ErrorCode, msg: impl Into<String>) -> proto::Response {
-    proto::Response {
-        handle: 0,
-        code: code as i32,
-        error: msg.into(),
-        body: None,
-    }
-}
 
 // ── Request summary for the command log ───────────────────────────────────────
 
@@ -330,10 +297,7 @@ impl SceneState {
                 }
                 ok_ack()
             }
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
         }
     }
 
@@ -342,10 +306,7 @@ impl SceneState {
     fn cmd_delete(&mut self, handle: u32) -> proto::Response {
         match self.stimuli.shift_remove(&handle) {
             Some(_) => ok_ack(),
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
         }
     }
 
@@ -357,10 +318,7 @@ impl SceneState {
                 stim.move_to(self.deferred_mode, cmd.x, cmd.y);
                 ok_ack()
             }
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
         }
     }
 
@@ -372,10 +330,7 @@ impl SceneState {
                 stim.set_angle(self.deferred_mode, cmd.angle_deg);
                 ok_ack()
             }
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
         }
     }
 
@@ -389,10 +344,7 @@ impl SceneState {
             }
         };
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
                     let deferred = self.deferred_mode;
@@ -418,10 +370,7 @@ impl SceneState {
 
     fn cmd_set_alpha(&mut self, handle: u32, cmd: proto::SetAlphaRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
                     let deferred = self.deferred_mode;
@@ -448,10 +397,7 @@ impl SceneState {
 
     fn cmd_set_rect_size(&mut self, handle: u32, cmd: proto::SetRectSizeRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
             Some(Stimulus::Rect(s)) => {
                 s.size.set(self.deferred_mode, [cmd.width / 2.0, cmd.height / 2.0]);
                 if !self.deferred_mode {
@@ -459,10 +405,7 @@ impl SceneState {
                 }
                 ok_ack()
             }
-            Some(stim) => err(
-                proto::ErrorCode::WrongStimulusType,
-                format!("SetRectSize requires a Rect stimulus, got {}", stim.type_name()),
-            ),
+            Some(stim) => err_wrong_type(stim, "SetRectSize", "Rect"),
         }
     }
 
@@ -470,10 +413,7 @@ impl SceneState {
 
     fn cmd_set_disc_radius(&mut self, handle: u32, cmd: proto::SetDiscRadiusRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
             Some(Stimulus::Disc(s)) => {
                 s.radius.set(self.deferred_mode, cmd.radius);
                 if !self.deferred_mode {
@@ -481,10 +421,7 @@ impl SceneState {
                 }
                 ok_ack()
             }
-            Some(stim) => err(
-                proto::ErrorCode::WrongStimulusType,
-                format!("SetDiscRadius requires a Disc stimulus, got {}", stim.type_name()),
-            ),
+            Some(stim) => err_wrong_type(stim, "SetDiscRadius", "Disc"),
         }
     }
 
@@ -496,10 +433,7 @@ impl SceneState {
         cmd: proto::SetEllipseSizeRequest,
     ) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
             Some(Stimulus::Ellipse(s)) => {
                 s.radii.set(self.deferred_mode, [cmd.width / 2.0, cmd.height / 2.0]);
                 if !self.deferred_mode {
@@ -507,13 +441,7 @@ impl SceneState {
                 }
                 ok_ack()
             }
-            Some(stim) => err(
-                proto::ErrorCode::WrongStimulusType,
-                format!(
-                    "SetEllipseSize requires an Ellipse stimulus, got {}",
-                    stim.type_name()
-                ),
-            ),
+            Some(stim) => err_wrong_type(stim, "SetEllipseSize", "Ellipse"),
         }
     }
 
@@ -525,10 +453,7 @@ impl SceneState {
             Err(e) => return *e,
         };
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
                     let deferred = self.deferred_mode;
@@ -564,10 +489,7 @@ impl SceneState {
             }
         };
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
                     let deferred = self.deferred_mode;
@@ -597,10 +519,7 @@ impl SceneState {
         cmd: proto::SetOutlineWidthRequest,
     ) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
             Some(stim) => match stim.appearance_mut() {
                 Some(app) => {
                     let deferred = self.deferred_mode;
@@ -622,6 +541,95 @@ impl SceneState {
                     ),
                 ),
             },
+        }
+    }
+
+    // ── CreateGrating ────────────────────────────────────────────────────────
+
+    fn cmd_create_grating(&mut self, cmd: proto::CreateGratingRequest) -> proto::Response {
+        let center = cmd.center.unwrap_or_default();
+        let width = if cmd.width == 0.0 { 200.0 } else { cmd.width };
+        let height = if cmd.height == 0.0 { 200.0 } else { cmd.height };
+        let opacity = if cmd.opacity == 0.0 { 1.0 } else { cmd.opacity };
+        let color = cmd.color.map_or([1.0, 1.0, 1.0, opacity], |c| [c.r, c.g, c.b, opacity]);
+
+        let handle = self.alloc_stim_handle();
+        self.stimuli.insert(
+            handle,
+            Stimulus::Grating(GratingStimulus::new(
+                [center.x, center.y],
+                cmd.angle,
+                [width / 2.0, height / 2.0],
+                color,
+                grating_params_from_proto(&cmd),
+            )),
+        );
+        ok_handle(handle)
+    }
+
+    // ── Grating setters ───────────────────────────────────────────────────────
+
+    fn cmd_set_grating_phase(&mut self, handle: u32, cmd: proto::SetGratingPhaseRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_phase(self.deferred_mode, cmd.phase); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingPhase", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_sf(&mut self, handle: u32, cmd: proto::SetGratingSfRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_sf(self.deferred_mode, cmd.sf); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingSf", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_contrast(&mut self, handle: u32, cmd: proto::SetGratingContrastRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_contrast(self.deferred_mode, cmd.contrast); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingContrast", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_waveform(&mut self, handle: u32, cmd: proto::SetGratingWaveformRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_waveform(self.deferred_mode, proto_to_waveform(cmd.waveform)); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingWaveform", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_mask(&mut self, handle: u32, cmd: proto::SetGratingMaskRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_mask(self.deferred_mode, proto_to_mask(cmd.mask)); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingMask", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_drift_speed(&mut self, handle: u32, cmd: proto::SetGratingDriftSpeedRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_drift_speed(self.deferred_mode, cmd.speed); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingDriftSpeed", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_drift_decoupled(&mut self, handle: u32, cmd: proto::SetGratingDriftDecoupledRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_drift_decoupled(self.deferred_mode, cmd.decoupled); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingDriftDecoupled", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_drift_angle(&mut self, handle: u32, cmd: proto::SetGratingDriftAngleRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_drift_angle(self.deferred_mode, cmd.angle_deg); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingDriftAngle", "Grating"),
         }
     }
 
@@ -688,12 +696,7 @@ impl SceneState {
     fn cmd_query_stimulus(&self, handle: u32) -> proto::Response {
         let stim = match self.stimuli.get(&handle) {
             Some(s) => s,
-            None => {
-                return err(
-                    proto::ErrorCode::HandleNotFound,
-                    format!("stimulus handle {} not found", handle),
-                );
-            }
+            None => return err_not_found(handle),
         };
 
         let pos = stim.get_pos();
@@ -753,7 +756,7 @@ impl SceneState {
             ),
             Stimulus::Grating(s) => (
                 proto::StimulusType::Grating as i32,
-                Some(SceneState::grating_query_params(s)),
+                Some(grating_query_params(s)),
             ),
             _ => (proto::StimulusType::Unspecified as i32, None),
         };

@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock};
 use ash::vk;
 
 use crate::render::tess::{self, tessellate_photodiode};
-use crate::scene::stimulus::{GratingStimulus, Stimulus};
+use crate::scene::stimulus::Stimulus;
 
 const PHOTODIODE_HANDLE: u32 = u32::MAX;
 use crate::scene::SceneState;
@@ -12,7 +12,10 @@ use crate::timing::{FramePhases, FrameStats, FrameTick};
 use super::buffers::GpuBuffers;
 use super::context::VkContext;
 use super::egui::VkEguiRenderer;
-use super::pipeline::{GratingPushConstants, VkGratingPipeline, VkPipeline};
+use super::pipeline::VkPipeline;
+use crate::scene::stimulus::grating::{
+    GratingPushConstants, VkGratingPipeline, build_grating_push_constants, grating_phase_inc,
+};
 
 /// Optional egui overlay data for a frame
 pub struct EguiFrameData<'a> {
@@ -107,7 +110,9 @@ pub fn render_frame(
                 stim.flags_mut().mark_dirty();
             }
         }
-        gpu_buffers.meshes.retain(|h, _| *h == PHOTODIODE_HANDLE || sc.stimuli.contains_key(h));
+        gpu_buffers
+            .meshes
+            .retain(|h, _| *h == PHOTODIODE_HANDLE || sc.stimuli.contains_key(h));
         let handles: Vec<u32> = sc.stimuli.keys().copied().collect();
         for handle in handles {
             // Advance drift accumulator for visible gratings before tessellation.
@@ -126,10 +131,17 @@ pub fn render_frame(
             let (verts, idxs) = tess::tessellate_stimulus(stim, screen_size);
             log::debug!(
                 "tess #{handle} {} screen={screen_size:?} verts={} idxs={}{}",
-                stim.type_name(), verts.len(), idxs.len(),
+                stim.type_name(),
+                verts.len(),
+                idxs.len(),
                 if let Stimulus::Grating(s) = stim {
-                    format!(" pos={:?} size={:?} enabled={}", s.transform.live.pos, s.size.live, s.flags.enabled)
-                } else { String::new() }
+                    format!(
+                        " pos={:?} size={:?} enabled={}",
+                        s.transform.live.pos, s.size.live, s.flags.enabled
+                    )
+                } else {
+                    String::new()
+                }
             );
             gpu_buffers.upload(handle, &ctx.device, &verts, &idxs);
             sc.stimuli[&handle].flags_mut().dirty = false;
@@ -236,7 +248,11 @@ pub fn render_frame(
             }
         }
         // Photodiode is always solid.
-        if let Some(m) = gpu_buffers.meshes.get(&PHOTODIODE_HANDLE).filter(|m| m.index_count > 0) {
+        if let Some(m) = gpu_buffers
+            .meshes
+            .get(&PHOTODIODE_HANDLE)
+            .filter(|m| m.index_count > 0)
+        {
             solid_draws.push((m.vertex_buffer, m.index_buffer, m.index_count));
         }
         drop(sc);
@@ -255,12 +271,15 @@ pub fn render_frame(
         if !solid_draws.is_empty() {
             ctx.device
                 .cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
-            ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
-            ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+            ctx.device
+                .cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+            ctx.device
+                .cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
 
             for (vbuf, ibuf, index_count) in solid_draws {
                 ctx.device.cmd_bind_vertex_buffers(cb, 0, &[vbuf], &[0]);
-                ctx.device.cmd_bind_index_buffer(cb, ibuf, 0, vk::IndexType::UINT32);
+                ctx.device
+                    .cmd_bind_index_buffer(cb, ibuf, 0, vk::IndexType::UINT32);
                 ctx.device.cmd_draw_indexed(cb, index_count, 1, 0, 0, 0);
             }
         }
@@ -272,7 +291,12 @@ pub fn render_frame(
             if let Some((_, _, _, pc)) = grating_draws.first() {
                 log::debug!(
                     "draw {} gratings: first center={:?} half_size={:?} screen_half={:?} contrast={} sf={}",
-                    grating_draws.len(), pc.center_px, pc.half_size, pc.screen_half, pc.contrast, pc.sf
+                    grating_draws.len(),
+                    pc.center_px,
+                    pc.half_size,
+                    pc.screen_half,
+                    pc.contrast,
+                    pc.sf
                 );
             }
             ctx.device.cmd_bind_pipeline(
@@ -280,8 +304,10 @@ pub fn render_frame(
                 vk::PipelineBindPoint::GRAPHICS,
                 grating_pipeline.pipeline,
             );
-            ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
-            ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+            ctx.device
+                .cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+            ctx.device
+                .cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
 
             for (vbuf, ibuf, index_count, pc) in grating_draws {
                 let pc_bytes: &[u8] = bytemuck::bytes_of(&pc);
@@ -293,7 +319,8 @@ pub fn render_frame(
                     pc_bytes,
                 );
                 ctx.device.cmd_bind_vertex_buffers(cb, 0, &[vbuf], &[0]);
-                ctx.device.cmd_bind_index_buffer(cb, ibuf, 0, vk::IndexType::UINT32);
+                ctx.device
+                    .cmd_bind_index_buffer(cb, ibuf, 0, vk::IndexType::UINT32);
                 ctx.device.cmd_draw_indexed(cb, index_count, 1, 0, 0, 0);
             }
         }
@@ -370,7 +397,11 @@ pub fn render_frame(
             log::error!(
                 "vstimd: queue_submit failed: {e} \
                  [frame={} tess={}µs fence={}µs acquire={}µs record={}µs]",
-                this_present_id, tessellate_us, fence_us, acquire_us, record_us
+                this_present_id,
+                tessellate_us,
+                fence_us,
+                acquire_us,
+                record_us
             );
             std::process::exit(1);
         }
@@ -410,8 +441,13 @@ pub fn render_frame(
         log::warn!(
             "vstimd: {} dropped frame(s) before frame {} \
              [tess={}µs fence={}µs acquire={}µs record={}µs submit={}µs]",
-            dropped_frames, this_present_id,
-            tessellate_us, fence_us, acquire_us, record_us, submit_us
+            dropped_frames,
+            this_present_id,
+            tessellate_us,
+            fence_us,
+            acquire_us,
+            record_us,
+            submit_us
         );
     }
     *frame_index = frame_index.wrapping_add(1);
@@ -429,46 +465,4 @@ pub fn render_frame(
             submit_us,
         },
     })
-}
-
-// ── Grating helpers ───────────────────────────────────────────────────────────
-
-/// Per-frame phase increment (cycles) for the drift accumulator.
-fn grating_phase_inc(s: &GratingStimulus, fps: f32) -> f32 {
-    let p = &s.params.live;
-    if fps <= 0.0 {
-        return 0.0;
-    }
-    if p.drift_coupled {
-        p.drift_speed / fps
-    } else {
-        // Project drift velocity onto the grating axis.
-        let grating_rad = s.transform.live.angle.to_radians();
-        let drift_rad = p.drift_angle.to_radians();
-        p.drift_speed * (drift_rad - grating_rad).cos() / fps
-    }
-}
-
-/// Build push constants for one grating draw call.
-fn build_grating_push_constants(
-    s: &GratingStimulus,
-    screen_w: f32,
-    screen_h: f32,
-) -> GratingPushConstants {
-    let p = &s.params.live;
-    GratingPushConstants {
-        screen_half: [screen_w * 0.5, screen_h * 0.5],
-        center_px: s.transform.live.pos,
-        half_size: s.size.live,
-        sf: p.sf,
-        phase: p.phase + s.phase_accum,
-        ori_rad: s.transform.live.angle.to_radians(),
-        contrast: p.contrast,
-        _pad_color: [0; 2],
-        color: s.color.live,
-        waveform: p.waveform as u32,
-        mask_type: p.mask as u32,
-        mask_param: p.mask_param,
-        _pad: 0,
-    }
 }

@@ -8,4 +8,5 @@ pub use buffers::GpuBuffers;
 pub use context::{VkContext, build_context};
 pub use egui::VkEguiRenderer;
 pub use frame::{EguiFrameData, render_frame};
-pub use pipeline::{VkGratingPipeline, VkPipeline};
+pub use pipeline::VkPipeline;
+pub use crate::scene::stimulus::grating::VkGratingPipeline;
