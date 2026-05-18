@@ -63,10 +63,21 @@ impl State {
             ash::vk::PolygonMode::FILL
         };
         let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, ash::vk::PolygonMode::FILL);
-        let grating_pipeline =
-            VkGratingPipeline::new(&ctx.device, &ctx.instance, ctx.physical_device, ctx.render_pass, ash::vk::PolygonMode::FILL);
+        let grating_pipeline = VkGratingPipeline::new(
+            &ctx.device,
+            &ctx.instance,
+            ctx.physical_device,
+            ctx.render_pass,
+            ash::vk::PolygonMode::FILL,
+        );
         let wireframe_pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, wf_mode);
-        let wireframe_grating = VkGratingPipeline::new(&ctx.device, &ctx.instance, ctx.physical_device, ctx.render_pass, wf_mode);
+        let wireframe_grating = VkGratingPipeline::new(
+            &ctx.device,
+            &ctx.instance,
+            ctx.physical_device,
+            ctx.render_pass,
+            wf_mode,
+        );
 
         ctx.set_debug_name(pipeline.pipeline, "solid_pipeline");
         ctx.set_debug_name(grating_pipeline.pipeline, "grating_pipeline");
@@ -110,7 +121,9 @@ impl State {
                      VK_KHR_present_wait. ***"
                 );
             } else {
-                log::warn!("vstimd: *** No vblank clock available (VK_KHR_present_wait absent). ***");
+                log::warn!(
+                    "vstimd: *** No vblank clock available (VK_KHR_present_wait absent). ***"
+                );
             }
             log::warn!(
                 "vstimd: Stimulus timestamps will reflect GPU-completion time, not \
@@ -172,7 +185,9 @@ impl State {
 
     fn render(&mut self) {
         // 1. Collect egui input (via winit event integration, if overlay is on).
-        let egui_raw_input = self.rs.show_overlay
+        let egui_raw_input = self
+            .rs
+            .show_overlay
             .then(|| self.egui_winit.take_egui_input(&self.window));
 
         // 2. Render: build overlay UI, tessellate scene, record Vulkan commands,
@@ -283,7 +298,13 @@ impl ApplicationHandler for WinitApp {
             let window = Arc::new(event_loop.create_window(attrs).unwrap());
             let scene = self.scene.take().expect("scene already consumed");
             let log_buffer = self.log_buffer.take().expect("log_buffer already consumed");
-            self.state = Some(State::new(window, scene, event_loop, self.window_mode, log_buffer));
+            self.state = Some(State::new(
+                window,
+                scene,
+                event_loop,
+                self.window_mode,
+                log_buffer,
+            ));
         }
     }
 
@@ -381,11 +402,12 @@ fn detect_refresh_hz(window: &Window) -> f64 {
     // order and has no way to match one to the window's monitor. On a
     // multi-monitor system it will pick the wrong connector.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("DISPLAY").is_none() && std::env::var_os("WAYLAND_DISPLAY").is_none() {
-        if let Some(hz) = query_refresh_hz_from_drm() {
-            log::info!("vstimd: display clock (DRM): {hz:.3} Hz");
-            return hz;
-        }
+    if std::env::var_os("DISPLAY").is_none()
+        && std::env::var_os("WAYLAND_DISPLAY").is_none()
+        && let Some(hz) = query_refresh_hz_from_drm()
+    {
+        log::info!("vstimd: display clock (DRM): {hz:.3} Hz");
+        return hz;
     }
 
     // 2. refresh_rate_millihertz() — queries the active XRandR/compositor mode.

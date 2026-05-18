@@ -96,25 +96,25 @@ impl RenderState {
         let mut egui_store: Option<(egui::TexturesDelta, Vec<egui::ClippedPrimitive>, f32)> = None;
         let mut platform_output: Option<egui::PlatformOutput> = None;
 
-        if self.show_overlay {
-            if let Some(raw_input) = egui_raw_input {
-                let phases = self.last_phases;
-                let output = self.egui_ctx.run_ui(raw_input, |ctx| {
-                    build_overlay_ui(
-                        ctx,
-                        &self.scene,
-                        &mut self.frame_stats,
-                        phases,
-                        sys_info,
-                        &self.log_buffer,
-                        &mut self.benchmark,
-                    );
-                });
-                platform_output = Some(output.platform_output);
-                let ppp = output.pixels_per_point;
-                let primitives = self.egui_ctx.tessellate(output.shapes, ppp);
-                egui_store = Some((output.textures_delta, primitives, ppp));
-            }
+        if self.show_overlay
+            && let Some(raw_input) = egui_raw_input
+        {
+            let phases = self.last_phases;
+            let output = self.egui_ctx.run_ui(raw_input, |ctx| {
+                build_overlay_ui(
+                    ctx,
+                    &self.scene,
+                    &mut self.frame_stats,
+                    phases,
+                    sys_info,
+                    &self.log_buffer,
+                    &mut self.benchmark,
+                );
+            });
+            platform_output = Some(output.platform_output);
+            let ppp = output.pixels_per_point;
+            let primitives = self.egui_ctx.tessellate(output.shapes, ppp);
+            egui_store = Some((output.textures_delta, primitives, ppp));
         }
 
         let egui_data = egui_store.as_ref().map(|(td, prims, ppp)| EguiFrameData {
