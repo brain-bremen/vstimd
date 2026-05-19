@@ -9,11 +9,17 @@ import vstimd.psychopy.visual
 
 psychopy_visual = pytest.importorskip("psychopy.visual")
 
+# PsychoPy params that are deprecated and intentionally not implemented.
+_DEPRECATED_PARAMS: dict[str, set[str]] = {
+    "GratingStim": {"rgb", "dkl", "lms"},
+}
+
 # (psychopy_class, vstimd_class, xfail_reason or None)
 CLASSES = [
-    (psychopy_visual.Rect,   vstimd.psychopy.visual.Rect,   None),
-    (psychopy_visual.Circle, vstimd.psychopy.visual.Circle, None),
-    (psychopy_visual.Window, vstimd.psychopy.visual.Window,
+    (psychopy_visual.Rect,         vstimd.psychopy.visual.Rect,         None),
+    (psychopy_visual.Circle,       vstimd.psychopy.visual.Circle,       None),
+    (psychopy_visual.GratingStim,  vstimd.psychopy.visual.GratingStim,  None),
+    (psychopy_visual.Window,       vstimd.psychopy.visual.Window,
      "vstimd.psychopy.visual.Window is a remote connection stub; "
      "rendering params not yet implemented"),
 ]
@@ -59,7 +65,8 @@ def _public_props(cls: type) -> set[str]:
 
 
 def _compat_report(psychopy_cls: type, our_cls: type) -> str | None:
-    missing_params   = _params(psychopy_cls)          - _params(our_cls)
+    deprecated = _DEPRECATED_PARAMS.get(our_cls.__name__, set())
+    missing_params   = _params(psychopy_cls)          - _params(our_cls)          - deprecated
     missing_methods  = _public_methods(psychopy_cls)  - _public_methods(our_cls)
     missing_props    = _public_props(psychopy_cls)    - _public_props(our_cls)
 
