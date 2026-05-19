@@ -16,6 +16,17 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=_E2E_DEFAULT,
         help=f"ZMQ address of the vstimd for e2e tests (default: {_E2E_DEFAULT})",
     )
+    parser.addoption(
+        "--step-delay",
+        type=float,
+        default=1.0,
+        help="Seconds to pause between visual stimulus changes so a human can inspect them (default: 1.0)",
+    )
+
+
+@pytest.fixture
+def step_delay(request: pytest.FixtureRequest) -> float:
+    return request.config.getoption("--step-delay")
 
 
 def reachable(address: str, timeout_ms: int = 500) -> bool:

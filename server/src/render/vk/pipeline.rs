@@ -1,6 +1,5 @@
-use ash::vk;
-
 use crate::render::Vertex;
+use ash::vk;
 
 pub struct VkPipeline {
     pub pipeline: vk::Pipeline,
@@ -8,7 +7,11 @@ pub struct VkPipeline {
 }
 
 impl VkPipeline {
-    pub fn new(device: &ash::Device, render_pass: vk::RenderPass) -> Self {
+    pub fn new(
+        device: &ash::Device,
+        render_pass: vk::RenderPass,
+        polygon_mode: vk::PolygonMode,
+    ) -> Self {
         let spv_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/solid.spv"));
         let spv_u32: Vec<u32> = spv_bytes
             .chunks_exact(4)
@@ -16,7 +19,9 @@ impl VkPipeline {
             .collect();
         let shader_info = vk::ShaderModuleCreateInfo::default().code(&spv_u32);
         let shader_module = unsafe {
-            device.create_shader_module(&shader_info, None).expect("failed to create shader module")
+            device
+                .create_shader_module(&shader_info, None)
+                .expect("failed to create shader module")
         };
 
         let entry_vs = c"vs_main";
@@ -73,7 +78,7 @@ impl VkPipeline {
             .scissor_count(1);
 
         let rasteriser = vk::PipelineRasterizationStateCreateInfo::default()
-            .polygon_mode(vk::PolygonMode::FILL)
+            .polygon_mode(polygon_mode)
             .cull_mode(vk::CullModeFlags::NONE)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .line_width(1.0);
@@ -94,7 +99,9 @@ impl VkPipeline {
 
         let layout_info = vk::PipelineLayoutCreateInfo::default();
         let layout = unsafe {
-            device.create_pipeline_layout(&layout_info, None).expect("failed to create layout")
+            device
+                .create_pipeline_layout(&layout_info, None)
+                .expect("failed to create layout")
         };
 
         let pipeline_info = vk::GraphicsPipelineCreateInfo::default()

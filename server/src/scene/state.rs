@@ -53,7 +53,8 @@ pub struct SceneState {
     pub default_outline: [f32; 4],
     /// Measured frame rate, updated by the render thread each frame.
     pub frame_rate: f32,
-    pub screen_size: (u32, u32),
+    /// Set by the render thread on each frame. `None` until the first frame completes.
+    pub screen_size: Option<(u32, u32)>,
     /// Screen size at which meshes were last tessellated. When this changes all
     /// stimuli are re-uploaded (NDC coordinates depend on screen dimensions).
     pub last_uploaded_size: (u32, u32),
@@ -80,7 +81,7 @@ impl SceneState {
             default_fill: [1.0, 1.0, 1.0, 1.0],
             default_outline: [0.0, 0.0, 0.0, 1.0],
             frame_rate: 60.0,
-            screen_size: (0, 0),
+            screen_size: None,
             last_uploaded_size: (0, 0),
             error_mask: 0,
             error_code: 0,

@@ -14,18 +14,44 @@ pub fn init() -> (VkContext, StimulusDisplayInfo) {
 
     // VK_KHR_display lets Vulkan enumerate and drive displays directly
     // without requiring a compositor.
-    let instance_exts = vec![
+    // In debug builds, also attempt VK_EXT_debug_utils for RenderDoc labels.
+    // Fall back silently if the driver rejects it (e.g. RenderDoc hook injection).
+    let base_exts = [
         ash::khr::surface::NAME.as_ptr(),
         ash::khr::display::NAME.as_ptr(),
     ];
 
-    let instance_info = vk::InstanceCreateInfo::default()
-        .application_info(&app_info)
-        .enabled_extension_names(&instance_exts);
-    let instance = unsafe {
-        entry
-            .create_instance(&instance_info, None)
-            .expect("failed to create Vulkan instance")
+    #[cfg(debug_assertions)]
+    let (instance, debug_utils_enabled) = {
+        let mut exts_with = base_exts.to_vec();
+        exts_with.push(ash::ext::debug_utils::NAME.as_ptr());
+        let info = vk::InstanceCreateInfo::default()
+            .application_info(&app_info)
+            .enabled_extension_names(&exts_with);
+        match unsafe { entry.create_instance(&info, None) } {
+            Ok(inst) => (inst, true),
+            Err(vk::Result::ERROR_EXTENSION_NOT_PRESENT) => {
+                log::debug!("vstimd: VK_EXT_debug_utils not accepted at vkCreateInstance — disabling");
+                let info_bare = vk::InstanceCreateInfo::default()
+                    .application_info(&app_info)
+                    .enabled_extension_names(&base_exts);
+                let inst = unsafe {
+                    entry.create_instance(&info_bare, None).expect("failed to create Vulkan instance")
+                };
+                (inst, false)
+            }
+            Err(e) => panic!("failed to create Vulkan instance: {e}"),
+        }
+    };
+    #[cfg(not(debug_assertions))]
+    let (instance, debug_utils_enabled) = {
+        let info = vk::InstanceCreateInfo::default()
+            .application_info(&app_info)
+            .enabled_extension_names(&base_exts);
+        let inst = unsafe {
+            entry.create_instance(&info, None).expect("failed to create Vulkan instance")
+        };
+        (inst, false)
     };
 
     let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
@@ -95,7 +121,7 @@ pub fn init() -> (VkContext, StimulusDisplayInfo) {
     };
 
     let extent = vk::Extent2D { width, height };
-    let ctx = build_context(entry, instance, surface, surface_loader, extent);
+    let ctx = build_context(entry, instance, surface, surface_loader, extent, debug_utils_enabled);
 
     let refresh_hz = chosen.parameters.refresh_rate as f64 / 1000.0;
     log::info!("vstimd: display {}×{}  {:.3} Hz", width, height, refresh_hz);

@@ -5,6 +5,7 @@ use zeromq::{Socket, SocketRecv, SocketSend};
 
 use crate::proto;
 use crate::scene::SceneState;
+use crate::scene::stimulus::Stimulus;
 
 /// Spawn the ZMQ REP server on a dedicated thread with its own tokio runtime.
 ///
@@ -44,6 +45,67 @@ pub fn spawn_zmq_thread(
             rt.block_on(zmq_loop(scene, &addr));
         })
         .expect("failed to spawn ZMQ server thread")
+}
+
+// ── Response helpers (used by all stimulus command impls) ─────────────────────
+
+pub(crate) fn ok_ack() -> proto::Response {
+    proto::Response {
+        handle: -1,
+        code: proto::ErrorCode::Ok as i32,
+        error: String::new(),
+        body: None,
+    }
+}
+
+pub(crate) fn ok_handle(h: u32) -> proto::Response {
+    proto::Response {
+        handle: h as i32,
+        code: proto::ErrorCode::Ok as i32,
+        error: String::new(),
+        body: None,
+    }
+}
+
+pub(crate) fn ok_body(body: proto::response::Body) -> proto::Response {
+    proto::Response {
+        handle: -1,
+        code: proto::ErrorCode::Ok as i32,
+        error: String::new(),
+        body: Some(body),
+    }
+}
+
+pub(crate) fn err(code: proto::ErrorCode, msg: impl Into<String>) -> proto::Response {
+    proto::Response {
+        handle: 0,
+        code: code as i32,
+        error: msg.into(),
+        body: None,
+    }
+}
+
+pub(crate) fn err_not_found(handle: u32) -> proto::Response {
+    proto::Response {
+        handle: 0,
+        code: proto::ErrorCode::HandleNotFound as i32,
+        error: format!("stimulus handle {} not found", handle),
+        body: None,
+    }
+}
+
+pub(crate) fn err_wrong_type(stim: &Stimulus, cmd: &str, expected: &str) -> proto::Response {
+    proto::Response {
+        handle: 0,
+        code: proto::ErrorCode::WrongStimulusType as i32,
+        error: format!(
+            "{} requires a {} stimulus, got {}",
+            cmd,
+            expected,
+            stim.type_name()
+        ),
+        body: None,
+    }
 }
 
 async fn zmq_loop(scene: Arc<RwLock<SceneState>>, addr: &str) {

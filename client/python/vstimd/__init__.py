@@ -31,6 +31,7 @@ from .exceptions import (
     CreationFailedError,
     InvalidArgumentError,
     NotSupportedError,
+    NotReadyError,
     UnknownServerError,
 )
 from . import psychopy
@@ -46,6 +47,7 @@ __all__ = [
     "CreationFailedError",
     "InvalidArgumentError",
     "NotSupportedError",
+    "NotReadyError",
     "UnknownServerError",
     "psychopy",
 ]

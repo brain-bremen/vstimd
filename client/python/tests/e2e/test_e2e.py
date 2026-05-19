@@ -9,6 +9,8 @@ Skipped in CI and when no display is available.
 import os
 import pathlib
 import subprocess
+import sys
+import tempfile
 import time
 
 import pytest
@@ -31,7 +33,11 @@ def server_process(server_address: str):
     if os.environ.get("CI"):
         pytest.skip("e2e tests skipped in CI")
 
-    has_display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+    has_display = (
+        sys.platform == "win32"
+        or os.environ.get("DISPLAY")
+        or os.environ.get("WAYLAND_DISPLAY")
+    )
     if not has_display:
         pytest.skip("e2e tests require a display (no DISPLAY/WAYLAND_DISPLAY set)")
 
@@ -43,8 +49,13 @@ def server_process(server_address: str):
     if result.returncode != 0:
         pytest.skip(f"cargo build --release failed (exit {result.returncode})")
 
-    server_bin = _REPO_ROOT / "target" / "release" / "vstimd"
-    proc = subprocess.Popen([str(server_bin)])
+    exe = "vstimd.exe" if sys.platform == "win32" else "vstimd"
+    server_bin = _REPO_ROOT / "target" / "release" / exe
+    log_path = pathlib.Path(tempfile.gettempdir()) / "vstimd_e2e.log"
+    log_file = log_path.open("w")
+    env = os.environ.copy()
+    env.setdefault("RUST_LOG", "debug")
+    proc = subprocess.Popen([str(server_bin)], stdout=log_file, stderr=log_file, env=env)
 
     for _ in range(20):
         if reachable(server_address):
@@ -52,11 +63,14 @@ def server_process(server_address: str):
         time.sleep(0.5)
     else:
         proc.terminate()
+        log_file.close()
         pytest.skip("server did not become ready in time")
 
     yield
     proc.terminate()
     proc.wait(timeout=5)
+    log_file.close()
+    print(f"\nServer log: {log_path}")
 
 
 @pytest.fixture(scope="session")

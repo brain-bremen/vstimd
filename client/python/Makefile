@@ -26,7 +26,7 @@ test-integration:
 	@echo "Not implemented yet: integration tests with MockServer"
 
 test-e2e: proto
-	uv run --group dev pytest tests/e2e/test_e2e.py -v
+	uv run --group dev pytest tests/e2e/test_e2e.py tests/e2e/test_psychopy_visual.py -v
 
 test-e2e-null: proto
 	uv run --group dev pytest tests/e2e/test_e2e_null.py tests/e2e/test_psychopy_visual_null.py -v

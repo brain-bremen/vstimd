@@ -21,6 +21,7 @@ fn main() {
         .expect("failed to compile protobuf schema");
 
     compile_shader("shaders/solid.wgsl", "solid.spv");
+    compile_shader("shaders/grating.wgsl", "grating.spv");
     compile_shader("src/render/vk/egui/shaders.wgsl", "egui.spv");
 }
 

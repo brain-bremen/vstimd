@@ -13,6 +13,7 @@ from vstimd.exceptions import (
     CreationFailedError,
     InvalidArgumentError,
     NotSupportedError,
+    NotReadyError,
     UnknownServerError,
 )
 
@@ -24,6 +25,7 @@ _ERROR_CODE_MAP: dict[int, type[VstimdError]] = {
     service_pb2.ERROR_CODE_CREATION_FAILED: CreationFailedError,
     service_pb2.ERROR_CODE_INVALID_ARGUMENT: InvalidArgumentError,
     service_pb2.ERROR_CODE_NOT_SUPPORTED: NotSupportedError,
+    service_pb2.ERROR_CODE_NOT_READY: NotReadyError,
 }
 
 

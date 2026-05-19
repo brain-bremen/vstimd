@@ -13,6 +13,16 @@ pub struct VkMesh {
 }
 
 impl VkMesh {
+    pub fn from_raw(
+        vertex_buffer: vk::Buffer,
+        vertex_memory: vk::DeviceMemory,
+        index_buffer: vk::Buffer,
+        index_memory: vk::DeviceMemory,
+        index_count: u32,
+    ) -> Self {
+        Self { vertex_buffer, vertex_memory, index_buffer, index_memory, index_count }
+    }
+
     pub unsafe fn destroy(&self, device: &ash::Device) {
         unsafe {
             device.destroy_buffer(self.vertex_buffer, None);

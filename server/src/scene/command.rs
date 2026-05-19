@@ -1,47 +1,14 @@
 use super::deferred::Deferred;
 use super::state::SceneState;
-use super::stimulus::{DiscStimulus, EllipseStimulus, RectStimulus, Stimulus};
+use super::stimulus::{DiscStimulus, EllipseStimulus, RectStimulus, ShapeStimulus, Stimulus};
 use super::stimulus::{DrawMode as SceneDrawMode, ShapeAppearance, StimulusFlags, Transform2D};
+use super::stimulus::grating::{
+    GratingStimulus, grating_params_from_proto, grating_query_params, proto_to_mask,
+    proto_to_waveform,
+};
+use crate::ipc::{err, err_not_found, err_wrong_type, ok_ack, ok_body, ok_handle};
 use crate::proto;
 use crate::proto::request;
-
-// ── Response helpers ──────────────────────────────────────────────────────────
-
-fn ok_ack() -> proto::Response {
-    proto::Response {
-        handle: -1,
-        code: proto::ErrorCode::Ok as i32,
-        error: String::new(),
-        body: None,
-    }
-}
-
-fn ok_handle(h: u32) -> proto::Response {
-    proto::Response {
-        handle: h as i32,
-        code: proto::ErrorCode::Ok as i32,
-        error: String::new(),
-        body: None,
-    }
-}
-
-fn ok_body(body: proto::response::Body) -> proto::Response {
-    proto::Response {
-        handle: -1,
-        code: proto::ErrorCode::Ok as i32,
-        error: String::new(),
-        body: Some(body),
-    }
-}
-
-fn err(code: proto::ErrorCode, msg: impl Into<String>) -> proto::Response {
-    proto::Response {
-        handle: 0,
-        code: code as i32,
-        error: msg.into(),
-        body: None,
-    }
-}
 
 // ── Request summary for the command log ───────────────────────────────────────
 
@@ -86,6 +53,34 @@ fn command_summary(req: &proto::Request) -> String {
         Some(request::Body::SetAllEnabled(c)) => {
             format!("SetAllEnabled({})", if c.enabled { "on" } else { "off" })
         }
+        Some(request::Body::CreateGrating(c)) => {
+            let center = c.center.as_ref();
+            format!(
+                "CreateGrating {:.0}×{:.0} sf={:.4} pos=({:.1},{:.1})",
+                c.width, c.height, c.sf,
+                center.map_or(0.0, |v| v.x),
+                center.map_or(0.0, |v| v.y),
+            )
+        }
+        Some(request::Body::SetGratingPhase(c)) => format!("SetGratingPhase({:.3})", c.phase),
+        Some(request::Body::SetGratingSf(c)) => format!("SetGratingSf({:.4})", c.sf),
+        Some(request::Body::SetGratingContrast(c)) => {
+            format!("SetGratingContrast({:.2})", c.contrast)
+        }
+        Some(request::Body::SetGratingWaveform(_)) => "SetGratingWaveform".into(),
+        Some(request::Body::SetGratingMask(_)) => "SetGratingMask".into(),
+        Some(request::Body::SetGratingDriftSpeed(c)) => {
+            format!("SetGratingDriftSpeed({:.3})", c.speed)
+        }
+        Some(request::Body::SetGratingDriftDecoupled(c)) => {
+            format!("SetGratingDriftDecoupled({})", c.decoupled)
+        }
+        Some(request::Body::SetGratingDriftAngle(c)) => {
+            format!("SetGratingDriftAngle({:.1}°)", c.angle_deg)
+        }
+        Some(request::Body::SetGratingForeColor(_)) => "SetGratingForeColor".into(),
+        Some(request::Body::SetGratingBackColor(_)) => "SetGratingBackColor".into(),
+        Some(request::Body::SetGratingOpacity(c)) => format!("SetGratingOpacity({:.2})", c.opacity),
         Some(request::Body::QueryServerInfo(_)) => "QueryServerInfo".into(),
         Some(request::Body::QueryStimulus(_)) => "QueryStimulus".into(),
         Some(request::Body::ListStimuli(_)) => "ListStimuli".into(),
@@ -95,12 +90,12 @@ fn command_summary(req: &proto::Request) -> String {
 
 // ── DrawMode conversion ───────────────────────────────────────────────────────
 
-fn proto_draw_mode_to_scene(mode: i32) -> Result<SceneDrawMode, proto::Response> {
+fn proto_draw_mode_to_scene(mode: i32) -> Result<SceneDrawMode, Box<proto::Response>> {
     match proto::DrawMode::try_from(mode).unwrap_or(proto::DrawMode::Unspecified) {
-        proto::DrawMode::Unspecified => Err(err(
+        proto::DrawMode::Unspecified => Err(Box::new(err(
             proto::ErrorCode::InvalidArgument,
             "draw_mode must be set explicitly (UNSPECIFIED is not a valid value)",
-        )),
+        ))),
         proto::DrawMode::Filled => Ok(SceneDrawMode::Fill),
         proto::DrawMode::Outlined => Ok(SceneDrawMode::Stroke),
         proto::DrawMode::FilledAndOutlined => Ok(SceneDrawMode::FillAndStroke),
@@ -135,7 +130,18 @@ impl SceneState {
             },
         };
 
-        self.push_command_log(log_handle, log_summary, &response);
+        self.push_command_log(log_handle, log_summary.clone(), &response);
+
+        if response.code == proto::ErrorCode::Ok as i32 {
+            if log_handle == 0 {
+                log::debug!("ipc: {} → handle {}", log_summary, response.handle);
+            } else {
+                log::debug!("ipc: [{}] {}", log_handle, log_summary);
+            }
+        } else {
+            log::warn!("ipc: [{}] {} → error {}: {}", log_handle, log_summary, response.code, response.error);
+        }
+
         response
     }
 
@@ -146,6 +152,7 @@ impl SceneState {
             request::Body::CreateRect(cmd) => self.cmd_create_rect(cmd),
             request::Body::CreateCircle(cmd) => self.cmd_create_circle(cmd),
             request::Body::CreateEllipse(cmd) => self.cmd_create_ellipse(cmd),
+            request::Body::CreateGrating(cmd) => self.cmd_create_grating(cmd),
             request::Body::SetBackground(cmd) => self.cmd_set_background(cmd),
             request::Body::SetDeferredMode(cmd) => self.cmd_set_deferred_mode(cmd),
             request::Body::DeleteAll(_) => self.cmd_delete_all(),
@@ -166,6 +173,7 @@ impl SceneState {
             request::Body::CreateRect(_)
             | request::Body::CreateCircle(_)
             | request::Body::CreateEllipse(_)
+            | request::Body::CreateGrating(_)
             | request::Body::SetBackground(_)
             | request::Body::SetDeferredMode(_)
             | request::Body::DeleteAll(_)
@@ -187,6 +195,29 @@ impl SceneState {
             request::Body::SetDrawMode(cmd) => self.cmd_set_draw_mode(handle, cmd),
             request::Body::SetOutlineColor(cmd) => self.cmd_set_outline_color(handle, cmd),
             request::Body::SetOutlineWidth(cmd) => self.cmd_set_outline_width(handle, cmd),
+            request::Body::SetGratingPhase(cmd) => self.cmd_set_grating_phase(handle, cmd),
+            request::Body::SetGratingSf(cmd) => self.cmd_set_grating_sf(handle, cmd),
+            request::Body::SetGratingContrast(cmd) => self.cmd_set_grating_contrast(handle, cmd),
+            request::Body::SetGratingWaveform(cmd) => self.cmd_set_grating_waveform(handle, cmd),
+            request::Body::SetGratingMask(cmd) => self.cmd_set_grating_mask(handle, cmd),
+            request::Body::SetGratingDriftSpeed(cmd) => {
+                self.cmd_set_grating_drift_speed(handle, cmd)
+            }
+            request::Body::SetGratingDriftDecoupled(cmd) => {
+                self.cmd_set_grating_drift_decoupled(handle, cmd)
+            }
+            request::Body::SetGratingDriftAngle(cmd) => {
+                self.cmd_set_grating_drift_angle(handle, cmd)
+            }
+            request::Body::SetGratingForeColor(cmd) => {
+                self.cmd_set_grating_fore_color(handle, cmd)
+            }
+            request::Body::SetGratingBackColor(cmd) => {
+                self.cmd_set_grating_back_color(handle, cmd)
+            }
+            request::Body::SetGratingOpacity(cmd) => {
+                self.cmd_set_grating_opacity(handle, cmd)
+            }
             request::Body::QueryStimulus(_) => self.cmd_query_stimulus(handle),
         }
     }
@@ -201,7 +232,7 @@ impl SceneState {
         let handle = self.alloc_stim_handle();
         self.stimuli.insert(
             handle,
-            Stimulus::Rect(RectStimulus {
+            Stimulus::Shape(ShapeStimulus::Rect(RectStimulus {
                 flags: StimulusFlags { enabled: true, ..Default::default() },
                 transform: Deferred::new(Transform2D { pos: [center.x, center.y], angle: 0.0 }),
                 appearance: Deferred::new(ShapeAppearance {
@@ -210,7 +241,7 @@ impl SceneState {
                     ..Default::default()
                 }),
                 size: Deferred::new([width / 2.0, height / 2.0]),
-            }),
+            })),
         );
         ok_handle(handle)
     }
@@ -224,7 +255,7 @@ impl SceneState {
         let handle = self.alloc_stim_handle();
         self.stimuli.insert(
             handle,
-            Stimulus::Disc(DiscStimulus {
+            Stimulus::Shape(ShapeStimulus::Disc(DiscStimulus {
                 flags: StimulusFlags { enabled: true, ..Default::default() },
                 transform: Deferred::new(Transform2D { pos: [center.x, center.y], angle: 0.0 }),
                 appearance: Deferred::new(ShapeAppearance {
@@ -233,7 +264,7 @@ impl SceneState {
                     ..Default::default()
                 }),
                 radius: Deferred::new(radius),
-            }),
+            })),
         );
         ok_handle(handle)
     }
@@ -248,7 +279,7 @@ impl SceneState {
         let handle = self.alloc_stim_handle();
         self.stimuli.insert(
             handle,
-            Stimulus::Ellipse(EllipseStimulus {
+            Stimulus::Shape(ShapeStimulus::Ellipse(EllipseStimulus {
                 flags: StimulusFlags { enabled: true, ..Default::default() },
                 transform: Deferred::new(Transform2D {
                     pos: [center.x, center.y],
@@ -260,7 +291,7 @@ impl SceneState {
                     ..Default::default()
                 }),
                 radii: Deferred::new([width / 2.0, height / 2.0]),
-            }),
+            })),
         );
         ok_handle(handle)
     }
@@ -278,10 +309,7 @@ impl SceneState {
                 }
                 ok_ack()
             }
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
         }
     }
 
@@ -290,10 +318,7 @@ impl SceneState {
     fn cmd_delete(&mut self, handle: u32) -> proto::Response {
         match self.stimuli.shift_remove(&handle) {
             Some(_) => ok_ack(),
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
         }
     }
 
@@ -305,10 +330,7 @@ impl SceneState {
                 stim.move_to(self.deferred_mode, cmd.x, cmd.y);
                 ok_ack()
             }
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
         }
     }
 
@@ -320,10 +342,7 @@ impl SceneState {
                 stim.set_angle(self.deferred_mode, cmd.angle_deg);
                 ok_ack()
             }
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
+            None => err_not_found(handle),
         }
     }
 
@@ -337,28 +356,21 @@ impl SceneState {
             }
         };
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
-            Some(stim) => match stim.appearance_mut() {
-                Some(app) => {
-                    let deferred = self.deferred_mode;
-                    let prev = if deferred { app.copy } else { app.live };
-                    app.set(deferred, ShapeAppearance { fill_color: c, ..prev });
-                    if !deferred {
-                        stim.flags_mut().mark_dirty();
-                    }
-                    ok_ack()
+            None => err_not_found(handle),
+            Some(Stimulus::Shape(s)) => {
+                let deferred = self.deferred_mode;
+                let app = s.appearance_mut();
+                let prev = if deferred { app.copy } else { app.live };
+                app.set(deferred, ShapeAppearance { fill_color: c, ..prev });
+                if !deferred {
+                    s.flags_mut().mark_dirty();
                 }
-                None => err(
-                    proto::ErrorCode::WrongStimulusType,
-                    format!(
-                        "SetFillColor is not supported for {} stimuli",
-                        stim.type_name()
-                    ),
-                ),
-            },
+                ok_ack()
+            }
+            Some(stim) => err(
+                proto::ErrorCode::WrongStimulusType,
+                format!("SetFillColor is not supported for {} stimuli", stim.type_name()),
+            ),
         }
     }
 
@@ -366,29 +378,22 @@ impl SceneState {
 
     fn cmd_set_alpha(&mut self, handle: u32, cmd: proto::SetAlphaRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
-            Some(stim) => match stim.appearance_mut() {
-                Some(app) => {
-                    let deferred = self.deferred_mode;
-                    let mut prev = if deferred { app.copy } else { app.live };
-                    prev.fill_color[3] = cmd.opacity;
-                    app.set(deferred, prev);
-                    if !deferred {
-                        stim.flags_mut().mark_dirty();
-                    }
-                    ok_ack()
+            None => err_not_found(handle),
+            Some(Stimulus::Shape(s)) => {
+                let deferred = self.deferred_mode;
+                let app = s.appearance_mut();
+                let mut prev = if deferred { app.copy } else { app.live };
+                prev.fill_color[3] = cmd.opacity;
+                app.set(deferred, prev);
+                if !deferred {
+                    s.flags_mut().mark_dirty();
                 }
-                None => err(
-                    proto::ErrorCode::WrongStimulusType,
-                    format!(
-                        "SetAlpha is not supported for {} stimuli",
-                        stim.type_name()
-                    ),
-                ),
-            },
+                ok_ack()
+            }
+            Some(stim) => err(
+                proto::ErrorCode::WrongStimulusType,
+                format!("SetAlpha is not supported for {} stimuli", stim.type_name()),
+            ),
         }
     }
 
@@ -396,21 +401,15 @@ impl SceneState {
 
     fn cmd_set_rect_size(&mut self, handle: u32, cmd: proto::SetRectSizeRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
-            Some(Stimulus::Rect(s)) => {
+            None => err_not_found(handle),
+            Some(Stimulus::Shape(ShapeStimulus::Rect(s))) => {
                 s.size.set(self.deferred_mode, [cmd.width / 2.0, cmd.height / 2.0]);
                 if !self.deferred_mode {
                     s.flags.mark_dirty();
                 }
                 ok_ack()
             }
-            Some(stim) => err(
-                proto::ErrorCode::WrongStimulusType,
-                format!("SetRectSize requires a Rect stimulus, got {}", stim.type_name()),
-            ),
+            Some(stim) => err_wrong_type(stim, "SetRectSize", "Rect"),
         }
     }
 
@@ -418,21 +417,15 @@ impl SceneState {
 
     fn cmd_set_disc_radius(&mut self, handle: u32, cmd: proto::SetDiscRadiusRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
-            Some(Stimulus::Disc(s)) => {
+            None => err_not_found(handle),
+            Some(Stimulus::Shape(ShapeStimulus::Disc(s))) => {
                 s.radius.set(self.deferred_mode, cmd.radius);
                 if !self.deferred_mode {
                     s.flags.mark_dirty();
                 }
                 ok_ack()
             }
-            Some(stim) => err(
-                proto::ErrorCode::WrongStimulusType,
-                format!("SetDiscRadius requires a Disc stimulus, got {}", stim.type_name()),
-            ),
+            Some(stim) => err_wrong_type(stim, "SetDiscRadius", "Disc"),
         }
     }
 
@@ -444,24 +437,15 @@ impl SceneState {
         cmd: proto::SetEllipseSizeRequest,
     ) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
-            Some(Stimulus::Ellipse(s)) => {
+            None => err_not_found(handle),
+            Some(Stimulus::Shape(ShapeStimulus::Ellipse(s))) => {
                 s.radii.set(self.deferred_mode, [cmd.width / 2.0, cmd.height / 2.0]);
                 if !self.deferred_mode {
                     s.flags.mark_dirty();
                 }
                 ok_ack()
             }
-            Some(stim) => err(
-                proto::ErrorCode::WrongStimulusType,
-                format!(
-                    "SetEllipseSize requires an Ellipse stimulus, got {}",
-                    stim.type_name()
-                ),
-            ),
+            Some(stim) => err_wrong_type(stim, "SetEllipseSize", "Ellipse"),
         }
     }
 
@@ -470,31 +454,24 @@ impl SceneState {
     fn cmd_set_draw_mode(&mut self, handle: u32, cmd: proto::SetDrawModeRequest) -> proto::Response {
         let mode = match proto_draw_mode_to_scene(cmd.mode) {
             Ok(m) => m,
-            Err(e) => return e,
+            Err(e) => return *e,
         };
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
-            Some(stim) => match stim.appearance_mut() {
-                Some(app) => {
-                    let deferred = self.deferred_mode;
-                    let prev = if deferred { app.copy } else { app.live };
-                    app.set(deferred, ShapeAppearance { draw_mode: mode, ..prev });
-                    if !deferred {
-                        stim.flags_mut().mark_dirty();
-                    }
-                    ok_ack()
+            None => err_not_found(handle),
+            Some(Stimulus::Shape(s)) => {
+                let deferred = self.deferred_mode;
+                let app = s.appearance_mut();
+                let prev = if deferred { app.copy } else { app.live };
+                app.set(deferred, ShapeAppearance { draw_mode: mode, ..prev });
+                if !deferred {
+                    s.flags_mut().mark_dirty();
                 }
-                None => err(
-                    proto::ErrorCode::WrongStimulusType,
-                    format!(
-                        "SetDrawMode is not supported for {} stimuli",
-                        stim.type_name()
-                    ),
-                ),
-            },
+                ok_ack()
+            }
+            Some(stim) => err(
+                proto::ErrorCode::WrongStimulusType,
+                format!("SetDrawMode is not supported for {} stimuli", stim.type_name()),
+            ),
         }
     }
 
@@ -512,28 +489,21 @@ impl SceneState {
             }
         };
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
-            Some(stim) => match stim.appearance_mut() {
-                Some(app) => {
-                    let deferred = self.deferred_mode;
-                    let prev = if deferred { app.copy } else { app.live };
-                    app.set(deferred, ShapeAppearance { outline_color: c, ..prev });
-                    if !deferred {
-                        stim.flags_mut().mark_dirty();
-                    }
-                    ok_ack()
+            None => err_not_found(handle),
+            Some(Stimulus::Shape(s)) => {
+                let deferred = self.deferred_mode;
+                let app = s.appearance_mut();
+                let prev = if deferred { app.copy } else { app.live };
+                app.set(deferred, ShapeAppearance { outline_color: c, ..prev });
+                if !deferred {
+                    s.flags_mut().mark_dirty();
                 }
-                None => err(
-                    proto::ErrorCode::WrongStimulusType,
-                    format!(
-                        "SetOutlineColor is not supported for {} stimuli",
-                        stim.type_name()
-                    ),
-                ),
-            },
+                ok_ack()
+            }
+            Some(stim) => err(
+                proto::ErrorCode::WrongStimulusType,
+                format!("SetOutlineColor is not supported for {} stimuli", stim.type_name()),
+            ),
         }
     }
 
@@ -545,31 +515,138 @@ impl SceneState {
         cmd: proto::SetOutlineWidthRequest,
     ) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
-            None => err(
-                proto::ErrorCode::HandleNotFound,
-                format!("stimulus handle {} not found", handle),
-            ),
-            Some(stim) => match stim.appearance_mut() {
-                Some(app) => {
-                    let deferred = self.deferred_mode;
-                    let prev = if deferred { app.copy } else { app.live };
-                    app.set(
-                        deferred,
-                        ShapeAppearance { stroke_width: cmd.line_width, ..prev },
-                    );
-                    if !deferred {
-                        stim.flags_mut().mark_dirty();
-                    }
-                    ok_ack()
+            None => err_not_found(handle),
+            Some(Stimulus::Shape(s)) => {
+                let deferred = self.deferred_mode;
+                let app = s.appearance_mut();
+                let prev = if deferred { app.copy } else { app.live };
+                app.set(deferred, ShapeAppearance { stroke_width: cmd.line_width, ..prev });
+                if !deferred {
+                    s.flags_mut().mark_dirty();
                 }
-                None => err(
-                    proto::ErrorCode::WrongStimulusType,
-                    format!(
-                        "SetOutlineWidth is not supported for {} stimuli",
-                        stim.type_name()
-                    ),
-                ),
-            },
+                ok_ack()
+            }
+            Some(stim) => err(
+                proto::ErrorCode::WrongStimulusType,
+                format!("SetOutlineWidth is not supported for {} stimuli", stim.type_name()),
+            ),
+        }
+    }
+
+    // ── CreateGrating ────────────────────────────────────────────────────────
+
+    fn cmd_create_grating(&mut self, cmd: proto::CreateGratingRequest) -> proto::Response {
+        let center = cmd.center.unwrap_or_default();
+        let width  = if cmd.width  == 0.0 { 200.0 } else { cmd.width };
+        let height = if cmd.height == 0.0 { 200.0 } else { cmd.height };
+        let handle = self.alloc_stim_handle();
+        self.stimuli.insert(
+            handle,
+            Stimulus::Grating(GratingStimulus::new(
+                [center.x, center.y],
+                cmd.angle,
+                [width / 2.0, height / 2.0],
+                grating_params_from_proto(&cmd),
+            )),
+        );
+        ok_handle(handle)
+    }
+
+    // ── Grating setters ───────────────────────────────────────────────────────
+
+    fn cmd_set_grating_phase(&mut self, handle: u32, cmd: proto::SetGratingPhaseRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_phase(self.deferred_mode, cmd.phase); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingPhase", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_sf(&mut self, handle: u32, cmd: proto::SetGratingSfRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_sf(self.deferred_mode, cmd.sf); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingSf", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_contrast(&mut self, handle: u32, cmd: proto::SetGratingContrastRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_contrast(self.deferred_mode, cmd.contrast); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingContrast", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_waveform(&mut self, handle: u32, cmd: proto::SetGratingWaveformRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_waveform(self.deferred_mode, proto_to_waveform(cmd.waveform)); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingWaveform", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_mask(&mut self, handle: u32, cmd: proto::SetGratingMaskRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_mask(self.deferred_mode, proto_to_mask(cmd.mask)); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingMask", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_drift_speed(&mut self, handle: u32, cmd: proto::SetGratingDriftSpeedRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_drift_speed(self.deferred_mode, cmd.speed); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingDriftSpeed", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_drift_decoupled(&mut self, handle: u32, cmd: proto::SetGratingDriftDecoupledRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_drift_decoupled(self.deferred_mode, cmd.decoupled); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingDriftDecoupled", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_drift_angle(&mut self, handle: u32, cmd: proto::SetGratingDriftAngleRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_drift_angle(self.deferred_mode, cmd.angle_deg); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingDriftAngle", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_fore_color(&mut self, handle: u32, cmd: proto::SetGratingForeColorRequest) -> proto::Response {
+        let c = match cmd.fore_color {
+            Some(c) => [c.r, c.g, c.b, c.a],
+            None => return err(proto::ErrorCode::InvalidArgument, "fore_color must be set"),
+        };
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_fore_color(self.deferred_mode, c); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingForeColor", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_back_color(&mut self, handle: u32, cmd: proto::SetGratingBackColorRequest) -> proto::Response {
+        let c = match cmd.back_color {
+            Some(c) => [c.r, c.g, c.b, c.a],
+            None => return err(proto::ErrorCode::InvalidArgument, "back_color must be set"),
+        };
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_back_color(self.deferred_mode, c); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingBackColor", "Grating"),
+        }
+    }
+
+    fn cmd_set_grating_opacity(&mut self, handle: u32, cmd: proto::SetGratingOpacityRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(Stimulus::Grating(s)) => { s.set_opacity(self.deferred_mode, cmd.opacity); ok_ack() }
+            Some(stim) => err_wrong_type(stim, "SetGratingOpacity", "Grating"),
         }
     }
 
@@ -616,11 +693,14 @@ impl SceneState {
     // ── QueryServerInfo ───────────────────────────────────────────────────────
 
     fn cmd_query_server_info(&self) -> proto::Response {
+        let Some((w, h)) = self.screen_size else {
+            return err(proto::ErrorCode::NotReady, "display not yet initialised");
+        };
         let bg = self.background.live;
         let version = parse_cargo_version();
         ok_body(proto::response::Body::ServerInfo(proto::QueryServerInfoResponse {
-            width: self.screen_size.0,
-            height: self.screen_size.1,
+            width: w,
+            height: h,
             frame_rate: self.frame_rate,
             background_color: Some(proto::Color { r: bg[0], g: bg[1], b: bg[2], a: bg[3] }),
             backend: proto::Backend::Unspecified as i32,
@@ -633,71 +713,67 @@ impl SceneState {
     fn cmd_query_stimulus(&self, handle: u32) -> proto::Response {
         let stim = match self.stimuli.get(&handle) {
             Some(s) => s,
-            None => {
-                return err(
-                    proto::ErrorCode::HandleNotFound,
-                    format!("stimulus handle {} not found", handle),
-                );
-            }
+            None => return err_not_found(handle),
         };
 
         let pos = stim.get_pos();
-        let angle = stim.transform().map(|t| t.live.angle).unwrap_or(0.0);
+        let angle = stim.transform().live.angle;
 
-        let (fill_color, outline_color, outline_width, draw_mode, opacity) =
-            match stim.appearance() {
-                Some(app) => {
-                    let a = app.live;
+        let (stimulus_type, params, fill_color, outline_color, outline_width, draw_mode, opacity) =
+            match stim {
+                Stimulus::Shape(s) => {
+                    let a = s.appearance().live;
+                    let (st, p) = match s {
+                        ShapeStimulus::Rect(r) => (
+                            proto::StimulusType::Rect as i32,
+                            Some(proto::StimulusParams {
+                                shape: Some(proto::stimulus_params::Shape::Rect(proto::RectParams {
+                                    width: r.size.live[0] * 2.0,
+                                    height: r.size.live[1] * 2.0,
+                                })),
+                            }),
+                        ),
+                        ShapeStimulus::Disc(d) => (
+                            proto::StimulusType::Disc as i32,
+                            Some(proto::StimulusParams {
+                                shape: Some(proto::stimulus_params::Shape::Disc(proto::DiscParams {
+                                    radius: d.radius.live,
+                                })),
+                            }),
+                        ),
+                        ShapeStimulus::Ellipse(e) => (
+                            proto::StimulusType::Ellipse as i32,
+                            Some(proto::StimulusParams {
+                                shape: Some(proto::stimulus_params::Shape::Ellipse(proto::EllipseParams {
+                                    width: e.radii.live[0] * 2.0,
+                                    height: e.radii.live[1] * 2.0,
+                                })),
+                            }),
+                        ),
+                    };
                     (
-                        Some(proto::Color {
-                            r: a.fill_color[0],
-                            g: a.fill_color[1],
-                            b: a.fill_color[2],
-                            a: a.fill_color[3],
-                        }),
-                        Some(proto::Color {
-                            r: a.outline_color[0],
-                            g: a.outline_color[1],
-                            b: a.outline_color[2],
-                            a: a.outline_color[3],
-                        }),
+                        st, p,
+                        Some(proto::Color { r: a.fill_color[0], g: a.fill_color[1], b: a.fill_color[2], a: a.fill_color[3] }),
+                        Some(proto::Color { r: a.outline_color[0], g: a.outline_color[1], b: a.outline_color[2], a: a.outline_color[3] }),
                         a.stroke_width,
                         scene_draw_mode_to_proto(a.draw_mode),
                         a.fill_color[3],
                     )
                 }
-                None => (None, None, 0.0, proto::DrawMode::Filled as i32, 1.0),
+                Stimulus::Grating(s) => {
+                    let fc = s.params.live.fore_color;
+                    let op = s.params.live.opacity;
+                    (
+                        proto::StimulusType::Grating as i32,
+                        Some(grating_query_params(s)),
+                        Some(proto::Color { r: fc[0], g: fc[1], b: fc[2], a: op }),
+                        None,
+                        0.0,
+                        proto::DrawMode::Filled as i32,
+                        op,
+                    )
+                }
             };
-
-        let (stimulus_type, params) = match stim {
-            Stimulus::Rect(s) => (
-                proto::StimulusType::Rect as i32,
-                Some(proto::StimulusParams {
-                    shape: Some(proto::stimulus_params::Shape::Rect(proto::RectParams {
-                        width: s.size.live[0] * 2.0,
-                        height: s.size.live[1] * 2.0,
-                    })),
-                }),
-            ),
-            Stimulus::Disc(s) => (
-                proto::StimulusType::Disc as i32,
-                Some(proto::StimulusParams {
-                    shape: Some(proto::stimulus_params::Shape::Disc(proto::DiscParams {
-                        radius: s.radius.live,
-                    })),
-                }),
-            ),
-            Stimulus::Ellipse(s) => (
-                proto::StimulusType::Ellipse as i32,
-                Some(proto::StimulusParams {
-                    shape: Some(proto::stimulus_params::Shape::Ellipse(proto::EllipseParams {
-                        width: s.radii.live[0] * 2.0,
-                        height: s.radii.live[1] * 2.0,
-                    })),
-                }),
-            ),
-            _ => (proto::StimulusType::Unspecified as i32, None),
-        };
 
         ok_body(proto::response::Body::StimulusInfo(proto::QueryStimulusResponse {
             stimulus_type,
@@ -721,13 +797,10 @@ impl SceneState {
             .iter()
             .map(|(&handle, stim)| {
                 let stimulus_type = match stim {
-                    Stimulus::Rect(_) => proto::StimulusType::Rect,
-                    Stimulus::Disc(_) => proto::StimulusType::Disc,
-                    Stimulus::Ellipse(_) => proto::StimulusType::Ellipse,
-                    Stimulus::Bitmap(_) | Stimulus::BitmapSeq(_) => proto::StimulusType::Bitmap,
-                    Stimulus::WgslShader(_) => proto::StimulusType::Shader,
-                    Stimulus::Particle(_) => proto::StimulusType::Particle,
-                    _ => proto::StimulusType::Unspecified,
+                    Stimulus::Shape(ShapeStimulus::Rect(_))    => proto::StimulusType::Rect,
+                    Stimulus::Shape(ShapeStimulus::Ellipse(_)) => proto::StimulusType::Ellipse,
+                    Stimulus::Shape(ShapeStimulus::Disc(_))    => proto::StimulusType::Disc,
+                    Stimulus::Grating(_)                       => proto::StimulusType::Grating,
                 } as i32;
                 proto::StimulusEntry { handle, stimulus_type, enabled: stim.flags().enabled }
             })

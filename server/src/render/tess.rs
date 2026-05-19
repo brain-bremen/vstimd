@@ -3,9 +3,7 @@ use kurbo::Shape as _;
 
 use crate::geom::Vertex;
 use crate::scene::photodiode::PhotoDiodeState;
-use crate::scene::stimulus::{
-    DiscStimulus, EllipseStimulus, RectStimulus, Stimulus, Transform2D,
-};
+use crate::scene::stimulus::{DiscStimulus, EllipseStimulus, RectStimulus, ShapeStimulus, Stimulus, Transform2D};
 
 // ── Coordinate conversion ─────────────────────────────────────────────────────
 
@@ -33,10 +31,12 @@ pub fn tessellate_stimulus(
     let half_h = screen_size.1 as f32 * 0.5;
 
     match stimulus {
-        Stimulus::Rect(s)    => tessellate_rect(s, half_w, half_h),
-        Stimulus::Ellipse(s) => tessellate_ellipse(s, half_w, half_h),
-        Stimulus::Disc(s)    => tessellate_disc(s, half_w, half_h),
-        _ => (vec![], vec![]),
+        Stimulus::Shape(s) => match s {
+            ShapeStimulus::Rect(s)    => tessellate_rect(s, half_w, half_h),
+            ShapeStimulus::Ellipse(s) => tessellate_ellipse(s, half_w, half_h),
+            ShapeStimulus::Disc(s)    => tessellate_disc(s, half_w, half_h),
+        },
+        Stimulus::Grating(_) => (vec![], vec![]),
     }
 }
 

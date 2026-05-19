@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 use ash::vk;
 
 use crate::render::tess::{self, tessellate_photodiode};
+use crate::scene::stimulus::Stimulus;
 
 const PHOTODIODE_HANDLE: u32 = u32::MAX;
 use crate::scene::SceneState;
@@ -12,6 +13,9 @@ use super::buffers::GpuBuffers;
 use super::context::VkContext;
 use super::egui::VkEguiRenderer;
 use super::pipeline::VkPipeline;
+use crate::scene::stimulus::grating::{
+    VkGratingPipeline, build_grating_push_constants, grating_phase_inc,
+};
 
 /// Optional egui overlay data for a frame
 pub struct EguiFrameData<'a> {
@@ -32,21 +36,42 @@ pub struct EguiFrameData<'a> {
 pub fn render_frame(
     ctx: &VkContext,
     pipeline: &VkPipeline,
+    grating_pipeline: &VkGratingPipeline,
     gpu_buffers: &mut GpuBuffers,
     scene: &Arc<RwLock<SceneState>>,
     frame_index: &mut usize,
     frame_stats: &mut FrameStats,
     mut egui_renderer: Option<&mut VkEguiRenderer>,
     egui_data: Option<EguiFrameData>,
+    screen_clock: Option<std::time::Instant>,
 ) -> Option<FrameTick> {
-    // ── Waitable screen clock (VK_KHR_present_wait) ───────────────────────────
-    // Block until the previously presented frame is confirmed on-screen.
-    // The Instant captured here is the best available proxy for the vblank
-    // that just fired — this is the "tick" that starts work on the new frame.
-    // On the first call (no prior present) we fall through immediately and
-    // use the current time as a starting-point approximation.
     let this_present_id = ctx.next_present_id.get();
-    let vblank_time = if let (Some(pw), true) = (&ctx.present_wait, this_present_id > 1) {
+
+    // -- Wait for this slot's previous GPU work (must precede upload) ----------
+    // Moved before tessellation so gpu_buffers.upload() (which destroys old
+    // vk::Buffer/DeviceMemory) is only called once the GPU has finished reading
+    // the previous frame's buffers.
+    let frame = &ctx.frames[*frame_index % ctx.frames.len()];
+    let t_fence_start = std::time::Instant::now();
+    unsafe {
+        ctx.device
+            .wait_for_fences(&[frame.in_flight], true, u64::MAX)
+            .expect("fence wait");
+        // NOTE: do NOT reset the fence here. If acquire_next_image fails with
+        // OUT_OF_DATE below, we return early without ever calling queue_submit,
+        // which means the fence would stay reset-but-never-signaled. The next
+        // call to render_frame would then wait on it forever. Reset only after
+        // a successful acquire, immediately before queue_submit.
+    }
+    let fence_us = t_fence_start.elapsed().as_micros() as u32;
+
+    // ── Screen clock ──────────────────────────────────────────────────────────
+    // Priority 1: DRM vblank time pre-computed by the caller (DRM mode).
+    // Priority 2: VK_KHR_present_wait (winit mode when extension is present).
+    // Priority 3: Instant::now() — GPU-completion time only (inaccurate).
+    let vblank_time = if let Some(t) = screen_clock {
+        t
+    } else if let (Some(pw), true) = (&ctx.present_wait, this_present_id > 1) {
         unsafe {
             match pw.wait_for_present(ctx.swapchain, this_present_id - 1, 3_000_000_000) {
                 Ok(()) => {}
@@ -64,9 +89,9 @@ pub fn render_frame(
         }
         std::time::Instant::now()
     } else {
-        // First frame or no present_wait support: use current time.
         std::time::Instant::now()
     };
+
     // -- Update: tessellate scene into GPU buffers ----------------------------
     let t_tess_start = std::time::Instant::now();
     {
@@ -76,7 +101,7 @@ pub fn render_frame(
         if sc.pending_flip {
             sc.apply_flip();
         }
-        sc.screen_size = screen_size;
+        sc.screen_size = Some(screen_size);
         sc.frame_rate = fps;
         // When the screen size changes all NDC coordinates are stale.
         if sc.last_uploaded_size != screen_size {
@@ -85,14 +110,37 @@ pub fn render_frame(
                 stim.flags_mut().mark_dirty();
             }
         }
-        gpu_buffers.meshes.retain(|h, _| *h == PHOTODIODE_HANDLE || sc.stimuli.contains_key(h));
+        gpu_buffers
+            .meshes
+            .retain(|h, _| *h == PHOTODIODE_HANDLE || sc.stimuli.contains_key(h));
         let handles: Vec<u32> = sc.stimuli.keys().copied().collect();
         for handle in handles {
+            // Gratings use the shared quad; the vertex shader positions it via push
+            // constants each frame. Advance the drift accumulator then skip tessellation.
+            if let Some(Stimulus::Grating(s)) = sc.stimuli.get_mut(&handle) {
+                if s.flags.is_visible() && s.params.live.drift_speed != 0.0 {
+                    let inc = grating_phase_inc(s, fps);
+                    s.phase_accum += inc;
+                }
+                continue;
+            }
+
             let stim = &sc.stimuli[&handle];
             if !stim.flags().dirty && gpu_buffers.meshes.contains_key(&handle) {
                 continue;
             }
             let (verts, idxs) = tess::tessellate_stimulus(stim, screen_size);
+            log::debug!(
+                "tess #{handle} {} screen={screen_size:?} verts={} idxs={}{}",
+                stim.type_name(),
+                verts.len(),
+                idxs.len(),
+                if let Stimulus::Grating(s) = stim {
+                    format!(" pos={:?} size={:?} enabled={}", s.transform.live.pos, s.size.live, s.flags.enabled)
+                } else {
+                    String::new()
+                }
+            );
             gpu_buffers.upload(handle, &ctx.device, &verts, &idxs);
             sc.stimuli[&handle].flags_mut().dirty = false;
         }
@@ -116,22 +164,6 @@ pub fn render_frame(
         }
     } // write lock dropped — ZMQ thread can run
     let tessellate_us = t_tess_start.elapsed().as_micros() as u32;
-
-    let frame = &ctx.frames[*frame_index % ctx.frames.len()];
-
-    // -- Wait for this slot's previous GPU work -------------------------------
-    let t_fence_start = std::time::Instant::now();
-    unsafe {
-        ctx.device
-            .wait_for_fences(&[frame.in_flight], true, u64::MAX)
-            .expect("fence wait");
-        // NOTE: do NOT reset the fence here. If acquire_next_image fails with
-        // OUT_OF_DATE below, we return early without ever calling queue_submit,
-        // which means the fence would stay reset-but-never-signaled. The next
-        // call to render_frame would then wait on it forever. Reset only after
-        // a successful acquire, immediately before queue_submit.
-    }
-    let fence_us = t_fence_start.elapsed().as_micros() as u32;
 
     // -- Acquire swapchain image ----------------------------------------------
     let t_acquire_start = std::time::Instant::now();
@@ -185,45 +217,74 @@ pub fn render_frame(
         ctx.device
             .cmd_begin_render_pass(cb, &rp_info, vk::SubpassContents::INLINE);
 
-        // Collect draws; only bind the pipeline if there is something to draw.
+        // Draw stimuli in scene order so z-ordering is respected.
+        // Pipeline is switched lazily — only when the stimulus type changes.
         let sc = scene.read().expect("scene lock poisoned");
-        let draws: Vec<(vk::Buffer, vk::Buffer, u32)> = sc
-            .stimuli
-            .keys()
-            .filter_map(|h| gpu_buffers.meshes.get(h).filter(|m| m.index_count > 0))
-            .chain(
-                gpu_buffers
-                    .meshes
-                    .get(&PHOTODIODE_HANDLE)
-                    .filter(|m| m.index_count > 0),
-            )
-            .map(|m| (m.vertex_buffer, m.index_buffer, m.index_count))
-            .collect();
-        drop(sc);
+        let screen_w = ctx.extent.width as f32;
+        let screen_h = ctx.extent.height as f32;
 
-        if !draws.is_empty() {
-            ctx.device
-                .cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
+        let viewport = vk::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: screen_w,
+            height: screen_h,
+            min_depth: 0.0,
+            max_depth: 1.0,
+        };
 
-            let viewport = vk::Viewport {
-                x: 0.0,
-                y: 0.0,
-                width: ctx.extent.width as f32,
-                height: ctx.extent.height as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            };
-            ctx.device
-                .cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
-            ctx.device
-                .cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+        #[derive(PartialEq)]
+        enum Bound { None, Solid, Grating }
+        let mut bound = Bound::None;
+        let quad = &grating_pipeline.quad;
 
-            for (vbuf, ibuf, index_count) in draws {
-                ctx.device.cmd_bind_vertex_buffers(cb, 0, &[vbuf], &[0]);
-                ctx.device.cmd_bind_index_buffer(cb, ibuf, 0, vk::IndexType::UINT32);
-                ctx.device.cmd_draw_indexed(cb, index_count, 1, 0, 0, 0);
+        ctx.cmd_begin_label(cb, "stimuli", [0.3, 0.7, 1.0, 1.0]);
+        for (h, stim) in &sc.stimuli {
+            if !stim.is_visible() {
+                continue;
+            }
+            if let Stimulus::Grating(s) = stim {
+                if bound != Bound::Grating {
+                    ctx.device.cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, grating_pipeline.pipeline);
+                    ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+                    ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+                    ctx.device.cmd_bind_vertex_buffers(cb, 0, &[quad.vertex_buffer], &[0]);
+                    ctx.device.cmd_bind_index_buffer(cb, quad.index_buffer, 0, vk::IndexType::UINT32);
+                    bound = Bound::Grating;
+                }
+                let pc = build_grating_push_constants(s, screen_w, screen_h);
+                ctx.device.cmd_push_constants(
+                    cb,
+                    grating_pipeline.layout,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                    0,
+                    bytemuck::bytes_of(&pc),
+                );
+                ctx.device.cmd_draw_indexed(cb, quad.index_count, 1, 0, 0, 0);
+            } else if let Some(mesh) = gpu_buffers.meshes.get(h).filter(|m| m.index_count > 0) {
+                if bound != Bound::Solid {
+                    ctx.device.cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
+                    ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+                    ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+                    bound = Bound::Solid;
+                }
+                ctx.device.cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
+                ctx.device.cmd_bind_index_buffer(cb, mesh.index_buffer, 0, vk::IndexType::UINT32);
+                ctx.device.cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
             }
         }
+
+        // Photodiode is always drawn on top, always solid.
+        if let Some(m) = gpu_buffers.meshes.get(&PHOTODIODE_HANDLE).filter(|m| m.index_count > 0) {
+            if bound != Bound::Solid {
+                ctx.device.cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
+                ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+                ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+            }
+            ctx.device.cmd_bind_vertex_buffers(cb, 0, &[m.vertex_buffer], &[0]);
+            ctx.device.cmd_bind_index_buffer(cb, m.index_buffer, 0, vk::IndexType::UINT32);
+            ctx.device.cmd_draw_indexed(cb, m.index_count, 1, 0, 0, 0);
+        }
+        ctx.cmd_end_label(cb);
 
         ctx.device.cmd_end_render_pass(cb);
 
@@ -249,6 +310,7 @@ pub fn render_frame(
             ctx.device
                 .cmd_begin_render_pass(cb, &egui_rp_info, vk::SubpassContents::INLINE);
 
+            ctx.cmd_begin_label(cb, "egui overlay", [0.5, 0.9, 0.3, 1.0]);
             // Paint egui
             renderer.paint(
                 &ctx.device,
@@ -257,6 +319,7 @@ pub fn render_frame(
                 (ctx.extent.width, ctx.extent.height),
                 data.pixels_per_point,
             );
+            ctx.cmd_end_label(cb);
 
             ctx.device.cmd_end_render_pass(cb);
         }
@@ -294,7 +357,11 @@ pub fn render_frame(
             log::error!(
                 "vstimd: queue_submit failed: {e} \
                  [frame={} tess={}µs fence={}µs acquire={}µs record={}µs]",
-                this_present_id, tessellate_us, fence_us, acquire_us, record_us
+                this_present_id,
+                tessellate_us,
+                fence_us,
+                acquire_us,
+                record_us
             );
             std::process::exit(1);
         }
@@ -334,8 +401,13 @@ pub fn render_frame(
         log::warn!(
             "vstimd: {} dropped frame(s) before frame {} \
              [tess={}µs fence={}µs acquire={}µs record={}µs submit={}µs]",
-            dropped_frames, this_present_id,
-            tessellate_us, fence_us, acquire_us, record_us, submit_us
+            dropped_frames,
+            this_present_id,
+            tessellate_us,
+            fence_us,
+            acquire_us,
+            record_us,
+            submit_us
         );
     }
     *frame_index = frame_index.wrapping_add(1);

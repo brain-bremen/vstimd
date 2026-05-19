@@ -9,14 +9,14 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::log_buffer::LogBuffer;
-use crate::render::overlay::build_overlay_ui;
+use crate::render::BenchmarkState;
+use crate::render::MetricsSampler;
+use crate::render::RenderState;
+use crate::render::system_info::ClockSource;
+use crate::render::vk::{GpuBuffers, VkEguiRenderer, VkGratingPipeline, VkPipeline};
 use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, WindowMode, query_local_ip};
-use crate::render::vk::{
-    EguiFrameData, GpuBuffers, VkContext, VkEguiRenderer, VkPipeline, render_frame,
-};
-use crate::timing::FramePhases;
 use crate::scene::SceneState;
-use crate::timing::{FrameStats, FrameTick};
+use crate::timing::{FramePhases, FrameStats};
 
 // FIFO is the only present mode used throughout the application.
 //
@@ -30,39 +30,19 @@ use crate::timing::{FrameStats, FrameTick};
 // frames overwrite each other) — the exact opposite of what we want. FIFO is
 // guaranteed to be available on every Vulkan implementation.
 
-// ── Per-window Vulkan state ───────────────────────────────────────────────────
+// ── Per-window state ──────────────────────────────────────────────────────────
 
 struct State {
     // Rust drops fields in declaration order.
-    // All display-system and Vulkan resources must be declared — and therefore
-    // dropped — BEFORE `window`, because they hold references (surface handles,
-    // wl_surface proxies, …) into the window that become dangling once the
-    // window is destroyed.
-    ctx: VkContext,
-    pipeline: VkPipeline,
-    gpu_buffers: GpuBuffers,
-    egui_renderer: VkEguiRenderer,
-    egui_winit: egui_winit::State, // holds display-handle references
+    // `rs` (all Vulkan resources) and `egui_winit` must drop BEFORE `window`,
+    // because they hold surface handles and wl_surface proxies into the window
+    // that become dangling once the window is destroyed.
+    rs: RenderState,
+    egui_winit: egui_winit::State,
     // ── Window comes after all borrowers ─────────────────────────────────────
     window: Arc<Window>,
-    scene: Arc<RwLock<SceneState>>,
-    frame_stats: FrameStats,
-    last_phases: FramePhases,
-    frame_index: usize,
-    egui_ctx: egui::Context,
-    show_overlay: bool,
     refresh_hz: f64,
     window_mode: WindowMode,
-    local_ip: String,
-    log_buffer: LogBuffer,
-}
-
-impl Drop for State {
-    fn drop(&mut self) {
-        self.egui_renderer.destroy(&self.ctx.device);
-        self.gpu_buffers.destroy_all(&self.ctx.device);
-        self.pipeline.destroy(&self.ctx.device);
-    }
 }
 
 impl State {
@@ -78,7 +58,41 @@ impl State {
         // the screen clock.
         log::info!("vstimd: present mode: FIFO");
 
-        let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass);
+        let wf_mode = if ctx.supports_wireframe {
+            ash::vk::PolygonMode::LINE
+        } else {
+            ash::vk::PolygonMode::FILL
+        };
+        let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, ash::vk::PolygonMode::FILL);
+        let grating_pipeline = VkGratingPipeline::new(
+            &ctx.device,
+            &ctx.instance,
+            ctx.physical_device,
+            ctx.render_pass,
+            ash::vk::PolygonMode::FILL,
+        );
+        let wireframe_pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, wf_mode);
+        let wireframe_grating = VkGratingPipeline::new(
+            &ctx.device,
+            &ctx.instance,
+            ctx.physical_device,
+            ctx.render_pass,
+            wf_mode,
+        );
+
+        ctx.set_debug_name(pipeline.pipeline, "solid_pipeline");
+        ctx.set_debug_name(grating_pipeline.pipeline, "grating_pipeline");
+        ctx.set_debug_name(wireframe_pipeline.pipeline, "solid_wireframe_pipeline");
+        ctx.set_debug_name(wireframe_grating.pipeline, "grating_wireframe_pipeline");
+        ctx.set_debug_name(ctx.render_pass, "render_pass");
+        ctx.set_debug_name(ctx.egui_render_pass, "egui_render_pass");
+        for (i, frame) in ctx.frames.iter().enumerate() {
+            ctx.set_debug_name(frame.command_buffer, &format!("frame[{i}]_cmd"));
+        }
+        for (i, img) in ctx.swapchain_images.iter().enumerate() {
+            ctx.set_debug_name(*img, &format!("swapchain[{i}]"));
+        }
+
         let gpu_buffers = GpuBuffers::new(&ctx.instance, ctx.physical_device);
         let egui_renderer = VkEguiRenderer::new(
             &ctx.device,
@@ -100,101 +114,101 @@ impl State {
 
         let hz = detect_refresh_hz(&window);
 
-        Self {
-            window,
+        if ctx.present_wait.is_none() {
+            if ctx.display_timing.is_some() {
+                log::warn!(
+                    "vstimd: *** VK_GOOGLE_display_timing is available, but this path \
+                     does not use it for vblank timestamping without \
+                     VK_KHR_present_wait. ***"
+                );
+            } else {
+                log::warn!(
+                    "vstimd: *** No vblank clock available (VK_KHR_present_wait absent). ***"
+                );
+            }
+            log::warn!(
+                "vstimd: Stimulus timestamps will reflect GPU-completion time, not \
+                 vblank. Use DRM mode or a GPU with present_wait for accurate timing."
+            );
+        }
+
+        let rs = RenderState {
+            frame_stats: FrameStats::new(hz),
             ctx,
             pipeline,
+            grating_pipeline,
+            wireframe_pipeline,
+            wireframe_grating,
+            wireframe: false,
             gpu_buffers,
             egui_renderer,
+            egui_ctx,
             scene,
-            frame_stats: FrameStats::new(hz),
             last_phases: FramePhases::default(),
             frame_index: 0,
-            egui_ctx,
-            egui_winit,
             show_overlay: false,
-            refresh_hz: hz,
-            window_mode,
+            benchmark: BenchmarkState::new(),
             local_ip: query_local_ip(),
             log_buffer,
+            metrics: MetricsSampler::new(),
+        };
+
+        Self {
+            rs,
+            egui_winit,
+            window,
+            refresh_hz: hz,
+            window_mode,
+        }
+    }
+
+    fn sys_info(&self) -> SystemInfo {
+        let size = self.window.inner_size();
+        SystemInfo {
+            display: StimulusDisplayInfo {
+                width_px: size.width,
+                height_px: size.height,
+                refresh_hz: self.refresh_hz,
+            },
+            backend: RenderTarget::Desktop(self.window_mode),
+            local_ip: self.rs.local_ip.clone(),
+            hostname: String::new(),
+            gpu_name: String::new(),
+            wireframe: self.rs.ctx.supports_wireframe.then_some(self.rs.wireframe),
+            // VK_GOOGLE_display_timing alone does not mean we're using display
+            // timestamps yet — report GpuCompletion until present_wait is active.
+            clock_source: if self.rs.ctx.present_wait.is_some() {
+                ClockSource::PresentWait
+            } else {
+                ClockSource::GpuCompletion
+            },
         }
     }
 
     fn render(&mut self) {
-        // Build the egui overlay if enabled.
-        if self.show_overlay {
-            let raw_input = self.egui_winit.take_egui_input(&self.window);
-            let phases = self.last_phases;
-            let size = self.window.inner_size();
-            let sys = SystemInfo {
-                display: StimulusDisplayInfo {
-                    width_px: size.width,
-                    height_px: size.height,
-                    refresh_hz: self.refresh_hz,
-                },
-                backend: RenderTarget::Desktop(self.window_mode),
-                local_ip: self.local_ip.clone(),
-                hostname: String::new(),
-                gpu_name: String::new(),
-            };
-            let output = self.egui_ctx.run_ui(raw_input, |ctx| {
-                build_overlay_ui(ctx, &self.scene, &self.frame_stats, phases, &sys, &self.log_buffer);
-            });
-            self.egui_winit
-                .handle_platform_output(&self.window, output.platform_output);
+        // 1. Collect egui input (via winit event integration, if overlay is on).
+        let egui_raw_input = self
+            .rs
+            .show_overlay
+            .then(|| self.egui_winit.take_egui_input(&self.window));
 
-            // Tessellate egui output
-            let primitives = self
-                .egui_ctx
-                .tessellate(output.shapes, output.pixels_per_point);
+        // 2. Render: build overlay UI, tessellate scene, record Vulkan commands,
+        //    submit to GPU, present to display.
+        let sys_info = self.sys_info();
+        let (tick, platform_output) = self.rs.render_one_frame(None, egui_raw_input, &sys_info);
 
-            let data = EguiFrameData {
-                textures_delta: &output.textures_delta,
-                primitives: &primitives,
-                pixels_per_point: output.pixels_per_point,
-            };
-
-            let tick = render_frame(
-                &self.ctx,
-                &self.pipeline,
-                &mut self.gpu_buffers,
-                &self.scene,
-                &mut self.frame_index,
-                &mut self.frame_stats,
-                Some(&mut self.egui_renderer),
-                Some(data),
-            );
-            self.handle_tick(tick);
-        } else {
-            let tick = render_frame(
-                &self.ctx,
-                &self.pipeline,
-                &mut self.gpu_buffers,
-                &self.scene,
-                &mut self.frame_index,
-                &mut self.frame_stats,
-                None,
-                None,
-            );
-            self.handle_tick(tick);
+        // 3. Forward egui platform output (cursor changes, clipboard, etc.).
+        if let Some(po) = platform_output {
+            self.egui_winit.handle_platform_output(&self.window, po);
         }
-    }
 
-    fn handle_tick(&mut self, tick: Option<FrameTick>) {
-        match tick {
-            None => {
-                // Swapchain out of date (resize, monitor change, etc.).
-                let size = self.window.inner_size();
-                let extent = ash::vk::Extent2D {
-                    width: size.width.max(1),
-                    height: size.height.max(1),
-                };
-                self.ctx.recreate_swapchain(extent);
-            }
-            Some(ref t) => {
-                self.last_phases = t.phases;
-                // TODO: forward tick to scene / scheduler once that layer exists.
-            }
+        // 4. Handle swapchain out of date (resize, monitor change, etc.).
+        if tick.is_none() {
+            let size = self.window.inner_size();
+            self.rs.ctx.recreate_swapchain(ash::vk::Extent2D {
+                width: size.width.max(1),
+                height: size.height.max(1),
+            });
         }
     }
 }
@@ -211,7 +225,11 @@ pub struct WinitApp {
 }
 
 impl WinitApp {
-    pub fn new(scene: Arc<RwLock<SceneState>>, window_mode: WindowMode, log_buffer: LogBuffer) -> Self {
+    pub fn new(
+        scene: Arc<RwLock<SceneState>>,
+        window_mode: WindowMode,
+        log_buffer: LogBuffer,
+    ) -> Self {
         Self {
             scene: Some(scene),
             is_fullscreen: window_mode == WindowMode::Fullscreen,
@@ -228,7 +246,7 @@ impl WinitApp {
         }
 
         if self.is_fullscreen {
-            // ── Leaving fullscreen → windowed ─────────────────────────
+            // ── Leaving fullscreen → windowed ─────────────────────────────────
             // Present mode is already FIFO and does not change.
             let state = self.state.as_ref().unwrap();
             state.window.set_fullscreen(None);
@@ -241,10 +259,9 @@ impl WinitApp {
             self.is_fullscreen = false;
             log::info!("vstimd: windowed — present mode: FIFO");
         } else {
-            // ── Entering fullscreen ───────────────────────────────────────
-            // Present mode stays FIFO throughout — the swapchain is the
-            // screen clock and must not be decoupled from vblank.
-
+            // ── Entering fullscreen ───────────────────────────────────────────
+            // Present mode stays FIFO throughout — the swapchain is the screen
+            // clock and must not be decoupled from vblank.
             let monitor = {
                 let s = self.state.as_ref().unwrap();
                 s.window
@@ -283,12 +300,19 @@ impl ApplicationHandler for WinitApp {
             let window = Arc::new(event_loop.create_window(attrs).unwrap());
             let scene = self.scene.take().expect("scene already consumed");
             let log_buffer = self.log_buffer.take().expect("log_buffer already consumed");
-            self.state = Some(State::new(window, scene, event_loop, self.window_mode, log_buffer));
+            self.state = Some(State::new(
+                window,
+                scene,
+                event_loop,
+                self.window_mode,
+                log_buffer,
+            ));
         }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        // Forward to egui first.
+        // Forward all window events to egui first; it may consume input events
+        // (e.g. keyboard when a text field is focused).
         if let Some(state) = &mut self.state {
             let response = state.egui_winit.on_window_event(&state.window, &event);
             if response.consumed {
@@ -300,11 +324,10 @@ impl ApplicationHandler for WinitApp {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
                 if let Some(state) = &mut self.state {
-                    let extent = ash::vk::Extent2D {
+                    state.rs.ctx.recreate_swapchain(ash::vk::Extent2D {
                         width: size.width.max(1),
                         height: size.height.max(1),
-                    };
-                    state.ctx.recreate_swapchain(extent);
+                    });
                 }
             }
             WindowEvent::ModifiersChanged(mods) => self.modifiers = *mods,
@@ -320,20 +343,31 @@ impl ApplicationHandler for WinitApp {
                 KeyCode::Escape => event_loop.exit(),
                 KeyCode::F1 => {
                     if let Some(state) = &mut self.state {
-                        state.show_overlay = !state.show_overlay;
+                        state.rs.show_overlay = !state.rs.show_overlay;
                     }
                 }
                 KeyCode::F2 => {
                     if let Some(state) = &self.state {
-                        let mut sc = state.scene.write().expect("scene lock");
+                        let mut sc = state.rs.scene.write().expect("scene lock");
                         sc.photodiode.enabled = !sc.photodiode.enabled;
                         sc.photodiode.flicker = true;
                         sc.photodiode.lit = false;
                     }
                 }
+                KeyCode::F3 => {
+                    if let Some(state) = &mut self.state
+                        && state.rs.ctx.supports_wireframe
+                    {
+                        state.rs.wireframe = !state.rs.wireframe;
+                        log::info!(
+                            "vstimd: wireframe {}",
+                            if state.rs.wireframe { "ON" } else { "OFF" }
+                        );
+                    }
+                }
                 KeyCode::KeyD => {
                     if let Some(state) = &self.state {
-                        crate::render::spawn_demo_stimuli(&state.scene);
+                        crate::render::spawn_demo_stimuli(&state.rs.scene);
                     }
                 }
                 KeyCode::F11 => self.toggle_fullscreen(event_loop),
@@ -357,22 +391,43 @@ impl ApplicationHandler for WinitApp {
 
 /// Determine the display refresh rate by trying several methods in order:
 ///
-/// 1. DRM kernel interface (Linux only) — reads the active connector mode
-///    directly from the kernel, compositor-independent.
-/// 2. winit `video_modes()` filtered by current window resolution.
-/// 3. winit `refresh_rate_millihertz()` on the current monitor.
+/// 1. DRM kernel interface (Linux bare-metal only) — reads the active connector
+///    mode directly from the kernel. Skipped when a compositor is running.
+/// 2. winit `refresh_rate_millihertz()` — queries the active compositor mode.
+/// 3. winit `video_modes()` filtered by current window resolution — fallback.
 ///
 /// Panics if the refresh rate cannot be determined. No silent fallback is
 /// allowed — an unknown rate would cause drop detection to produce garbage.
 fn detect_refresh_hz(window: &Window) -> f64 {
-    // 1. DRM kernel interface (Linux only).
+    // 1. DRM kernel interface (Linux only, bare-metal only).
+    // Skip when a compositor is running: DRM iterates connectors in kernel
+    // order and has no way to match one to the window's monitor. On a
+    // multi-monitor system it will pick the wrong connector.
     #[cfg(target_os = "linux")]
-    if let Some(hz) = query_refresh_hz_from_drm() {
+    if std::env::var_os("DISPLAY").is_none()
+        && std::env::var_os("WAYLAND_DISPLAY").is_none()
+        && let Some(hz) = query_refresh_hz_from_drm()
+    {
         log::info!("vstimd: display clock (DRM): {hz:.3} Hz");
         return hz;
     }
 
-    // 2. winit video_modes() — works on X11 and some Wayland compositors.
+    // 2. refresh_rate_millihertz() — queries the active XRandR/compositor mode.
+    // Preferred over video_modes() because it reflects what the compositor is
+    // actually running, not just what modes the monitor supports.
+    if let Some(mhz) = window
+        .current_monitor()
+        .and_then(|m| m.refresh_rate_millihertz())
+    {
+        let hz = mhz as f64 / 1000.0;
+        log::info!("vstimd: display clock (monitor API): {hz:.3} Hz");
+        return hz;
+    }
+
+    // 3. winit video_modes() — fallback; filtered by the window's current size.
+    // Unreliable at construction time: inner_size() may be a platform default
+    // (e.g. 800×600) before the compositor applies fullscreen, which can match
+    // a wrong VESA mode (800×600@75 Hz) instead of the native rate.
     if let Some(hz) = window.current_monitor().and_then(|m| {
         let size = window.inner_size();
         m.video_modes()
@@ -382,16 +437,6 @@ fn detect_refresh_hz(window: &Window) -> f64 {
             .map(|mhz| mhz as f64 / 1000.0)
     }) {
         log::info!("vstimd: display clock (video_modes): {hz:.3} Hz");
-        return hz;
-    }
-
-    // 3. refresh_rate_millihertz() directly.
-    if let Some(mhz) = window
-        .current_monitor()
-        .and_then(|m| m.refresh_rate_millihertz())
-    {
-        let hz = mhz as f64 / 1000.0;
-        log::info!("vstimd: display clock (monitor API): {hz:.3} Hz");
         return hz;
     }
 

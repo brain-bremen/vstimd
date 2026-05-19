@@ -9,6 +9,7 @@ pub enum AppKey {
     Escape,
     F1,
     F2,
+    F3,
     D,
 }
 
@@ -88,6 +89,7 @@ impl input::LibinputInterface for Interface {
 /// Wraps a libinput context and provides a simple per-frame key event drain.
 pub struct InputState {
     ctx: input::Libinput,
+    modifiers: egui::Modifiers,
     #[allow(dead_code)] // held for its Drop side-effect
     tty_kbd_guard: Option<TtyKbdGuard>,
 }
@@ -97,7 +99,7 @@ impl InputState {
         let tty_kbd_guard = TtyKbdGuard::acquire();
         let mut ctx = input::Libinput::new_with_udev(Interface);
         match ctx.udev_assign_seat("seat0") {
-            Ok(()) => Self { ctx, tty_kbd_guard },
+            Ok(()) => Self { ctx, modifiers: egui::Modifiers::default(), tty_kbd_guard },
             Err(()) => {
                 log::error!(
                     "vstimd: libinput could not open seat0 — \
@@ -109,28 +111,66 @@ impl InputState {
         }
     }
 
-    /// Drain pending events and return any recognised key presses.
+    /// Drain pending events.  Returns app-level key actions and egui keyboard
+    /// events for overlay navigation (Tab, arrows, Enter, Space, etc.).
     /// Non-blocking — returns immediately if there are no events.
-    pub fn poll(&mut self) -> Vec<AppKey> {
+    pub fn poll(&mut self) -> (Vec<AppKey>, Vec<egui::Event>) {
         if self.ctx.dispatch().is_err() {
-            return vec![];
+            return (vec![], vec![]);
         }
 
-        let mut keys = Vec::new();
+        let mut app_keys = Vec::new();
+        let mut egui_events = Vec::new();
+
         for event in self.ctx.by_ref() {
-            if let input::Event::Keyboard(kb) = event
-                && kb.key_state() == input::event::keyboard::KeyState::Pressed
-            {
-                // Evdev key codes (from linux/input-event-codes.h)
-                match kb.key() {
-                    1 => keys.push(AppKey::Escape),  // KEY_ESC
-                    32 => keys.push(AppKey::D),      // KEY_D
-                    59 => keys.push(AppKey::F1),     // KEY_F1
-                    60 => keys.push(AppKey::F2),     // KEY_F2
-                    _ => {}
+            let input::Event::Keyboard(kb) = event else { continue };
+            let pressed = kb.key_state() == input::event::keyboard::KeyState::Pressed;
+
+            match kb.key() {
+                // Modifier tracking (press + release) — no separate egui event;
+                // modifier state is embedded in subsequent key events.
+                42 | 54 => self.modifiers.shift = pressed, // KEY_LEFTSHIFT, KEY_RIGHTSHIFT
+                29 | 97 => self.modifiers.ctrl = pressed,  // KEY_LEFTCTRL, KEY_RIGHTCTRL
+                // App-level keys (press only)
+                1 if pressed => app_keys.push(AppKey::Escape),  // KEY_ESC
+                32 if pressed => app_keys.push(AppKey::D),      // KEY_D
+                59 if pressed => app_keys.push(AppKey::F1),     // KEY_F1
+                60 if pressed => app_keys.push(AppKey::F2),     // KEY_F2
+                61 if pressed => app_keys.push(AppKey::F3),     // KEY_F3
+                // Navigation / interaction keys → egui events (press + release)
+                code => {
+                    if let Some(key) = evdev_to_egui_key(code) {
+                        egui_events.push(egui::Event::Key {
+                            key,
+                            physical_key: None,
+                            pressed,
+                            repeat: false,
+                            modifiers: self.modifiers,
+                        });
+                    }
                 }
             }
         }
-        keys
+
+        (app_keys, egui_events)
     }
+}
+
+/// Map evdev key codes (linux/input-event-codes.h) to egui navigation keys.
+fn evdev_to_egui_key(code: u32) -> Option<egui::Key> {
+    Some(match code {
+        14 => egui::Key::Backspace,
+        15 => egui::Key::Tab,
+        28 | 96 => egui::Key::Enter,   // KEY_ENTER, KEY_KPENTER
+        57 => egui::Key::Space,
+        102 => egui::Key::Home,        // KEY_HOME
+        103 => egui::Key::ArrowUp,     // KEY_UP
+        104 => egui::Key::PageUp,      // KEY_PAGEUP
+        105 => egui::Key::ArrowLeft,   // KEY_LEFT
+        106 => egui::Key::ArrowRight,  // KEY_RIGHT
+        107 => egui::Key::End,         // KEY_END
+        108 => egui::Key::ArrowDown,   // KEY_DOWN
+        109 => egui::Key::PageDown,    // KEY_PAGEDOWN
+        _ => return None,
+    })
 }

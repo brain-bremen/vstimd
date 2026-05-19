@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Union
 
 from vstimd._proto import common_pb2, stimuli_2d_pb2 as stimuli_pb2
+from .grating_models import GratingMask, GratingParams, GratingTexture
 
 
 class StimulusType(Enum):
@@ -15,6 +16,7 @@ class StimulusType(Enum):
     BITMAP   = "bitmap"
     SHADER   = "shader"
     PARTICLE = "particle"
+    GRATING  = "grating"
 
 
 class DrawMode(Enum):
@@ -62,7 +64,7 @@ class EllipseParams:
     height: float
 
 
-StimulusParams = Union[RectParams, DiscParams, EllipseParams]
+StimulusParams = Union[RectParams, DiscParams, EllipseParams, GratingParams]
 
 _STIMULUS_TYPE_MAP: dict[int, StimulusType] = {
     common_pb2.STIMULUS_TYPE_RECT:     StimulusType.RECT,
@@ -71,6 +73,7 @@ _STIMULUS_TYPE_MAP: dict[int, StimulusType] = {
     common_pb2.STIMULUS_TYPE_BITMAP:   StimulusType.BITMAP,
     common_pb2.STIMULUS_TYPE_SHADER:   StimulusType.SHADER,
     common_pb2.STIMULUS_TYPE_PARTICLE: StimulusType.PARTICLE,
+    common_pb2.STIMULUS_TYPE_GRATING:  StimulusType.GRATING,
 }
 
 _DRAW_MODE_MAP: dict[int, DrawMode] = {
@@ -108,6 +111,8 @@ class StimulusInfo:
                 width=proto.params.ellipse.width,
                 height=proto.params.ellipse.height,
             )
+        elif shape_which == "grating":
+            params = GratingParams.from_proto(proto.params.grating)
         else:
             params = None
 

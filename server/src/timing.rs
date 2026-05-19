@@ -126,6 +126,11 @@ impl FrameStats {
         self.expected_frame_ns
     }
 
+    /// Reset the cumulative drop counter to zero (e.g. before a benchmark).
+    pub fn reset_drops(&mut self) {
+        self.drop_count = 0;
+    }
+
     pub fn summary(&self) -> FrameSummary {
         let durations = &self.durations_ns[..self.valid_count.min(FRAME_HISTORY_SIZE)];
         if durations.is_empty() {

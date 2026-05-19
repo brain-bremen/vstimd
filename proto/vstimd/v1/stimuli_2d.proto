@@ -3,6 +3,25 @@ package vstimd.v1;
 
 import "vstimd/v1/common.proto";
 
+// ── Grating enumerations ──────────────────────────────────────────────────────
+
+enum WaveformType {
+  WAVEFORM_TYPE_UNSPECIFIED = 0;
+  WAVEFORM_TYPE_SIN = 1;
+  WAVEFORM_TYPE_SQR = 2;
+  WAVEFORM_TYPE_SAW = 3;
+  WAVEFORM_TYPE_TRI = 4;
+}
+
+enum MaskType {
+  MASK_TYPE_UNSPECIFIED = 0;
+  MASK_TYPE_NONE = 1;
+  MASK_TYPE_CIRCLE = 2;
+  MASK_TYPE_GAUSS = 3;
+  MASK_TYPE_HANN = 4;       // cosine bell: 0.5*(1+cos(π·r/R)), tapers from centre to edge
+  MASK_TYPE_RAISED_COS = 5; // Tukey window: flat in inner 80%, raised-cosine taper in outer 20%
+}
+
 // ── Stimulus creation ─────────────────────────────────────────────────────────
 
 // System command: create a rectangle stimulus.
@@ -30,6 +49,42 @@ message CreateEllipseRequest {
   float height = 3;   // full height in pixels (0 → default 100)
   Color fill   = 4;   // fill colour (absent → scene default_fill)
   float angle  = 5;   // orientation in degrees (CCW)
+}
+
+// System command: create a grating stimulus.
+// Returns the new handle in Response.handle.
+//
+// The grating is rendered analytically in a fragment shader over a rectangular
+// patch.  `angle` controls the orientation of the stripes (not the patch):
+// 0° = vertical stripes varying along X, 90° = horizontal stripes varying along Y.
+//
+// The carrier oscillates between fore_color (at +1) and back_color (at -1),
+// modulated by contrast.  At contrast=1: peak pixel = fore_color, trough = back_color.
+// At contrast=0: all pixels = mix(back_color, fore_color, 0.5).
+message CreateGratingRequest {
+  Vec2         center          = 1;  // pixel-space position (origin = screen centre, Y-up)
+  float        width           = 2;  // full width in pixels  (0 → default 200)
+  float        height          = 3;  // full height in pixels (0 → default 200)
+  float        sf              = 4;  // spatial frequency in cycles/pixel (0 → default 0.05)
+  float        phase           = 5;  // static phase offset [0, 1] (default 0)
+  float        angle           = 6;  // stripe orientation in degrees CCW (default 0)
+  float        contrast        = 7;  // contrast in [0, 1] (0 → default 1)
+  Color        fore_color      = 8;  // peak colour (carrier = +1); absent → white
+  Color        back_color      = 9;  // trough colour (carrier = −1); absent → black
+  float        opacity         = 10; // global opacity [0, 1] (0 → default 1)
+  WaveformType waveform        = 11; // carrier waveform (default SIN)
+  MaskType     mask            = 12; // aperture mask (default NONE)
+  // Mask-specific parameter (interpreted per mask type; 0 → use default):
+  //   gauss:     SD in normalized units where patch radius = 1 (default 0.333)
+  //   raisedCos: fringe proportion [0, 1] (default 0.2, matching PsychoPy)
+  float        mask_param      = 13;
+  float        drift_speed     = 14; // drift rate in cycles/second (default 0 = static)
+  // When drift_decoupled is false (default / absent) the drift direction follows
+  // the grating orientation (perpendicular to the stripes).  Set to true and
+  // supply drift_angle to use an independent drift direction.
+  bool         drift_decoupled = 15;
+  float        drift_angle     = 16; // drift direction in degrees CCW; used only when
+                                     // drift_decoupled is true (default 0)
 }
 
 // ── Generic stimulus mutations (all types) ────────────────────────────────────
@@ -61,6 +116,77 @@ message SetFillColorRequest {
 // Stimulus command: set global opacity (0.0 = transparent, 1.0 = opaque).
 message SetAlphaRequest {
   float opacity = 1;
+}
+
+// ── Grating-specific mutations ────────────────────────────────────────────────
+
+// Stimulus command: set the phase of a Grating stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingPhaseRequest {
+  float phase = 1;  // [0, 1]; wraps automatically
+}
+
+// Stimulus command: set the spatial frequency of a Grating stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingSfRequest {
+  float sf = 1;  // cycles/pixel
+}
+
+// Stimulus command: set the contrast of a Grating stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingContrastRequest {
+  float contrast = 1;  // [0, 1]
+}
+
+// Stimulus command: set the waveform of a Grating stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingWaveformRequest {
+  WaveformType waveform = 1;
+}
+
+// Stimulus command: set the aperture mask of a Grating stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingMaskRequest {
+  MaskType mask = 1;
+}
+
+// Stimulus command: set the drift speed of a Grating stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingDriftSpeedRequest {
+  float speed = 1;  // cycles/second; negative reverses direction
+}
+
+// Stimulus command: decouple drift direction from stripe orientation.
+// When decoupled is false (default) drift follows grating orientation.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingDriftDecoupledRequest {
+  bool decoupled = 1;
+}
+
+// Stimulus command: set the drift direction when not coupled to grating orientation.
+// Has no effect when drift_coupled is true.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingDriftAngleRequest {
+  float angle_deg = 1;  // degrees CCW
+}
+
+// Stimulus command: set the peak (foreground) colour of a Grating stimulus.
+// RGB only — use SetGratingOpacityRequest to change opacity separately.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingForeColorRequest {
+  Color fore_color = 1;
+}
+
+// Stimulus command: set the trough (background) colour of a Grating stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingBackColorRequest {
+  Color back_color = 1;
+}
+
+// Stimulus command: set the global opacity of a Grating stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Grating.
+message SetGratingOpacityRequest {
+  float opacity = 1;  // [0, 1]
 }
 
 // ── Type-specific size mutations ──────────────────────────────────────────────
@@ -114,12 +240,30 @@ message StimulusParams {
     RectParams    rect    = 1;
     DiscParams    disc    = 2;
     EllipseParams ellipse = 3;
+    GratingParams grating = 4;
   }
 }
 
 message RectParams    { float width = 1; float height = 2; }
 message DiscParams    { float radius = 1; }
 message EllipseParams { float width = 1; float height = 2; }
+
+message GratingParams {
+  float        width          = 1;
+  float        height         = 2;
+  float        sf             = 3;
+  float        phase          = 4;  // static phase offset
+  float        contrast       = 5;
+  WaveformType waveform       = 6;
+  MaskType     mask           = 7;
+  float        mask_param     = 8;
+  float        drift_speed    = 9;
+  bool         drift_decoupled = 10;
+  float        drift_angle    = 11;
+  Color        fore_color     = 12; // peak colour (carrier = +1)
+  Color        back_color     = 13; // trough colour (carrier = −1)
+  float        opacity        = 14;
+}
 
 // Response payload for QueryStimulusRequest.
 message QueryStimulusResponse {

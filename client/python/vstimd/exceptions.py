@@ -31,3 +31,7 @@ class NotSupportedError(VstimdError):
 
 class UnknownServerError(VstimdError):
     """Unexpected server-side error."""
+
+
+class NotReadyError(VstimdError):
+    """Server is still initialising; retry after the first rendered frame."""

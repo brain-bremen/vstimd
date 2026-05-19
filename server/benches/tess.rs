@@ -10,14 +10,14 @@ use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_ma
 
 use vstimd::render::tess::tessellate_stimulus;
 use vstimd::scene::{
-    Deferred, DiscStimulus, EllipseStimulus, RectStimulus, SceneState, ShapeAppearance, Stimulus,
-    StimulusFlags, Transform2D,
+    Deferred, DiscStimulus, EllipseStimulus, RectStimulus, SceneState, ShapeAppearance,
+    ShapeStimulus, Stimulus, StimulusFlags, Transform2D,
 };
 
 const SCREEN: (u32, u32) = (2560, 1440);
 
 fn make_rect() -> Stimulus {
-    Stimulus::Rect(RectStimulus {
+    Stimulus::Shape(ShapeStimulus::Rect(RectStimulus {
         flags: StimulusFlags { enabled: true, ..Default::default() },
         transform: Deferred::new(Transform2D { pos: [100.0, 50.0], angle: 15.0 }),
         appearance: Deferred::new(ShapeAppearance {
@@ -25,11 +25,11 @@ fn make_rect() -> Stimulus {
             ..Default::default()
         }),
         size: Deferred::new([120.0, 60.0]),
-    })
+    }))
 }
 
 fn make_disc() -> Stimulus {
-    Stimulus::Disc(DiscStimulus {
+    Stimulus::Shape(ShapeStimulus::Disc(DiscStimulus {
         flags: StimulusFlags { enabled: true, ..Default::default() },
         transform: Deferred::new(Transform2D { pos: [-200.0, 100.0], angle: 0.0 }),
         appearance: Deferred::new(ShapeAppearance {
@@ -37,11 +37,11 @@ fn make_disc() -> Stimulus {
             ..Default::default()
         }),
         radius: Deferred::new(80.0),
-    })
+    }))
 }
 
 fn make_ellipse() -> Stimulus {
-    Stimulus::Ellipse(EllipseStimulus {
+    Stimulus::Shape(ShapeStimulus::Ellipse(EllipseStimulus {
         flags: StimulusFlags { enabled: true, ..Default::default() },
         transform: Deferred::new(Transform2D { pos: [300.0, -100.0], angle: 30.0 }),
         appearance: Deferred::new(ShapeAppearance {
@@ -49,7 +49,7 @@ fn make_ellipse() -> Stimulus {
             ..Default::default()
         }),
         radii: Deferred::new([100.0, 50.0]),
-    })
+    }))
 }
 
 fn bench_single_stimulus(c: &mut Criterion) {
@@ -82,7 +82,7 @@ fn bench_scene_update(c: &mut Criterion) {
                 let h = scene.alloc_stim_handle();
                 scene.stimuli.insert(
                     h,
-                    Stimulus::Disc(DiscStimulus {
+                    Stimulus::Shape(ShapeStimulus::Disc(DiscStimulus {
                         flags: StimulusFlags { enabled: true, ..Default::default() },
                         transform: Deferred::new(Transform2D {
                             pos: [i as f32 * 30.0, 0.0],
@@ -90,12 +90,12 @@ fn bench_scene_update(c: &mut Criterion) {
                         }),
                         appearance: Deferred::new(ShapeAppearance::default()),
                         radius: Deferred::new(40.0),
-                    }),
+                    })),
                 );
                 let h = scene.alloc_stim_handle();
                 scene.stimuli.insert(
                     h,
-                    Stimulus::Rect(RectStimulus {
+                    Stimulus::Shape(ShapeStimulus::Rect(RectStimulus {
                         flags: StimulusFlags { enabled: true, ..Default::default() },
                         transform: Deferred::new(Transform2D {
                             pos: [i as f32 * 30.0, 100.0],
@@ -103,7 +103,7 @@ fn bench_scene_update(c: &mut Criterion) {
                         }),
                         appearance: Deferred::new(ShapeAppearance::default()),
                         size: Deferred::new([60.0, 30.0]),
-                    }),
+                    })),
                 );
             }
 

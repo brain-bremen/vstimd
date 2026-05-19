@@ -8,11 +8,13 @@ Runs in CI and on any machine — no display or GPU required.
 
 import pathlib
 import subprocess
+import sys
 import time
 
 import pytest
 
 import vstimd.psychopy.visual as visual
+
 from ._psychopy_visual_cases import *  # noqa: F401, F403
 from .conftest import reachable
 
@@ -32,7 +34,8 @@ def server_process(server_address: str):
         yield
         return
 
-    server_bin = _REPO_ROOT / "target" / "release" / "vstimd"
+    exe = "vstimd.exe" if sys.platform == "win32" else "vstimd"
+    server_bin = _REPO_ROOT / "target" / "release" / exe
     if not server_bin.exists():
         result = subprocess.run(["cargo", "build", "--release"], cwd=_REPO_ROOT)
         if result.returncode != 0:
@@ -53,6 +56,11 @@ def server_process(server_address: str):
     yield
     proc.terminate()
     proc.wait(timeout=5)
+
+
+@pytest.fixture
+def step_delay() -> float:
+    return 0.0
 
 
 @pytest.fixture(scope="session")

@@ -1,12 +1,27 @@
 use super::display_info::StimulusDisplayInfo;
 use super::RenderTarget;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClockSource {
+    /// DRM kernel scanout event (`drmWaitVBlank`) — most accurate.
+    DrmVblank,
+    /// `VK_KHR_present_wait` — accurate, GPU-side.
+    PresentWait,
+    /// `VK_GOOGLE_display_timing` — approximate.
+    DisplayTiming,
+    /// Fallback: `Instant::now()` after GPU fence — inaccurate.
+    GpuCompletion,
+}
+
 pub struct SystemInfo {
     pub display: StimulusDisplayInfo,
     pub backend: RenderTarget,
     pub local_ip: String,
     pub hostname: String,
     pub gpu_name: String,
+    /// Some(true/false) when wireframe toggle is supported; None on DRM or unsupported GPU.
+    pub wireframe: Option<bool>,
+    pub clock_source: ClockSource,
 }
 
 /// Resolve the default-route local IP by connecting a UDP socket (no packets sent).

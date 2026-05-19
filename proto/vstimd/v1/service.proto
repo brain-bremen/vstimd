@@ -25,6 +25,8 @@ enum ErrorCode {
   ERROR_CODE_INVALID_ARGUMENT    = 7;
   // Command exists but is not supported in the current configuration.
   ERROR_CODE_NOT_SUPPORTED       = 8;
+  // Server is still initialising; retry after the first rendered frame.
+  ERROR_CODE_NOT_READY           = 9;
 }
 
 // ── Request routing ───────────────────────────────────────────────────────────
@@ -46,9 +48,10 @@ message Request {
 
   oneof body {
     // ── Stimulus creation (system target only) ──────────────────────────────
-    CreateRectRequest    create_rect    = 10;
-    CreateCircleRequest  create_circle  = 11;
-    CreateEllipseRequest create_ellipse = 12;
+    CreateRectRequest     create_rect     = 10;
+    CreateCircleRequest   create_circle   = 11;
+    CreateEllipseRequest  create_ellipse  = 12;
+    CreateGratingRequest  create_grating  = 13;
 
     // ── Stimulus mutations (stimulus target only) ───────────────────────────
     SetEnabledRequest     set_enabled      = 30;
@@ -64,11 +67,24 @@ message Request {
     SetOutlineColorRequest set_outline_color = 40;
     SetOutlineWidthRequest set_outline_width = 41;
 
+    // ── Grating-specific mutations (stimulus target only) ───────────────────
+    SetGratingPhaseRequest       set_grating_phase        = 50;
+    SetGratingSfRequest          set_grating_sf           = 51;
+    SetGratingContrastRequest    set_grating_contrast     = 52;
+    SetGratingWaveformRequest    set_grating_waveform     = 53;
+    SetGratingMaskRequest        set_grating_mask         = 54;
+    SetGratingDriftSpeedRequest  set_grating_drift_speed  = 55;
+    SetGratingDriftDecoupledRequest set_grating_drift_decoupled = 56;
+    SetGratingDriftAngleRequest  set_grating_drift_angle  = 57;
+    SetGratingForeColorRequest   set_grating_fore_color   = 58;
+    SetGratingBackColorRequest   set_grating_back_color   = 59;
+    SetGratingOpacityRequest     set_grating_opacity      = 60;
+
     // ── System mutations (system target only) ───────────────────────────────
-    SetBackgroundRequest   set_background   = 60;
-    SetDeferredModeRequest set_deferred_mode = 61;
-    DeleteAllRequest       delete_all       = 62;
-    SetAllEnabledRequest   set_all_enabled  = 63;
+    SetBackgroundRequest   set_background   = 70;
+    SetDeferredModeRequest set_deferred_mode = 71;
+    DeleteAllRequest       delete_all       = 72;
+    SetAllEnabledRequest   set_all_enabled  = 73;
 
     // ── Queries ─────────────────────────────────────────────────────────────
     QueryServerInfoRequest query_server_info = 80;  // system target

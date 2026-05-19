@@ -5,7 +5,7 @@
 use prost::Message;
 use vstimd::proto;
 use vstimd::proto::request;
-use vstimd::scene::{SceneState, Stimulus};
+use vstimd::scene::{SceneState, ShapeStimulus, Stimulus};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -85,7 +85,8 @@ fn test_create_rect_with_fill() {
     assert!(is_ok(&resp));
     let h = resp.handle as u32;
     let stim = scene.stimuli.get_mut(&h).unwrap();
-    let appearance = stim.appearance_mut().expect("rect should have appearance");
+    let Stimulus::Shape(s) = stim else { panic!("expected shape stimulus") };
+    let appearance = s.appearance();
     assert_eq!(appearance.live.fill_color[0], fill.r);
     assert_eq!(appearance.live.fill_color[1], fill.g);
     assert_eq!(appearance.live.fill_color[2], fill.b);
@@ -104,15 +105,9 @@ fn test_create_rect_defaults() {
     let h = resp.handle as u32;
     let stim = scene.stimuli.get_mut(&h).unwrap();
 
-    if let Stimulus::Rect(r) = stim {
-        assert_eq!(r.size.live, [50.0, 50.0]);
-    } else {
-        panic!("expected Rect stimulus");
-    }
-
-    let stim = scene.stimuli.get_mut(&h).unwrap();
-    let appearance = stim.appearance_mut().expect("rect should have appearance");
-    assert_eq!(appearance.live.fill_color, default_fill);
+    let Stimulus::Shape(ShapeStimulus::Rect(r)) = stim else { panic!("expected Rect stimulus") };
+    assert_eq!(r.size.live, [50.0, 50.0]);
+    assert_eq!(r.appearance.live.fill_color, default_fill);
 }
 
 #[test]
@@ -223,12 +218,11 @@ fn test_create_ellipse() {
     assert!(is_ok(&resp), "unexpected error: {}", resp.error);
     let h = resp.handle as u32;
     assert!(h > 0);
-    if let Stimulus::Ellipse(e) = &scene.stimuli[&h] {
-        assert_eq!(e.radii.live, [60.0, 30.0]);
-        assert_eq!(e.transform.live.angle, 45.0);
-    } else {
+    let Stimulus::Shape(ShapeStimulus::Ellipse(e)) = &scene.stimuli[&h] else {
         panic!("expected Ellipse stimulus");
-    }
+    };
+    assert_eq!(e.radii.live, [60.0, 30.0]);
+    assert_eq!(e.transform.live.angle, 45.0);
 }
 
 #[test]
@@ -258,7 +252,8 @@ fn test_set_fill_color() {
         })),
     });
     assert!(is_ok(&resp));
-    let app = scene.stimuli.get(&h).unwrap().appearance().unwrap();
+    let Stimulus::Shape(s) = scene.stimuli.get(&h).unwrap() else { panic!("expected shape") };
+    let app = s.appearance();
     assert_eq!(app.live.fill_color, [1.0, 0.0, 0.5, 0.8]);
 }
 
@@ -313,16 +308,17 @@ fn test_immediate_mode_composes_mutations_and_marks_dirty() {
     assert!(is_ok(&resp));
 
     let stim = scene.stimuli.get(&h).unwrap();
-    let t = stim.transform().unwrap();
+    let t = stim.transform();
     assert_eq!(t.live.pos, [15.0, 25.0]);
     assert_eq!(t.live.angle, 30.0);
 
-    let app = stim.appearance().unwrap();
+    let Stimulus::Shape(s) = stim else { panic!("expected shape") };
+    let app = s.appearance();
     assert_eq!(app.live.fill_color, [0.1, 0.2, 0.3, 0.9]);
     assert!(app.live.draw_mode == vstimd::scene::DrawMode::Stroke);
     assert_eq!(app.live.outline_color, [0.8, 0.7, 0.6, 0.5]);
     assert_eq!(app.live.stroke_width, 7.0);
-    assert!(stim.flags().dirty);
+    assert!(s.flags().dirty);
 }
 
 #[test]
@@ -333,16 +329,16 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
         .handle as u32;
 
     let stim_obj = scene.stimuli.get_mut(&h).unwrap();
-    if let Some(t) = stim_obj.transform_mut() {
-        t.live = vstimd::scene::Transform2D { pos: [1.0, 2.0], angle: 3.0 };
-    }
-    if let Some(app) = stim_obj.appearance_mut() {
+    stim_obj.transform_mut().live = vstimd::scene::Transform2D { pos: [1.0, 2.0], angle: 3.0 };
+    let Stimulus::Shape(s) = stim_obj else { panic!("expected shape") };
+    {
+        let app = s.appearance_mut();
         app.live.fill_color = [0.11, 0.12, 0.13, 0.14];
         app.live.outline_color = [0.21, 0.22, 0.23, 0.24];
         app.live.stroke_width = 2.5;
         app.live.draw_mode = vstimd::scene::DrawMode::FillAndStroke;
     }
-    stim_obj.flags_mut().dirty = false;
+    s.flags_mut().dirty = false;
 
     let resp = scene.handle_request(set_deferred_mode_req(true, false));
     assert!(is_ok(&resp));
@@ -391,13 +387,14 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     assert!(is_ok(&resp));
 
     let stim = scene.stimuli.get(&h).unwrap();
-    let t = stim.transform().unwrap();
+    let t = stim.transform();
     assert_eq!(t.live.pos, [1.0, 2.0]);
     assert_eq!(t.live.angle, 3.0);
     assert_eq!(t.copy.pos, [15.0, 25.0]);
     assert_eq!(t.copy.angle, 30.0);
 
-    let app = stim.appearance().unwrap();
+    let Stimulus::Shape(s) = stim else { panic!("expected shape") };
+    let app = s.appearance();
     assert_eq!(app.live.fill_color, [0.11, 0.12, 0.13, 0.14]);
     assert_eq!(app.live.outline_color, [0.21, 0.22, 0.23, 0.24]);
     assert_eq!(app.live.stroke_width, 2.5);
@@ -406,7 +403,7 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     assert_eq!(app.copy.outline_color, [0.8, 0.7, 0.6, 0.5]);
     assert_eq!(app.copy.stroke_width, 7.0);
     assert!(app.copy.draw_mode == vstimd::scene::DrawMode::Stroke);
-    assert!(!stim.flags().dirty);
+    assert!(!s.flags().dirty);
 
     let resp = scene.handle_request(set_deferred_mode_req(false, false));
     assert!(is_ok(&resp));
@@ -417,15 +414,16 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     assert!(!scene.pending_flip);
 
     let stim = scene.stimuli.get(&h).unwrap();
-    let t = stim.transform().unwrap();
+    let t = stim.transform();
     assert_eq!(t.live.pos, [15.0, 25.0]);
     assert_eq!(t.live.angle, 30.0);
-    let app = stim.appearance().unwrap();
+    let Stimulus::Shape(s) = stim else { panic!("expected shape") };
+    let app = s.appearance();
     assert_eq!(app.live.fill_color, [0.1, 0.2, 0.3, 0.9]);
     assert_eq!(app.live.outline_color, [0.8, 0.7, 0.6, 0.5]);
     assert_eq!(app.live.stroke_width, 7.0);
     assert!(app.live.draw_mode == vstimd::scene::DrawMode::Stroke);
-    assert!(stim.flags().dirty);
+    assert!(s.flags().dirty);
 }
 
 #[test]
@@ -442,9 +440,8 @@ fn test_set_rect_size() {
         })),
     });
     assert!(is_ok(&resp));
-    if let Stimulus::Rect(r) = &scene.stimuli[&h] {
-        assert_eq!(r.size.live, [40.0, 20.0]);
-    }
+    let Stimulus::Shape(ShapeStimulus::Rect(r)) = &scene.stimuli[&h] else { panic!("expected Rect") };
+    assert_eq!(r.size.live, [40.0, 20.0]);
 }
 
 #[test]
@@ -528,9 +525,8 @@ fn test_list_stimuli() {
 
 #[test]
 fn test_query_server_info() {
-    let scene = SceneState::new();
-    // SceneState::cmd_query_server_info takes &self so we need a mutable reference for handle_request.
-    let mut scene = scene;
+    let mut scene = SceneState::new();
+    scene.screen_size = Some((1920, 1080));
     let resp = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::QueryServerInfo(proto::QueryServerInfoRequest {})),

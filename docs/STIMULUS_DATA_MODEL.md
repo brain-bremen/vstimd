@@ -488,7 +488,7 @@ impl Stimulus {
     pub fn make_copy(&mut self) {
         self.flags_mut().make_copy();
         if let Some(t) = self.transform_mut()   { t.make_copy(); }
-        if let Some(a) = self.appearance_mut()  { a.make_copy(); }
+        if let Some(a) = self.shape_appearance_mut()  { a.make_copy(); }
         match self {
             Stimulus::Petal(s)       => { s.params.make_copy(); }
             Stimulus::Wedge(s)       => { s.half_angle.make_copy(); }
@@ -507,7 +507,7 @@ impl Stimulus {
     pub fn flip(&mut self) {
         self.flags_mut().get_copy();
         if let Some(t) = self.transform_mut()   { t.flip(); }
-        if let Some(a) = self.appearance_mut()  { a.flip(); }
+        if let Some(a) = self.shape_appearance_mut()  { a.flip(); }
         match self {
             Stimulus::Petal(s)       => { s.params.flip();  s.rebuild = true; }
             Stimulus::Wedge(s)       => { s.half_angle.flip(); s.rebuild = true; }
