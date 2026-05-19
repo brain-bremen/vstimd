@@ -155,9 +155,6 @@ impl Stimulus {
                 s.color.make_copy();
             }
             Stimulus::Grating(s) => {
-                s.fore_color.make_copy();
-                s.back_color.make_copy();
-                s.opacity.make_copy();
                 s.size.make_copy();
                 s.params.make_copy();
             }
@@ -211,9 +208,6 @@ impl Stimulus {
                 s.color.flip();
             }
             Stimulus::Grating(s) => {
-                s.fore_color.flip();
-                s.back_color.flip();
-                s.opacity.flip();
                 s.size.flip();
                 s.params.flip();
             }

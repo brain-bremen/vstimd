@@ -29,7 +29,7 @@ mod tests {
     use super::super::grating_params::GratingParams;
 
     fn stim_at(cx: f32, cy: f32, hw: f32, hh: f32) -> GratingStimulus {
-        GratingStimulus::new([cx, cy], 0.0, [hw, hh], [1.0; 4], [0.0; 4], 1.0, GratingParams::default())
+        GratingStimulus::new([cx, cy], 0.0, [hw, hh], GratingParams::default())
     }
 
     #[test]

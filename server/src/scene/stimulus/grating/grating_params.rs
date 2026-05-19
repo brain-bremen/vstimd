@@ -38,7 +38,7 @@ pub struct GratingParams {
     pub drift_speed: f32, // cycles/second; negative reverses direction
     /// When true the drift direction equals the grating stripe orientation
     /// (perpendicular to the stripes).  When false `drift_angle` is used instead.
-    pub drift_coupled: bool,
+    pub drift_coupled: bool ,
     pub drift_angle: f32, // degrees CCW; used only when !drift_coupled
 }
 

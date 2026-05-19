@@ -560,12 +560,8 @@ impl SceneState {
 
     fn cmd_create_grating(&mut self, cmd: proto::CreateGratingRequest) -> proto::Response {
         let center = cmd.center.unwrap_or_default();
-        let width = if cmd.width == 0.0 { 200.0 } else { cmd.width };
+        let width  = if cmd.width  == 0.0 { 200.0 } else { cmd.width };
         let height = if cmd.height == 0.0 { 200.0 } else { cmd.height };
-        let opacity = if cmd.opacity == 0.0 { 1.0 } else { cmd.opacity };
-        let fore = cmd.fore_color.map_or([1.0, 1.0, 1.0, 1.0], |c| [c.r, c.g, c.b, c.a]);
-        let back = cmd.back_color.map_or([0.0, 0.0, 0.0, 1.0], |c| [c.r, c.g, c.b, c.a]);
-
         let handle = self.alloc_stim_handle();
         self.stimuli.insert(
             handle,
@@ -573,9 +569,6 @@ impl SceneState {
                 [center.x, center.y],
                 cmd.angle,
                 [width / 2.0, height / 2.0],
-                fore,
-                back,
-                opacity,
                 grating_params_from_proto(&cmd),
             )),
         );
@@ -773,8 +766,8 @@ impl SceneState {
                 }
                 None => {
                     let (fill, opacity) = if let Stimulus::Grating(s) = stim {
-                        let fc = s.fore_color.live;
-                        let op = s.opacity.live;
+                        let fc = s.params.live.fore_color;
+                        let op = s.params.live.opacity;
                         (Some(proto::Color { r: fc[0], g: fc[1], b: fc[2], a: op }), op)
                     } else {
                         (None, 1.0)

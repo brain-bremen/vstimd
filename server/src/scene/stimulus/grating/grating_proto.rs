@@ -50,6 +50,9 @@ pub fn mask_to_proto(m: GratingMask) -> proto::MaskType {
 pub fn grating_params_from_proto(cmd: &proto::CreateGratingRequest) -> GratingParams {
     let sf       = if cmd.sf       == 0.0 { 0.05 } else { cmd.sf };
     let contrast = if cmd.contrast == 0.0 { 1.0  } else { cmd.contrast };
+    let opacity  = if cmd.opacity  == 0.0 { 1.0  } else { cmd.opacity };
+    let fore = cmd.fore_color.map_or([1.0, 1.0, 1.0, 1.0], |c| [c.r, c.g, c.b, c.a]);
+    let back = cmd.back_color.map_or([0.0, 0.0, 0.0, 1.0], |c| [c.r, c.g, c.b, c.a]);
     GratingParams {
         sf,
         phase:        cmd.phase,
@@ -60,6 +63,9 @@ pub fn grating_params_from_proto(cmd: &proto::CreateGratingRequest) -> GratingPa
         drift_speed:  cmd.drift_speed,
         drift_coupled: !cmd.drift_decoupled,
         drift_angle:  cmd.drift_angle,
+        fore_color:   fore,
+        back_color:   back,
+        opacity,
     }
 }
 
@@ -67,8 +73,6 @@ pub fn grating_params_from_proto(cmd: &proto::CreateGratingRequest) -> GratingPa
 
 pub fn grating_query_params(s: &GratingStimulus) -> proto::StimulusParams {
     let p = s.params.live;
-    let fc = s.fore_color.live;
-    let bc = s.back_color.live;
     proto::StimulusParams {
         shape: Some(proto::stimulus_params::Shape::Grating(proto::GratingParams {
             width: s.size.live[0] * 2.0,
@@ -82,9 +86,9 @@ pub fn grating_query_params(s: &GratingStimulus) -> proto::StimulusParams {
             drift_speed: p.drift_speed,
             drift_decoupled: !p.drift_coupled,
             drift_angle: p.drift_angle,
-            fore_color: Some(proto::Color { r: fc[0], g: fc[1], b: fc[2], a: fc[3] }),
-            back_color: Some(proto::Color { r: bc[0], g: bc[1], b: bc[2], a: bc[3] }),
-            opacity: s.opacity.live,
+            fore_color: Some(proto::Color { r: p.fore_color[0], g: p.fore_color[1], b: p.fore_color[2], a: p.fore_color[3] }),
+            back_color: Some(proto::Color { r: p.back_color[0], g: p.back_color[1], b: p.back_color[2], a: p.back_color[3] }),
+            opacity: p.opacity,
         })),
     }
 }

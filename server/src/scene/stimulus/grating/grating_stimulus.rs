@@ -9,10 +9,7 @@ use super::grating_pipeline::GratingPushConstants;
 pub struct GratingStimulus {
     pub flags: StimulusFlags,
     pub transform: Deferred<Transform2D>,
-    pub fore_color: Deferred<[f32; 4]>, // rgba peak colour (carrier = +1)
-    pub back_color: Deferred<[f32; 4]>, // rgba trough colour (carrier = −1)
-    pub opacity: Deferred<f32>,
-    pub size: Deferred<[f32; 2]>,       // [half_width, half_height] in pixels
+    pub size: Deferred<[f32; 2]>, // [half_width, half_height] in pixels
     pub params: Deferred<GratingParams>,
     /// Phase accumulated by the render thread each frame from `drift_speed`.
     /// Not deferred — updated in place; reset to 0 when drift_speed is set to 0.
@@ -24,17 +21,11 @@ impl GratingStimulus {
         pos: [f32; 2],
         angle: f32,
         size: [f32; 2], // [half_width, half_height] in pixels
-        fore_color: [f32; 4],
-        back_color: [f32; 4],
-        opacity: f32,
         params: GratingParams,
     ) -> Self {
         Self {
             flags: StimulusFlags { enabled: true, ..Default::default() },
             transform: Deferred::new(Transform2D { pos, angle }),
-            fore_color: Deferred::new(fore_color),
-            back_color: Deferred::new(back_color),
-            opacity: Deferred::new(opacity),
             size: Deferred::new(size),
             params: Deferred::new(params),
             phase_accum: 0.0,
@@ -44,21 +35,24 @@ impl GratingStimulus {
     // ── Setters ───────────────────────────────────────────────────────────────
 
     pub fn set_fore_color(&mut self, deferred: bool, color: [f32; 4]) {
-        self.fore_color.set(deferred, color);
+        let prev = if deferred { self.params.copy } else { self.params.live };
+        self.params.set(deferred, GratingParams { fore_color: color, ..prev });
         if !deferred {
             self.flags.mark_dirty();
         }
     }
 
     pub fn set_back_color(&mut self, deferred: bool, color: [f32; 4]) {
-        self.back_color.set(deferred, color);
+        let prev = if deferred { self.params.copy } else { self.params.live };
+        self.params.set(deferred, GratingParams { back_color: color, ..prev });
         if !deferred {
             self.flags.mark_dirty();
         }
     }
 
     pub fn set_opacity(&mut self, deferred: bool, opacity: f32) {
-        self.opacity.set(deferred, opacity);
+        let prev = if deferred { self.params.copy } else { self.params.live };
+        self.params.set(deferred, GratingParams { opacity, ..prev });
         if !deferred {
             self.flags.mark_dirty();
         }
@@ -154,8 +148,6 @@ pub fn build_grating_push_constants(
     screen_h: f32,
 ) -> GratingPushConstants {
     let p = &s.params.live;
-    let fc = s.fore_color.live;
-    let bc = s.back_color.live;
     GratingPushConstants {
         screen_half: [screen_w * 0.5, screen_h * 0.5],
         center_px: s.transform.live.pos,
@@ -164,10 +156,10 @@ pub fn build_grating_push_constants(
         phase: p.phase + s.phase_accum,
         ori_rad: s.transform.live.angle.to_radians(),
         contrast: p.contrast,
-        global_opacity: s.opacity.live,
+        global_opacity: p.opacity,
         _pad_color: 0,
-        fore_color: fc,
-        back_color: bc,
+        fore_color: p.fore_color,
+        back_color: p.back_color,
         waveform: p.waveform as u32,
         mask_type: p.mask as u32,
         mask_param: p.mask_param,
@@ -181,11 +173,7 @@ mod tests {
     use crate::scene::stimulus::grating::grating_params::GratingParams;
 
     fn default_stim() -> GratingStimulus {
-        GratingStimulus::new(
-            [0.0, 0.0], 0.0, [100.0, 100.0],
-            [1.0, 1.0, 1.0, 1.0], [0.0, 0.0, 0.0, 1.0], 1.0,
-            GratingParams::default(),
-        )
+        GratingStimulus::new([0.0, 0.0], 0.0, [100.0, 100.0], GratingParams::default())
     }
 
     // ── set_phase ──────────────────────────────────────────────────────────────
@@ -216,29 +204,29 @@ mod tests {
     fn set_fore_color_immediate() {
         let mut s = default_stim();
         s.set_fore_color(false, [1.0, 0.0, 0.0, 0.5]);
-        assert_eq!(s.fore_color.live, [1.0, 0.0, 0.0, 0.5]);
+        assert_eq!(s.params.live.fore_color, [1.0, 0.0, 0.0, 0.5]);
     }
 
     #[test]
     fn set_fore_color_deferred() {
         let mut s = default_stim();
         s.set_fore_color(true, [0.0, 1.0, 0.0, 1.0]);
-        assert_eq!(s.fore_color.live, [1.0, 1.0, 1.0, 1.0]); // live unchanged
-        assert_eq!(s.fore_color.copy, [0.0, 1.0, 0.0, 1.0]);
+        assert_eq!(s.params.live.fore_color, [1.0, 1.0, 1.0, 1.0]); // live unchanged
+        assert_eq!(s.params.copy.fore_color, [0.0, 1.0, 0.0, 1.0]);
     }
 
     #[test]
     fn set_back_color_immediate() {
         let mut s = default_stim();
         s.set_back_color(false, [0.0, 0.0, 1.0, 0.0]);
-        assert_eq!(s.back_color.live, [0.0, 0.0, 1.0, 0.0]);
+        assert_eq!(s.params.live.back_color, [0.0, 0.0, 1.0, 0.0]);
     }
 
     #[test]
     fn set_opacity_immediate() {
         let mut s = default_stim();
         s.set_opacity(false, 0.5);
-        assert_eq!(s.opacity.live, 0.5);
+        assert_eq!(s.params.live.opacity, 0.5);
     }
 
     #[test]
