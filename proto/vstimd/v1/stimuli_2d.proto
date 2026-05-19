@@ -31,7 +31,7 @@ message CreateRectRequest {
   float  width  = 2;   // full width in pixels  (0 → default 100)
   float  height = 3;   // full height in pixels (0 → default 100)
   Color  fill   = 4;   // fill colour (absent → scene default_fill)
-  string id     = 5;   // client-supplied UUID (absent → server generates one)
+  string id     = 5;   // client-supplied UUID (empty string → server generates one)
   string name   = 6;   // optional human-readable label (for debugging/serialization)
 }
 
@@ -41,7 +41,7 @@ message CreateCircleRequest {
   Vec2   center = 1;   // pixel-space position
   float  radius = 2;   // radius in pixels (0 → default 50)
   Color  fill   = 3;   // fill colour (absent → scene default_fill)
-  string id     = 4;   // client-supplied UUID (absent → server generates one)
+  string id     = 4;   // client-supplied UUID (empty string → server generates one)
   string name   = 5;   // optional human-readable label
 }
 
@@ -53,7 +53,7 @@ message CreateEllipseRequest {
   float  height = 3;   // full height in pixels (0 → default 100)
   Color  fill   = 4;   // fill colour (absent → scene default_fill)
   float  angle  = 5;   // orientation in degrees (CCW)
-  string id     = 6;   // client-supplied UUID (absent → server generates one)
+  string id     = 6;   // client-supplied UUID (empty string → server generates one)
   string name   = 7;   // optional human-readable label
 }
 
@@ -91,7 +91,7 @@ message CreateGratingRequest {
   bool         drift_decoupled = 15;
   float        drift_angle     = 16; // drift direction in degrees CCW; used only when
                                      // drift_decoupled is true (default 0)
-  string       id              = 17; // client-supplied UUID (absent → server generates one)
+  string       id              = 17; // client-supplied UUID (empty string → server generates one)
   string       name            = 18; // optional human-readable label
 }
 
