@@ -235,7 +235,7 @@ impl SceneState {
         let fill = color_or_default(cmd.fill, self.default_fill);
         let id = match parse_or_new_uuid(&cmd.id) {
             Ok(id) => id,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
         let name = nonempty(cmd.name);
         let handle = self.alloc_stim_handle();
@@ -260,7 +260,7 @@ impl SceneState {
         let fill = color_or_default(cmd.fill, self.default_fill);
         let id = match parse_or_new_uuid(&cmd.id) {
             Ok(id) => id,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
         let name = nonempty(cmd.name);
         let handle = self.alloc_stim_handle();
@@ -286,7 +286,7 @@ impl SceneState {
         let fill = color_or_default(cmd.fill, self.default_fill);
         let id = match parse_or_new_uuid(&cmd.id) {
             Ok(id) => id,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
         let name = nonempty(cmd.name);
         let handle = self.alloc_stim_handle();
@@ -535,7 +535,7 @@ impl SceneState {
         // Borrow cmd fully before any partial moves.
         let id = match parse_or_new_uuid(&cmd.id) {
             Ok(id) => id,
-            Err(resp) => return resp,
+            Err(resp) => return *resp,
         };
         let params = grating_params_from_proto(&cmd);
         let center = cmd.center.unwrap_or_default();
@@ -859,12 +859,12 @@ fn color_or_default(c: Option<proto::Color>, default: [f32; 4]) -> [f32; 4] {
     c.map(|c| [c.r, c.g, c.b, c.a]).unwrap_or(default)
 }
 
-fn parse_or_new_uuid(s: &str) -> Result<Uuid, proto::Response> {
+fn parse_or_new_uuid(s: &str) -> Result<Uuid, Box<proto::Response>> {
     if s.is_empty() {
         return Ok(Uuid::new_v4());
     }
     Uuid::parse_str(s)
-        .map_err(|_| err(proto::ErrorCode::InvalidArgument, "id must be a valid UUID string"))
+        .map_err(|_| Box::new(err(proto::ErrorCode::InvalidArgument, "id must be a valid UUID string")))
 }
 
 fn nonempty(s: String) -> Option<String> {
