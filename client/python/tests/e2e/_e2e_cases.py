@@ -10,7 +10,7 @@ import uuid as uuid_mod
 import pytest
 
 from vstimd import Connection, InvalidArgumentError
-from vstimd.stimuli import GratingMask, GratingParams, GratingTexture, RectParams, StimulusType
+from vstimd.stimuli import DrawMode, GratingMask, GratingParams, GratingTexture, RectParams, StimulusType
 from vstimd.stimuli.stimuli_models import Color, Vec2
 
 
@@ -431,4 +431,127 @@ def test_uuid_stable_across_query(conn: Connection) -> None:
     id2 = conn.stimuli.query(handle).id
     assert id1 == id2
     assert len(id1) > 0
+    conn.stimuli.delete(handle)
+
+
+# ── Outline / draw-mode tests ─────────────────────────────────────────────────
+
+def test_set_draw_mode_outlined(conn: Connection) -> None:
+    handle = conn.stimuli.create_rect(width=100, height=100)
+    conn.stimuli.set_draw_mode(handle, DrawMode.OUTLINED)
+
+    info = conn.stimuli.query(handle)
+    assert info.draw_mode == DrawMode.OUTLINED
+
+    conn.stimuli.delete(handle)
+
+
+def test_set_draw_mode_filled_and_outlined(conn: Connection) -> None:
+    handle = conn.stimuli.create_circle(radius=50)
+    conn.stimuli.set_draw_mode(handle, DrawMode.FILLED_AND_OUTLINED)
+
+    info = conn.stimuli.query(handle)
+    assert info.draw_mode == DrawMode.FILLED_AND_OUTLINED
+
+    conn.stimuli.delete(handle)
+
+
+def test_set_outline_color_roundtrip(conn: Connection) -> None:
+    handle = conn.stimuli.create_rect(width=100, height=80)
+    conn.stimuli.set_outline_color(handle, r=1.0, g=0.5, b=0.0, a=0.8)
+
+    info = conn.stimuli.query(handle)
+    assert info.outline_color.r == pytest.approx(1.0, abs=0.01)
+    assert info.outline_color.g == pytest.approx(0.5, abs=0.01)
+    assert info.outline_color.b == pytest.approx(0.0, abs=0.01)
+    assert info.outline_color.a == pytest.approx(0.8, abs=0.01)
+
+    conn.stimuli.delete(handle)
+
+
+def test_set_outline_width_roundtrip(conn: Connection) -> None:
+    handle = conn.stimuli.create_ellipse(width=120, height=80)
+    conn.stimuli.set_outline_width(handle, 6.0)
+
+    info = conn.stimuli.query(handle)
+    assert info.outline_width == pytest.approx(6.0, abs=0.1)
+
+    conn.stimuli.delete(handle)
+
+
+def test_draw_mode_default_is_filled(conn: Connection) -> None:
+    """Stimuli default to FILLED draw mode when created without an explicit mode."""
+    for h in [
+        conn.stimuli.create_rect(width=100, height=100),
+        conn.stimuli.create_circle(radius=50),
+        conn.stimuli.create_ellipse(width=100, height=60),
+    ]:
+        info = conn.stimuli.query(h)
+        assert info.draw_mode == DrawMode.FILLED
+        conn.stimuli.delete(h)
+
+
+def test_draw_mode_cycle(conn: Connection) -> None:
+    """draw_mode can be changed between all three modes."""
+    handle = conn.stimuli.create_rect(width=100, height=100)
+
+    for mode in (DrawMode.OUTLINED, DrawMode.FILLED_AND_OUTLINED, DrawMode.FILLED):
+        conn.stimuli.set_draw_mode(handle, mode)
+        info = conn.stimuli.query(handle)
+        assert info.draw_mode == mode
+
+    conn.stimuli.delete(handle)
+
+
+def test_outline_visual(conn: Connection, step_delay: float) -> None:
+    """Display each draw mode and shape type so a human can visually verify outlines.
+
+    Shows a row of three shapes (rect, circle, ellipse) for each draw mode,
+    pausing for step_delay seconds between rows.
+    """
+    conn.system.set_background(r=0.15, g=0.15, b=0.15)
+
+    ROWS = [
+        (DrawMode.FILLED,             "fill only"),
+        (DrawMode.OUTLINED,           "outline only"),
+        (DrawMode.FILLED_AND_OUTLINED, "fill + outline"),
+    ]
+
+    for mode, _ in ROWS:
+        rect = conn.stimuli.create_rect(x=-200, y=0, width=180, height=120,
+                                        r=0.2, g=0.5, b=0.9)
+        circ = conn.stimuli.create_circle(x=0, y=0, radius=70,
+                                          r=0.9, g=0.4, b=0.2)
+        ell  = conn.stimuli.create_ellipse(x=200, y=0, width=200, height=100,
+                                           r=0.3, g=0.8, b=0.3)
+
+        for h in (rect, circ, ell):
+            conn.stimuli.set_draw_mode(h, mode)
+            conn.stimuli.set_outline_color(h, r=1.0, g=1.0, b=0.0, a=1.0)
+            conn.stimuli.set_outline_width(h, 6.0)
+
+        time.sleep(step_delay)
+
+        for h in (rect, circ, ell):
+            conn.stimuli.delete(h)
+
+    conn.system.set_background(r=0.0, g=0.0, b=0.0)
+
+
+def test_outline_independent_of_fill_color(conn: Connection) -> None:
+    """Changing outline color must not affect fill color and vice versa."""
+    handle = conn.stimuli.create_rect(
+        width=100, height=100, r=1.0, g=0.0, b=0.0
+    )
+    conn.stimuli.set_outline_color(handle, r=0.0, g=0.0, b=1.0)
+
+    info = conn.stimuli.query(handle)
+    assert info.fill_color.r == pytest.approx(1.0, abs=0.01)   # fill still red
+    assert info.outline_color.b == pytest.approx(1.0, abs=0.01)  # outline blue
+
+    conn.stimuli.set_fill_color(handle, r=0.0, g=1.0, b=0.0)
+    info = conn.stimuli.query(handle)
+    assert info.fill_color.g == pytest.approx(1.0, abs=0.01)    # fill now green
+    assert info.outline_color.b == pytest.approx(1.0, abs=0.01)  # outline still blue
+
     conn.stimuli.delete(handle)

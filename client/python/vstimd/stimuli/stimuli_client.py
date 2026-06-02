@@ -211,6 +211,19 @@ class StimuliClient:
         )
         self._send(req)
 
+    def set_draw_mode(self, handle: int, mode: "DrawMode") -> None:
+        from vstimd.stimuli.stimuli_models import DrawMode
+        _proto_map = {
+            DrawMode.FILLED:             common_pb2.DRAW_MODE_FILLED,
+            DrawMode.OUTLINED:           common_pb2.DRAW_MODE_OUTLINED,
+            DrawMode.FILLED_AND_OUTLINED: common_pb2.DRAW_MODE_FILLED_AND_OUTLINED,
+        }
+        req = service_pb2.Request(
+            stimulus=handle,
+            set_draw_mode=stimuli_pb2.SetDrawModeRequest(mode=_proto_map[mode]),
+        )
+        self._send(req)
+
     def set_outline_color(self, handle: int, r: float, g: float, b: float, a: float = 1.0) -> None:
         req = service_pb2.Request(
             stimulus=handle,
