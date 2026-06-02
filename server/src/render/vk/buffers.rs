@@ -114,7 +114,7 @@ impl SolidMeshCache {
         if let Some(old) = map.remove(&handle) {
             unsafe { old.destroy(device) };
         }
-        if verts.is_empty() {
+        if verts.is_empty() || idxs.is_empty() {
             return;
         }
         let (vb, vm) = Self::alloc_upload(mem_props, device, vk::BufferUsageFlags::VERTEX_BUFFER, bytemuck::cast_slice(verts));

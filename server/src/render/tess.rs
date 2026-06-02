@@ -7,7 +7,10 @@ use lyon_tessellation::path::{Path, Winding};
 
 use crate::geom::Vertex;
 use crate::scene::photodiode::PhotoDiodeState;
-use crate::scene::stimulus::{CircleStimulus, EllipseStimulus, RectStimulus, ShapeAppearance, ShapeStimulus, Transform2D};
+use crate::scene::stimulus::{
+    CircleStimulus, DrawMode, EllipseStimulus, RectStimulus, ShapeAppearance, ShapeStimulus,
+    Transform2D,
+};
 
 pub struct ShapeTessellationResult {
     pub fill:   (Vec<Vertex>, Vec<u32>),
@@ -92,9 +95,22 @@ fn tessellate_path(
     half_h: f32,
 ) -> ShapeTessellationResult {
     let xf = transform.to_transform();
+    let tess_fill = matches!(appearance.draw_mode, DrawMode::Fill | DrawMode::FillAndStroke);
+    let tess_stroke = matches!(
+        appearance.draw_mode,
+        DrawMode::Stroke | DrawMode::FillAndStroke
+    );
     ShapeTessellationResult {
-        fill:   tessellate_fill(path, &xf, appearance.fill_color, half_w, half_h),
-        stroke: tessellate_stroke(path, &xf, appearance, half_w, half_h),
+        fill: if tess_fill {
+            tessellate_fill(path, &xf, appearance.fill_color, half_w, half_h)
+        } else {
+            (vec![], vec![])
+        },
+        stroke: if tess_stroke {
+            tessellate_stroke(path, &xf, appearance, half_w, half_h)
+        } else {
+            (vec![], vec![])
+        },
     }
 }
 

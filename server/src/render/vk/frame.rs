@@ -129,7 +129,9 @@ pub fn render_frame(
 
             let entry = &sc.stimuli[&handle];
             let Stimulus::Shape(shape) = &entry.stimulus else { continue };
-            if !shape.flags().dirty && solid_meshes.fill_meshes.contains_key(&handle) {
+            let has_mesh = solid_meshes.fill_meshes.contains_key(&handle)
+                || solid_meshes.stroke_meshes.contains_key(&handle);
+            if !shape.flags().dirty && (shape.flags().is_visible() == has_mesh) {
                 continue;
             }
             let tess = tess::tessellate_shape_stimulus(shape, screen_size);

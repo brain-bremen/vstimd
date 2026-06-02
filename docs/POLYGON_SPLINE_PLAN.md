@@ -28,10 +28,10 @@ server-side using kurbo.
 | Named shapes / N-gons | Resolved client-side in Python | Keeps server simple; mirrors PsychoPy's own architecture |
 | `closeShape` | Immutable after creation | PsychoPy disallows dynamic changes; no deferred bookkeeping needed |
 | `SplineStimulus` placement | `ShapeStimulus` variant | Shares tessellated-geometry pipeline (Grating is a top-level variant because it uses a fragment shader) |
-| Spline evaluation | kurbo `BezPath` | Already used for Circle/Ellipse; `tessellate_filled_path` is reusable for filled closed splines |
+| Spline evaluation | kurbo `BezPath` | Reuses existing cubic-path interpolation utilities and can be converted into lyon paths for tessellation |
 | Catmull-Rom → Bézier | Standard tangent formula: `C1 = P[i] + (P[i+1]−P[i−1])/6`, `C2 = P[i+1] − (P[i+2]−P[i])/6` | Produces smooth C1-continuous cubic spline |
 | Cubic Bézier encoding | `[P0, C1, C2, P1, C1, C2, P2, …]` — 1+3N points for N segments | Compact, unambiguous |
-| Stroke/outline | Deferred to a later phase | Existing Rect/Ellipse outlines are also not fully wired; fill-only matches current behaviour |
+| Stroke/outline | Supported | Existing shape rendering supports fill, stroke, and fill+stroke draw modes |
 
 ---
 
@@ -75,10 +75,10 @@ fn tessellate_polygon(s: &PolygonStimulus, half_w: f32, half_h: f32) -> (Vec<Ver
     let flat: Vec<f64> = s.vertices_live.iter().flat_map(|&[x,y]| [x as f64, y as f64]).collect();
     let Ok(indices) = earcutr::earcut(&flat, &[], 2) else { return (vec![], vec![]); };
     let color = s.appearance.live.fill_color;
-    let affine = s.transform.live.to_affine();
+    let xf = s.transform.live.to_transform();
     let vertices: Vec<Vertex> = s.vertices_live.iter().map(|&[x,y]| {
-        let p = affine * kurbo::Point::new(x as f64, y as f64);
-        Vertex { position: px_to_ndc(p.x as f32, p.y as f32, half_w, half_h),
+        let p = xf.transform_point(point(x, y));
+        Vertex { position: px_to_ndc(p.x, p.y, half_w, half_h),
                  normal: FRONT_NORMAL, uv: NO_UV, color }
     }).collect();
     (vertices, indices.iter().map(|&i| i as u32).collect())
