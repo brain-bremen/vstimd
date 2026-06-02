@@ -1,5 +1,9 @@
-use kurbo::ParamCurve as _;
-use kurbo::Shape as _;
+use lyon_tessellation::{
+    BuffersBuilder, FillOptions, FillTessellator, FillVertex,
+    StrokeOptions, StrokeTessellator, StrokeVertex, VertexBuffers,
+};
+use lyon_tessellation::math::{Angle, Box2D, Transform, Vector, point};
+use lyon_tessellation::path::{Path, Winding};
 
 use crate::geom::Vertex;
 use crate::scene::photodiode::PhotoDiodeState;
@@ -47,73 +51,96 @@ pub fn tessellate_shape_stimulus(
 
 fn tessellate_rect(s: &RectStimulus, half_w: f32, half_h: f32) -> ShapeTessellationResult {
     let [hw, hh] = s.size.live;
-    let color = s.appearance.live.fill_color;
-    let affine = s.transform.live.to_affine();
-
-    let local = [
-        kurbo::Point::new(-(hw as f64), -(hh as f64)),
-        kurbo::Point::new(hw as f64, -(hh as f64)),
-        kurbo::Point::new(hw as f64, hh as f64),
-        kurbo::Point::new(-(hw as f64), hh as f64),
-    ];
-
-    let ndc: Vec<[f32; 3]> = local
-        .iter()
-        .map(|&p| {
-            let tp = affine * p;
-            px_to_ndc(tp.x as f32, tp.y as f32, half_w, half_h)
-        })
-        .collect();
-
-    let c = affine * kurbo::Point::ZERO;
-    let cn = px_to_ndc(c.x as f32, c.y as f32, half_w, half_h);
-
-    let v = |position| Vertex { position, normal: FRONT_NORMAL, uv: NO_UV, color };
-    let fill_verts = vec![v(cn), v(ndc[0]), v(ndc[1]), v(ndc[2]), v(ndc[3])];
-    let fill_idxs  = vec![0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1];
-
-    let rect_path = kurbo::Rect::new(-(hw as f64), -(hh as f64), hw as f64, hh as f64).to_path(0.1);
-    let stroke = tessellate_stroke_path(rect_path, &s.appearance.live, s.transform.live, half_w, half_h);
-
-    ShapeTessellationResult { fill: (fill_verts, fill_idxs), stroke }
+    let mut builder = Path::builder();
+    builder.add_rectangle(
+        &Box2D::new(point(-hw, -hh), point(hw, hh)),
+        Winding::Positive,
+    );
+    let path = builder.build();
+    tessellate_path(&path, s.transform.live, &s.appearance.live, half_w, half_h)
 }
 
 fn tessellate_circle(s: &CircleStimulus, half_w: f32, half_h: f32) -> ShapeTessellationResult {
-    let path = kurbo::Circle::new(kurbo::Point::ZERO, s.radius.live as f64).to_path(1.0);
-    let fill   = tessellate_filled_path(&path, s.transform.live, s.appearance.live.fill_color, half_w, half_h);
-    let stroke = tessellate_stroke_path(path, &s.appearance.live, s.transform.live, half_w, half_h);
-    ShapeTessellationResult { fill, stroke }
+    let mut builder = Path::builder();
+    builder.add_circle(point(0.0, 0.0), s.radius.live, Winding::Positive);
+    let path = builder.build();
+    tessellate_path(&path, s.transform.live, &s.appearance.live, half_w, half_h)
 }
 
 fn tessellate_ellipse(s: &EllipseStimulus, half_w: f32, half_h: f32) -> ShapeTessellationResult {
     let [rx, ry] = s.radii.live;
-    let path = kurbo::Ellipse::new(
-        kurbo::Point::ZERO,
-        kurbo::Vec2::new(rx as f64, ry as f64),
-        0.0,
-    )
-    .to_path(1.0);
-    let fill   = tessellate_filled_path(&path, s.transform.live, s.appearance.live.fill_color, half_w, half_h);
-    let stroke = tessellate_stroke_path(path, &s.appearance.live, s.transform.live, half_w, half_h);
-    ShapeTessellationResult { fill, stroke }
+    let mut builder = Path::builder();
+    builder.add_ellipse(
+        point(0.0, 0.0),
+        Vector::new(rx, ry),
+        Angle::zero(),
+        Winding::Positive,
+    );
+    let path = builder.build();
+    tessellate_path(&path, s.transform.live, &s.appearance.live, half_w, half_h)
 }
 
-// ── Stroke helper ─────────────────────────────────────────────────────────────
+// ── Shared tessellation ───────────────────────────────────────────────────────
 
-fn tessellate_stroke_path(
-    path: kurbo::BezPath,
-    appearance: &ShapeAppearance,
+/// Fill and stroke-tessellate a lyon `Path`, applying `transform` and converting
+/// to NDC.  The path is expected to be in local pixel-space (origin = centre).
+fn tessellate_path(
+    path: &Path,
     transform: Transform2D,
+    appearance: &ShapeAppearance,
+    half_w: f32,
+    half_h: f32,
+) -> ShapeTessellationResult {
+    let xf = transform.to_transform();
+    ShapeTessellationResult {
+        fill:   tessellate_fill(path, &xf, appearance.fill_color, half_w, half_h),
+        stroke: tessellate_stroke(path, &xf, appearance, half_w, half_h),
+    }
+}
+
+fn tessellate_fill(
+    path: &Path,
+    xf: &Transform,
+    color: [f32; 4],
+    half_w: f32,
+    half_h: f32,
+) -> (Vec<Vertex>, Vec<u32>) {
+    let mut buffers: VertexBuffers<Vertex, u32> = VertexBuffers::new();
+    let mut tess = FillTessellator::new();
+    let ok = tess.tessellate_path(
+        path,
+        &FillOptions::default(),
+        &mut BuffersBuilder::new(&mut buffers, |v: FillVertex| {
+            let p = xf.transform_point(v.position());
+            Vertex { position: px_to_ndc(p.x, p.y, half_w, half_h), normal: FRONT_NORMAL, uv: NO_UV, color }
+        }),
+    );
+    if ok.is_err() { return (vec![], vec![]); }
+    (buffers.vertices, buffers.indices)
+}
+
+fn tessellate_stroke(
+    path: &Path,
+    xf: &Transform,
+    appearance: &ShapeAppearance,
     half_w: f32,
     half_h: f32,
 ) -> (Vec<Vertex>, Vec<u32>) {
     let sw = appearance.stroke_width;
-    if sw <= 0.0 {
-        return (vec![], vec![]);
-    }
-    let style = kurbo::Stroke { width: sw as f64, ..Default::default() };
-    let stroked = kurbo::stroke(path, &style, &kurbo::StrokeOpts::default(), 0.5);
-    tessellate_filled_path(&stroked, transform, appearance.outline_color, half_w, half_h)
+    if sw <= 0.0 { return (vec![], vec![]); }
+    let color = appearance.outline_color;
+    let mut buffers: VertexBuffers<Vertex, u32> = VertexBuffers::new();
+    let mut tess = StrokeTessellator::new();
+    let ok = tess.tessellate_path(
+        path,
+        &StrokeOptions::default().with_line_width(sw),
+        &mut BuffersBuilder::new(&mut buffers, |v: StrokeVertex| {
+            let p = xf.transform_point(v.position());
+            Vertex { position: px_to_ndc(p.x, p.y, half_w, half_h), normal: FRONT_NORMAL, uv: NO_UV, color }
+        }),
+    );
+    if ok.is_err() { return (vec![], vec![]); }
+    (buffers.vertices, buffers.indices)
 }
 
 // ── Photodiode corner square ──────────────────────────────────────────────────
@@ -127,84 +154,17 @@ pub fn tessellate_photodiode(
     if !state.enabled {
         return (vec![], vec![]);
     }
-    let color: [f32; 4] = if state.lit {
-        [1.0, 1.0, 1.0, 1.0]
-    } else {
-        [0.0, 0.0, 0.0, 1.0]
-    };
+    let color: [f32; 4] = if state.lit { [1.0, 1.0, 1.0, 1.0] } else { [0.0, 0.0, 0.0, 1.0] };
     let size = 60.0_f32;
     let half_w = screen_size.0 as f32 * 0.5;
     let half_h = screen_size.1 as f32 * 0.5;
-    // Pixel-space corners (Y-up, bottom = −half_h).
     let (x0, x1, y0, y1) = if state.position == 0 {
         (-half_w, -half_w + size, -half_h, -half_h + size)
     } else {
         (half_w - size, half_w, -half_h, -half_h + size)
     };
-    let v = |x, y| Vertex {
-        position: px_to_ndc(x, y, half_w, half_h),
-        normal: FRONT_NORMAL,
-        uv: NO_UV,
-        color,
-    };
+    let v = |x, y| Vertex { position: px_to_ndc(x, y, half_w, half_h), normal: FRONT_NORMAL, uv: NO_UV, color };
     let vertices = vec![v(x0, y0), v(x1, y0), v(x1, y1), v(x0, y1)];
-    let indices = vec![0, 1, 2, 0, 2, 3];
-    (vertices, indices)
-}
-
-// ── Shared helper ─────────────────────────────────────────────────────────────
-
-fn tessellate_filled_path(
-    path: &kurbo::BezPath,
-    transform: Transform2D,
-    color: [f32; 4],
-    half_w: f32,
-    half_h: f32,
-) -> (Vec<Vertex>, Vec<u32>) {
-    let affine = transform.to_affine();
-    let mut outline: Vec<[f32; 3]> = Vec::new();
-
-    for seg in path.segments() {
-        match seg {
-            kurbo::PathSeg::Line(l) => {
-                let p = affine * l.p0;
-                outline.push(px_to_ndc(p.x as f32, p.y as f32, half_w, half_h));
-            }
-            kurbo::PathSeg::Cubic(c) => {
-                for i in 0..16_usize {
-                    let p = affine * c.eval(i as f64 / 16.0);
-                    outline.push(px_to_ndc(p.x as f32, p.y as f32, half_w, half_h));
-                }
-            }
-            kurbo::PathSeg::Quad(q) => {
-                for i in 0..8_usize {
-                    let p = affine * q.eval(i as f64 / 8.0);
-                    outline.push(px_to_ndc(p.x as f32, p.y as f32, half_w, half_h));
-                }
-            }
-        }
-    }
-
-    if outline.is_empty() {
-        return (vec![], vec![]);
-    }
-
-    let c = affine * kurbo::Point::ZERO;
-    let cn = px_to_ndc(c.x as f32, c.y as f32, half_w, half_h);
-
-    let v = |position| Vertex { position, normal: FRONT_NORMAL, uv: NO_UV, color };
-    let mut vertices = vec![v(cn)];
-    for &pt in &outline {
-        vertices.push(v(pt));
-    }
-
-    let n = outline.len() as u32;
-    let mut indices = Vec::with_capacity((n * 3) as usize);
-    for i in 0..n {
-        indices.push(0);
-        indices.push(1 + i);
-        indices.push(1 + (i + 1) % n);
-    }
-
+    let indices  = vec![0, 1, 2, 0, 2, 3];
     (vertices, indices)
 }

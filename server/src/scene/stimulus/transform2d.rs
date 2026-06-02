@@ -1,3 +1,5 @@
+use lyon_tessellation::math::{Angle, Transform, Vector};
+
 /// 2-D placement. Used by every positional stimulus.
 /// Position is in stimulus-space pixels with origin at screen centre, Y-up.
 /// Rotation angle is counter-clockwise degrees.
@@ -14,9 +16,9 @@ impl Default for Transform2D {
 }
 
 impl Transform2D {
-    /// Convert to a `kurbo::Affine` for tessellation (applies rotation then translation).
-    pub fn to_affine(&self) -> kurbo::Affine {
-        kurbo::Affine::translate((self.pos[0] as f64, self.pos[1] as f64))
-            * kurbo::Affine::rotate(self.angle.to_radians() as f64)
+    /// Rotation-then-translation affine transform for tessellation.
+    pub fn to_transform(&self) -> Transform {
+        Transform::rotation(Angle::degrees(self.angle))
+            .then_translate(Vector::new(self.pos[0], self.pos[1]))
     }
 }
