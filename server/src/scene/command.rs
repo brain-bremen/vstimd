@@ -2,7 +2,7 @@ use uuid::Uuid;
 
 use super::deferred::Deferred;
 use super::state::SceneState;
-use super::stimulus::{DiscStimulus, EllipseStimulus, RectStimulus, ShapeStimulus, Stimulus, StimulusEntry};
+use super::stimulus::{CircleStimulus, EllipseStimulus, RectStimulus, ShapeStimulus, Stimulus, StimulusEntry};
 use super::stimulus::{DrawMode as SceneDrawMode, ShapeAppearance, StimulusFlags, Transform2D};
 use super::stimulus::grating::{
     GratingStimulus, grating_params_from_proto, grating_query_params, proto_to_mask,
@@ -34,7 +34,7 @@ fn command_summary(req: &proto::Request) -> String {
         Some(request::Body::SetRectSize(c)) => {
             format!("SetRectSize {:.0}×{:.0}", c.width, c.height)
         }
-        Some(request::Body::SetDiscRadius(c)) => format!("SetDiscRadius({:.0})", c.radius),
+        Some(request::Body::SetCircleRadius(c)) => format!("SetCircleRadius({:.0})", c.radius),
         Some(request::Body::SetEllipseSize(c)) => {
             format!("SetEllipseSize {:.0}×{:.0}", c.width, c.height)
         }
@@ -194,7 +194,7 @@ impl SceneState {
             request::Body::SetFillColor(cmd) => self.cmd_set_fill_color(handle, cmd),
             request::Body::SetAlpha(cmd) => self.cmd_set_alpha(handle, cmd),
             request::Body::SetRectSize(cmd) => self.cmd_set_rect_size(handle, cmd),
-            request::Body::SetDiscRadius(cmd) => self.cmd_set_disc_radius(handle, cmd),
+            request::Body::SetCircleRadius(cmd) => self.cmd_set_circle_radius(handle, cmd),
             request::Body::SetEllipseSize(cmd) => self.cmd_set_ellipse_size(handle, cmd),
             request::Body::SetDrawMode(cmd) => self.cmd_set_draw_mode(handle, cmd),
             request::Body::SetOutlineColor(cmd) => self.cmd_set_outline_color(handle, cmd),
@@ -264,7 +264,7 @@ impl SceneState {
         };
         let name = nonempty(cmd.name);
         let handle = self.alloc_stim_handle();
-        self.stimuli.insert(handle, StimulusEntry::new(id, name, Stimulus::Shape(ShapeStimulus::Disc(DiscStimulus {
+        self.stimuli.insert(handle, StimulusEntry::new(id, name, Stimulus::Shape(ShapeStimulus::Circle(CircleStimulus {
             flags: StimulusFlags { enabled: true, ..Default::default() },
             transform: Deferred::new(Transform2D { pos: [center.x, center.y], angle: 0.0 }),
             appearance: Deferred::new(ShapeAppearance {
@@ -417,18 +417,18 @@ impl SceneState {
         }
     }
 
-    // ── SetDiscRadius ─────────────────────────────────────────────────────────
+    // ── SetCircleRadius ───────────────────────────────────────────────────────
 
-    fn cmd_set_disc_radius(&mut self, handle: u32, cmd: proto::SetDiscRadiusRequest) -> proto::Response {
+    fn cmd_set_circle_radius(&mut self, handle: u32, cmd: proto::SetCircleRadiusRequest) -> proto::Response {
         match self.stimuli.get_mut(&handle) {
             None => err_not_found(handle),
             Some(entry) => match &mut entry.stimulus {
-                Stimulus::Shape(ShapeStimulus::Disc(s)) => {
+                Stimulus::Shape(ShapeStimulus::Circle(s)) => {
                     s.radius.set(self.deferred_mode, cmd.radius);
                     if !self.deferred_mode { s.flags.mark_dirty(); }
                     ok_ack()
                 }
-                stim => err_wrong_type(stim, "SetDiscRadius", "Disc"),
+                stim => err_wrong_type(stim, "SetCircleRadius", "Circle"),
             },
         }
     }
@@ -768,10 +768,10 @@ impl SceneState {
                                 })),
                             }),
                         ),
-                        ShapeStimulus::Disc(d) => (
-                            proto::StimulusType::Disc as i32,
+                        ShapeStimulus::Circle(d) => (
+                            proto::StimulusType::Circle as i32,
                             Some(proto::StimulusParams {
-                                shape: Some(proto::stimulus_params::Shape::Disc(proto::DiscParams {
+                                shape: Some(proto::stimulus_params::Shape::Circle(proto::CircleParams {
                                     radius: d.radius.live,
                                 })),
                             }),
@@ -837,7 +837,7 @@ impl SceneState {
                 let stimulus_type = match stim {
                     Stimulus::Shape(ShapeStimulus::Rect(_))    => proto::StimulusType::Rect,
                     Stimulus::Shape(ShapeStimulus::Ellipse(_)) => proto::StimulusType::Ellipse,
-                    Stimulus::Shape(ShapeStimulus::Disc(_))    => proto::StimulusType::Disc,
+                    Stimulus::Shape(ShapeStimulus::Circle(_))    => proto::StimulusType::Circle,
                     Stimulus::Grating(_)                       => proto::StimulusType::Grating,
                 } as i32;
                 proto::StimulusEntry {

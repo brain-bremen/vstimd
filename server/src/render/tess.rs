@@ -3,7 +3,7 @@ use kurbo::Shape as _;
 
 use crate::geom::Vertex;
 use crate::scene::photodiode::PhotoDiodeState;
-use crate::scene::stimulus::{DiscStimulus, EllipseStimulus, RectStimulus, ShapeStimulus, Stimulus, Transform2D};
+use crate::scene::stimulus::{CircleStimulus, EllipseStimulus, RectStimulus, ShapeStimulus, Stimulus, Transform2D};
 
 // ── Coordinate conversion ─────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ pub fn tessellate_stimulus(
         Stimulus::Shape(s) => match s {
             ShapeStimulus::Rect(s)    => tessellate_rect(s, half_w, half_h),
             ShapeStimulus::Ellipse(s) => tessellate_ellipse(s, half_w, half_h),
-            ShapeStimulus::Disc(s)    => tessellate_disc(s, half_w, half_h),
+            ShapeStimulus::Circle(s)    => tessellate_circle(s, half_w, half_h),
         },
         Stimulus::Grating(_) => (vec![], vec![]),
     }
@@ -72,7 +72,7 @@ fn tessellate_rect(s: &RectStimulus, half_w: f32, half_h: f32) -> (Vec<Vertex>, 
     (vertices, indices)
 }
 
-fn tessellate_disc(s: &DiscStimulus, half_w: f32, half_h: f32) -> (Vec<Vertex>, Vec<u32>) {
+fn tessellate_circle(s: &CircleStimulus, half_w: f32, half_h: f32) -> (Vec<Vertex>, Vec<u32>) {
     let path = kurbo::Circle::new(kurbo::Point::ZERO, s.radius.live as f64).to_path(1.0);
     tessellate_filled_path(&path, s.transform.live, s.appearance.live.fill_color, half_w, half_h)
 }

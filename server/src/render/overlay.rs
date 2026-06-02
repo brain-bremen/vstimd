@@ -164,7 +164,7 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                                         let [hw, hh] = s.size.live;
                                         format!("{}×{}", (hw * 2.0) as i32, (hh * 2.0) as i32)
                                     }
-                                    Stimulus::Shape(ShapeStimulus::Disc(s)) => {
+                                    Stimulus::Shape(ShapeStimulus::Circle(s)) => {
                                         format!("r={}", s.radius.live as i32)
                                     }
                                     Stimulus::Shape(ShapeStimulus::Ellipse(s)) => {

@@ -15,7 +15,7 @@ enum ErrorCode {
   ERROR_CODE_UNKNOWN             = 2;
   // The stimulus handle does not exist.
   ERROR_CODE_HANDLE_NOT_FOUND    = 3;
-  // The mutation is not applicable to this stimulus type (e.g. SetDiscRadiusRequest on Rect).
+  // The mutation is not applicable to this stimulus type (e.g. SetCircleRadiusRequest on Rect).
   ERROR_CODE_WRONG_STIMULUS_TYPE = 4;
   // A system command was sent with a stimulus handle, or vice versa.
   ERROR_CODE_WRONG_TARGET        = 5;
@@ -62,7 +62,7 @@ message Request {
     SetFillColorRequest   set_fill_color   = 34;
     SetAlphaRequest       set_alpha        = 35;
     SetRectSizeRequest    set_rect_size    = 36;
-    SetDiscRadiusRequest  set_disc_radius  = 37;
+    SetCircleRadiusRequest  set_circle_radius  = 37;
     SetEllipseSizeRequest set_ellipse_size = 38;
     SetDrawModeRequest    set_draw_mode    = 39;
     SetOutlineColorRequest set_outline_color = 40;

@@ -59,7 +59,7 @@ class StimuliClient:
         name: str = "",
         id: str = "",
     ) -> int:
-        """Create a disc stimulus and return its handle."""
+        """Create a circle stimulus and return its handle."""
         req = service_pb2.Request(
             system=service_pb2.SystemTarget(),
             create_circle=stimuli_pb2.CreateCircleRequest(
@@ -236,10 +236,10 @@ class StimuliClient:
         )
         self._send(req)
 
-    def set_disc_radius(self, handle: int, radius: float) -> None:
+    def set_circle_radius(self, handle: int, radius: float) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_disc_radius=stimuli_pb2.SetDiscRadiusRequest(radius=radius),
+            set_circle_radius=stimuli_pb2.SetCircleRadiusRequest(radius=radius),
         )
         self._send(req)
 

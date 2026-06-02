@@ -55,15 +55,15 @@ impl EllipseStimulus {
     }
 }
 
-pub struct DiscStimulus {
+pub struct CircleStimulus {
     pub flags: StimulusFlags,
     pub transform: Deferred<Transform2D>,
     pub appearance: Deferred<ShapeAppearance>,
     pub radius: Deferred<f32>,
 }
 
-impl DiscStimulus {
-    pub const TYPE_NAME: &'static str = "Disc";
+impl CircleStimulus {
+    pub const TYPE_NAME: &'static str = "Circle";
 
     pub fn make_copy(&mut self) {
         self.flags.make_copy();

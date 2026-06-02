@@ -1,5 +1,5 @@
 use super::super::deferred::Deferred;
-use super::primitive_shapes::{DiscStimulus, EllipseStimulus, RectStimulus};
+use super::primitive_shapes::{CircleStimulus, EllipseStimulus, RectStimulus};
 use super::shape_appearance::ShapeAppearance;
 use super::stimulus_flags::StimulusFlags;
 use super::transform2d::Transform2D;
@@ -9,7 +9,7 @@ macro_rules! shape_field {
         match $stim {
             ShapeStimulus::Rect($s)    => $expr,
             ShapeStimulus::Ellipse($s) => $expr,
-            ShapeStimulus::Disc($s)    => $expr,
+            ShapeStimulus::Circle($s)    => $expr,
         }
     };
 }
@@ -17,7 +17,7 @@ macro_rules! shape_field {
 pub enum ShapeStimulus {
     Rect(RectStimulus),
     Ellipse(EllipseStimulus),
-    Disc(DiscStimulus),
+    Circle(CircleStimulus),
 }
 
 impl ShapeStimulus {
@@ -57,7 +57,7 @@ impl ShapeStimulus {
         match self {
             ShapeStimulus::Rect(_)    => RectStimulus::TYPE_NAME,
             ShapeStimulus::Ellipse(_) => EllipseStimulus::TYPE_NAME,
-            ShapeStimulus::Disc(_)    => DiscStimulus::TYPE_NAME,
+            ShapeStimulus::Circle(_)    => CircleStimulus::TYPE_NAME,
         }
     }
 }

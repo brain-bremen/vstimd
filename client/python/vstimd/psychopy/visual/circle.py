@@ -7,13 +7,13 @@ from .window import Window
 
 
 class Circle:
-    """Circle (disc) stimulus.  API matches psychopy.visual.Circle."""
+    """Circle stimulus.  API matches psychopy.visual.Circle."""
 
     def __init__(
         self,
         win: Window,
         radius: float = 0.5,
-        edges: int | str = "circle",  # accepted for compat, server renders smooth disc
+        edges: int | str = "circle",  # accepted for compat, server renders smooth circle
         units: str = "",
         pos: Vec2 = (0.0, 0.0),
         size: float = 1.0,
@@ -114,7 +114,7 @@ class Circle:
     def radius(self, value: float) -> None:
         self._radius = float(value)
         pr = self._scalar_px(self._radius)
-        self._win._dispatch(self._win._conn.stimuli.set_disc_radius, self._handle, pr)
+        self._win._dispatch(self._win._conn.stimuli.set_circle_radius, self._handle, pr)
 
     def setRadius(self, value: float, log: bool | None = None) -> None:
         self.radius = value

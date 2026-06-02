@@ -35,7 +35,7 @@ message CreateRectRequest {
   string name   = 6;   // optional human-readable label (for debugging/serialization)
 }
 
-// System command: create a disc (circle) stimulus.
+// System command: create a circle stimulus.
 // Returns the new handle in Response.handle and the UUID in Response.id.
 message CreateCircleRequest {
   Vec2   center = 1;   // pixel-space position
@@ -211,9 +211,9 @@ message SetRectSizeRequest {
   float height = 2;
 }
 
-// Stimulus command: set the radius of a Disc stimulus.
-// Returns WRONG_STIMULUS_TYPE if the handle is not a Disc.
-message SetDiscRadiusRequest {
+// Stimulus command: set the radius of a Circle stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Circle.
+message SetCircleRadiusRequest {
   float radius = 1;
 }
 
@@ -251,14 +251,14 @@ message QueryStimulusRequest {}
 message StimulusParams {
   oneof shape {
     RectParams    rect    = 1;
-    DiscParams    disc    = 2;
+    CircleParams  circle  = 2;
     EllipseParams ellipse = 3;
     GratingParams grating = 4;
   }
 }
 
 message RectParams    { float width = 1; float height = 2; }
-message DiscParams    { float radius = 1; }
+message CircleParams  { float radius = 1; }
 message EllipseParams { float width = 1; float height = 2; }
 
 message GratingParams {

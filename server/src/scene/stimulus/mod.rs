@@ -6,7 +6,7 @@ mod stimulus_flags;
 mod transform2d;
 
 pub use grating::{GratingMask, GratingParams, GratingStimulus, Waveform};
-pub use primitive_shapes::{DiscStimulus, EllipseStimulus, RectStimulus};
+pub use primitive_shapes::{CircleStimulus, EllipseStimulus, RectStimulus};
 pub use shape_stimulus::ShapeStimulus;
 pub use shape_appearance::{DrawMode, ShapeAppearance};
 pub use stimulus_flags::StimulusFlags;

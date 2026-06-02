@@ -46,7 +46,7 @@ pub(crate) fn spawn_demo_stimuli(
     scene: &std::sync::Arc<std::sync::RwLock<crate::scene::SceneState>>,
 ) {
     use crate::scene::{
-        Deferred, DiscStimulus, GratingParams, GratingStimulus, RectStimulus, ShapeAppearance,
+        Deferred, CircleStimulus, GratingParams, GratingStimulus, RectStimulus, ShapeAppearance,
         ShapeStimulus, Stimulus, StimulusEntry, StimulusFlags, Transform2D, Waveform,
     };
     use rand::RngExt;
@@ -58,7 +58,7 @@ pub(crate) fn spawn_demo_stimuli(
     let h1 = sc.alloc_stim_handle();
     sc.stimuli.insert(
         h1,
-        StimulusEntry::new(Uuid::new_v4(), Some("demo_disc".into()), Stimulus::Shape(ShapeStimulus::Disc(DiscStimulus {
+        StimulusEntry::new(Uuid::new_v4(), Some("demo_circle".into()), Stimulus::Shape(ShapeStimulus::Circle(CircleStimulus {
             flags: StimulusFlags {
                 enabled: true,
                 ..Default::default()
@@ -122,5 +122,5 @@ pub(crate) fn spawn_demo_stimuli(
             phase_accum: 0.0,
         })),
     );
-    log::info!("Demo: spawned disc #{h1}, rect #{h2}, grating #{h3}");
+    log::info!("Demo: spawned circle #{h1}, rect #{h2}, grating #{h3}");
 }

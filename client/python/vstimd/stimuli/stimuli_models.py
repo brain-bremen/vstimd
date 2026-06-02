@@ -11,7 +11,7 @@ from .grating_models import GratingMask, GratingParams, GratingTexture
 class StimulusType(Enum):
     UNKNOWN  = "unknown"
     RECT     = "rect"
-    DISC     = "disc"
+    CIRCLE   = "circle"
     ELLIPSE  = "ellipse"
     BITMAP   = "bitmap"
     SHADER   = "shader"
@@ -54,7 +54,7 @@ class RectParams:
 
 
 @dataclass
-class DiscParams:
+class CircleParams:
     radius: float
 
 
@@ -64,11 +64,11 @@ class EllipseParams:
     height: float
 
 
-StimulusParams = Union[RectParams, DiscParams, EllipseParams, GratingParams]
+StimulusParams = Union[RectParams, CircleParams, EllipseParams, GratingParams]
 
 _STIMULUS_TYPE_MAP: dict[int, StimulusType] = {
     common_pb2.STIMULUS_TYPE_RECT:     StimulusType.RECT,
-    common_pb2.STIMULUS_TYPE_DISC:     StimulusType.DISC,
+    common_pb2.STIMULUS_TYPE_CIRCLE:   StimulusType.CIRCLE,
     common_pb2.STIMULUS_TYPE_ELLIPSE:  StimulusType.ELLIPSE,
     common_pb2.STIMULUS_TYPE_BITMAP:   StimulusType.BITMAP,
     common_pb2.STIMULUS_TYPE_SHADER:   StimulusType.SHADER,
@@ -106,8 +106,8 @@ class StimulusInfo:
                 width=proto.params.rect.width,
                 height=proto.params.rect.height,
             )
-        elif shape_which == "disc":
-            params = DiscParams(radius=proto.params.disc.radius)
+        elif shape_which == "circle":
+            params = CircleParams(radius=proto.params.circle.radius)
         elif shape_which == "ellipse":
             params = EllipseParams(
                 width=proto.params.ellipse.width,

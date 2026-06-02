@@ -36,7 +36,7 @@ enum DrawMode {
 enum StimulusType {
   STIMULUS_TYPE_UNSPECIFIED = 0;
   STIMULUS_TYPE_RECT = 1;
-  STIMULUS_TYPE_DISC = 2;
+  STIMULUS_TYPE_CIRCLE = 2;
   STIMULUS_TYPE_ELLIPSE = 3;
   // 4–6 reserved for Wedge / Petal / Pixel when their renderers arrive
   STIMULUS_TYPE_BITMAP = 7;

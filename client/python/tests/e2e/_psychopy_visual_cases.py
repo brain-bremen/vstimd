@@ -10,7 +10,7 @@ import time
 import pytest
 
 import vstimd.psychopy.visual as visual
-from vstimd.stimuli import DiscParams, GratingMask, GratingParams, GratingTexture, RectParams, StimulusType
+from vstimd.stimuli import CircleParams, GratingMask, GratingParams, GratingTexture, RectParams, StimulusType
 
 
 def test_create_rect(win: visual.Window, step_delay: float) -> None:
@@ -119,8 +119,8 @@ def test_create_circle(win: visual.Window, step_delay: float) -> None:
     circle = visual.Circle(win, radius=50, fillColor="blue", autoDraw=True)
 
     info = win._conn.stimuli.query(circle._handle)
-    assert info.stimulus_type == StimulusType.DISC
-    assert isinstance(info.params, DiscParams)
+    assert info.stimulus_type == StimulusType.CIRCLE
+    assert isinstance(info.params, CircleParams)
     assert info.params.radius == pytest.approx(50.0, abs=0.5)
     assert info.fill_color.r == pytest.approx(0.0, abs=0.01)
     assert info.fill_color.g == pytest.approx(0.0, abs=0.01)
