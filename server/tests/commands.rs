@@ -627,6 +627,241 @@ fn test_set_name() {
 }
 
 #[test]
+fn test_create_text() {
+    let mut scene = SceneState::new();
+    let resp = scene.handle_request(proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::CreateText(proto::CreateTextRequest {
+            text: "hello".into(),
+            font: "Open Sans".into(),
+            letter_height: 32.0,
+            size: Some(proto::Vec2 { x: 400.0, y: 80.0 }),
+            pos: Some(proto::Vec2 { x: 10.0, y: -20.0 }),
+            anchor: "center".into(),
+            color: Some(proto::Color { r: 1.0, g: 1.0, b: 0.0, a: 1.0 }),
+            ..Default::default()
+        })),
+    });
+    assert!(is_ok(&resp), "unexpected error: {}", resp.error);
+    let h = resp.handle as u32;
+    assert!(h > 0);
+    assert!(!resp.id.is_empty());
+
+    let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else {
+        panic!("expected Text stimulus");
+    };
+    assert_eq!(t.text_live, "hello");
+    assert_eq!(t.font_family, "Open Sans");
+    assert_eq!(t.letter_height_px, 32.0);
+    assert_eq!(t.box_size.live, [400.0, 80.0]);
+    assert_eq!(t.transform.live.pos, [10.0, -20.0]);
+    assert_eq!(t.params.live.color, [1.0, 1.0, 0.0, 1.0]);
+    assert_eq!(t.params.live.fill_color[3], 0.0); // transparent by default
+}
+
+#[test]
+fn test_create_text_defaults() {
+    let mut scene = SceneState::new();
+    let resp = scene.handle_request(proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::CreateText(proto::CreateTextRequest {
+            text: "test".into(),
+            ..Default::default()
+        })),
+    });
+    assert!(is_ok(&resp), "unexpected error: {}", resp.error);
+    let h = resp.handle as u32;
+    let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else {
+        panic!("expected Text stimulus");
+    };
+    assert_eq!(t.box_size.live, [200.0, 100.0]);
+    assert_eq!(t.letter_height_px, 32.0);
+    assert_eq!(t.params.live.color, [1.0, 1.0, 1.0, 1.0]); // white default
+}
+
+#[test]
+fn test_set_text() {
+    let mut scene = SceneState::new();
+    let h = scene.handle_request(proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::CreateText(proto::CreateTextRequest {
+            text: "before".into(),
+            ..Default::default()
+        })),
+    }).handle as u32;
+
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetText(proto::SetTextRequest { text: "after".into() })),
+    });
+    assert!(is_ok(&resp));
+
+    let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
+    assert_eq!(t.text_live, "after");
+    assert_eq!(t.text_copy, "after");
+    assert!(t.flags.dirty);
+}
+
+#[test]
+fn test_set_text_color() {
+    let mut scene = SceneState::new();
+    let h = scene.handle_request(proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::CreateText(proto::CreateTextRequest {
+            text: "hi".into(),
+            ..Default::default()
+        })),
+    }).handle as u32;
+
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetTextColor(proto::SetTextColorRequest {
+            color: Some(proto::Color { r: 0.0, g: 1.0, b: 0.5, a: 0.8 }),
+        })),
+    });
+    assert!(is_ok(&resp));
+
+    let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
+    assert_eq!(t.params.live.color, [0.0, 1.0, 0.5, 0.8]);
+}
+
+#[test]
+fn test_set_text_wrong_type() {
+    let mut scene = SceneState::new();
+    let h = scene.handle_request(proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::CreateRect(proto::CreateRectRequest::default())),
+    }).handle as u32;
+
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetText(proto::SetTextRequest { text: "oops".into() })),
+    });
+    assert!(!is_ok(&resp));
+    assert_eq!(resp.code, proto::ErrorCode::WrongStimulusType as i32);
+}
+
+#[test]
+fn test_set_text_color_missing_color() {
+    let mut scene = SceneState::new();
+    let h = scene.handle_request(proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::CreateText(proto::CreateTextRequest {
+            text: "hi".into(), ..Default::default()
+        })),
+    }).handle as u32;
+
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetTextColor(proto::SetTextColorRequest { color: None })),
+    });
+    assert!(!is_ok(&resp));
+    assert_eq!(resp.code, proto::ErrorCode::InvalidArgument as i32);
+}
+
+#[test]
+fn test_query_text_stimulus() {
+    let mut scene = SceneState::new();
+    let h = scene.handle_request(proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::CreateText(proto::CreateTextRequest {
+            text: "hello".into(),
+            font: "Cairo".into(),
+            letter_height: 24.0,
+            size: Some(proto::Vec2 { x: 300.0, y: 60.0 }),
+            pos: Some(proto::Vec2 { x: 5.0, y: -10.0 }),
+            anchor: "top-left".into(),
+            color: Some(proto::Color { r: 0.5, g: 0.5, b: 1.0, a: 1.0 }),
+            ..Default::default()
+        })),
+    }).handle as u32;
+
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::QueryStimulus(proto::QueryStimulusRequest {})),
+    });
+    assert!(is_ok(&resp), "query error: {}", resp.error);
+
+    if let Some(proto::response::Body::StimulusInfo(info)) = resp.body {
+        assert_eq!(info.stimulus_type, proto::StimulusType::Text as i32);
+        assert!(info.enabled);
+        let pos = info.pos.unwrap();
+        assert_eq!((pos.x, pos.y), (5.0, -10.0));
+        if let Some(proto::stimulus_params::Shape::Text(tp)) = info.params.unwrap().shape {
+            assert_eq!(tp.text, "hello");
+            assert_eq!(tp.font, "Cairo");
+            assert_eq!(tp.letter_height, 24.0);
+            assert_eq!(tp.anchor, "top-left");
+            let size = tp.size.unwrap();
+            assert_eq!((size.x, size.y), (300.0, 60.0));
+        } else {
+            panic!("expected Text params");
+        }
+    } else {
+        panic!("expected StimulusInfo");
+    }
+}
+
+#[test]
+fn test_text_deferred_set_text_and_color() {
+    let mut scene = SceneState::new();
+    let h = scene.handle_request(proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::CreateText(proto::CreateTextRequest {
+            text: "initial".into(),
+            ..Default::default()
+        })),
+    }).handle as u32;
+
+    // Enter deferred mode
+    scene.handle_request(set_deferred_mode_req(true, false));
+
+    scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetText(proto::SetTextRequest { text: "deferred".into() })),
+    });
+    scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::SetTextColor(proto::SetTextColorRequest {
+            color: Some(proto::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
+        })),
+    });
+
+    // Live values unchanged before flip
+    let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
+    assert_eq!(t.text_live, "initial");
+    assert_eq!(t.text_copy, "deferred");
+    assert_eq!(t.params.live.color, [1.0, 1.0, 1.0, 1.0]);
+    assert_eq!(t.params.copy.color, [1.0, 0.0, 0.0, 1.0]);
+
+    // End deferred and flip
+    scene.handle_request(set_deferred_mode_req(false, false));
+    scene.apply_flip();
+
+    let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
+    assert_eq!(t.text_live, "deferred");
+    assert_eq!(t.params.live.color, [1.0, 0.0, 0.0, 1.0]);
+}
+
+#[test]
+fn test_create_text_wrong_target() {
+    let mut scene = SceneState::new();
+    let h = scene.handle_request(proto::Request {
+        target: Some(sys()),
+        body: Some(request::Body::CreateRect(proto::CreateRectRequest::default())),
+    }).handle as u32;
+    // CreateText must use system target
+    let resp = scene.handle_request(proto::Request {
+        target: Some(stim(h)),
+        body: Some(request::Body::CreateText(proto::CreateTextRequest {
+            text: "bad".into(), ..Default::default()
+        })),
+    });
+    assert!(!is_ok(&resp));
+    assert_eq!(resp.code, proto::ErrorCode::WrongTarget as i32);
+}
+
+#[test]
 fn test_list_stimuli_includes_id_and_name() {
     let mut scene = SceneState::new();
     let h1 = scene.handle_request(proto::Request {

@@ -171,6 +171,10 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                                         let [rx, ry] = s.radii.live;
                                         format!("{}×{}", (rx * 2.0) as i32, (ry * 2.0) as i32)
                                     }
+                                    Stimulus::Text(s) => {
+                                        let [w, h] = s.box_size.live;
+                                        format!("{}×{}", w as i32, h as i32)
+                                    }
                                 };
                                 let name_label = entry.name.as_deref().unwrap_or("");
                                 let uuid_str = entry.id.to_string();

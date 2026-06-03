@@ -46,8 +46,9 @@ pub(crate) fn spawn_demo_stimuli(
     scene: &std::sync::Arc<std::sync::RwLock<crate::scene::SceneState>>,
 ) {
     use crate::scene::{
-        Deferred, CircleStimulus, GratingParams, GratingStimulus, RectStimulus, ShapeAppearance,
-        ShapeStimulus, Stimulus, StimulusEntry, StimulusFlags, Transform2D, Waveform,
+        Anchor, Deferred, CircleStimulus, GratingParams, GratingStimulus, LanguageStyle,
+        RectStimulus, ShapeAppearance, ShapeStimulus, Stimulus, StimulusEntry, StimulusFlags,
+        TextRenderParams, TextStimulus, Transform2D, Waveform,
     };
     use rand::RngExt;
     use uuid::Uuid;
@@ -122,5 +123,23 @@ pub(crate) fn spawn_demo_stimuli(
             phase_accum: 0.0,
         })),
     );
-    log::info!("Demo: spawned circle #{h1}, rect #{h2}, grating #{h3}");
+    let h4 = sc.alloc_stim_handle();
+    sc.stimuli.insert(
+        h4,
+        StimulusEntry::new(
+            Uuid::new_v4(),
+            Some("demo_text".into()),
+            Stimulus::Text(TextStimulus::new(
+                [0.0, 200.0],
+                [400.0, 80.0],
+                "vstimd".into(),
+                "Open Sans".into(),
+                48.0,
+                Anchor::Center,
+                LanguageStyle::default(),
+                TextRenderParams { color: [1.0, 1.0, 0.0, 1.0], ..Default::default() },
+            )),
+        ),
+    );
+    log::info!("Demo: spawned circle #{h1}, rect #{h2}, grating #{h3}, text #{h4}");
 }
