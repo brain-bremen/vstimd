@@ -10,7 +10,7 @@ use crate::render::BenchmarkState;
 use crate::render::MetricsSampler;
 use crate::render::RenderState;
 use crate::render::system_info::ClockSource;
-use crate::render::vk::{GlyphAtlas, PhotodiodeCache, SolidMeshCache, VkEguiRenderer, VkGratingPipeline, VkPipeline};
+use crate::render::vk::{GlyphAtlas, PhotodiodeCache, SolidMeshCache, VkEguiRenderer, VkGratingPipeline, VkPipeline, VkTextPipeline};
 use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
 use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, query_local_ip};
 use crate::scene::SceneState;
@@ -135,6 +135,11 @@ impl DrmRenderState {
         );
 
         let glyph_atlas = GlyphAtlas::new(&ctx.device, &ctx.instance, ctx.physical_device);
+        let text_pipeline = VkTextPipeline::new(
+            &ctx.device,
+            ctx.render_pass,
+            glyph_atlas.descriptor_set_layout,
+        );
         let rs = RenderState {
             frame_stats: FrameStats::new(display_info.refresh_hz),
             ctx,
@@ -146,6 +151,7 @@ impl DrmRenderState {
             solid_meshes,
             pd_cache: PhotodiodeCache::default(),
             glyph_atlas,
+            text_pipeline,
             font_system: TextFontSystem::new(),
             swash_cache: TextSwashCache::new(),
             egui_renderer,

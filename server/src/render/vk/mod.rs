@@ -4,6 +4,7 @@ pub mod egui;
 pub mod frame;
 pub mod pipeline;
 pub mod text_atlas;
+pub mod text_pipeline;
 
 pub use buffers::{PhotodiodeCache, SolidMeshCache};
 pub use context::{VkContext, build_context};
@@ -13,4 +14,7 @@ pub use pipeline::VkPipeline;
 pub use text_atlas::GlyphAtlas;
 #[allow(unused_imports)]
 pub use text_atlas::AtlasEntry;
+pub use text_pipeline::VkTextPipeline;
+#[allow(unused_imports)]
+pub use text_pipeline::{TextPushConstants, TextVertex};
 pub use crate::scene::stimulus::grating::VkGratingPipeline;
