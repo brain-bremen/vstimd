@@ -6,9 +6,10 @@ use crate::render::MetricsSampler;
 use crate::render::overlay::{OverlayArgs, build_overlay_ui};
 use crate::render::system_info::SystemInfo;
 use crate::render::vk::{
-    EguiFrameData, PhotodiodeCache, SolidMeshCache, VkContext, VkEguiRenderer, VkGratingPipeline,
-    VkPipeline, render_frame,
+    EguiFrameData, GlyphAtlas, PhotodiodeCache, SolidMeshCache, VkContext,
+    VkEguiRenderer, VkGratingPipeline, VkPipeline, render_frame,
 };
+use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats, FrameTick};
 
@@ -29,6 +30,9 @@ pub struct RenderState {
     pub wireframe: bool,
     pub solid_meshes: SolidMeshCache,
     pub pd_cache: PhotodiodeCache,
+    pub glyph_atlas: GlyphAtlas,
+    pub font_system: TextFontSystem,
+    pub swash_cache: TextSwashCache,
     pub egui_renderer: VkEguiRenderer,
     pub egui_ctx: egui::Context,
     pub scene: Arc<RwLock<SceneState>>,
@@ -45,6 +49,7 @@ pub struct RenderState {
 impl Drop for RenderState {
     fn drop(&mut self) {
         self.egui_renderer.destroy(&self.ctx.device);
+        unsafe { self.glyph_atlas.destroy(&self.ctx.device) };
         self.solid_meshes.destroy_all(&self.ctx.device);
         self.wireframe_grating.destroy(&self.ctx.device);
         self.wireframe_pipeline.destroy(&self.ctx.device);
