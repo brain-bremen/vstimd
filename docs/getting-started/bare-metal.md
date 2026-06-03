@@ -203,7 +203,7 @@ On minimal embedded systems without udev, use `Libinput::new_from_path` to open 
 | `server/src/render/vk/context.rs` | `VkContext`: instance, device, queue |
 | `server/src/render/vk/pipeline.rs` | `VkPipeline`: render pass, pipeline, shaders |
 | `server/src/render/vk/gpu_buffers.rs` | `GpuBuffers`: vertex/index buffer management |
-| `server/src/render/vk/tess.rs` | Tessellation (Rect/Disc/Ellipse) |
+| `server/src/render/vk/tess.rs` | Tessellation (Rect/Circle/Ellipse) |
 | `server/src/render/vk/frame.rs` | Frame rendering logic |
 
 ---

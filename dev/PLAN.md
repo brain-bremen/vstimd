@@ -3,7 +3,7 @@
 > **Status:** Phases 1–4 + 6–7 + 11 complete; Phase 2 substantially complete
 > **Last updated:** 2026-05-19
 > **Original:** MFC / Direct2D / Direct3D 11 / Windows Named Pipe  
-> **Target:** Rust / Vulkan (ash) / kurbo / ZeroMQ / protobuf / Linux (also Windows-compatible)
+> **Target:** Rust / Vulkan (ash) / lyon / ZeroMQ / protobuf / Linux (also Windows-compatible)
 > **Goal:** Remote PsychoPy-compatible visual stimulus server with enhanced features for neuroscience research
 
 ### Companion documents
@@ -233,7 +233,7 @@ An optional immediate-mode overlay showing:
 
 **egui** is recommended over imgui-rs because:
 - Pure Rust, no C++ dependency.
-- `egui-wgpu` and `egui-winit` integrate cleanly with the existing wgpu/winit stack.
+- A custom Vulkan egui renderer (`render/vk/egui/`) integrates cleanly with the existing ash/winit stack.
 - Actively maintained with good documentation.
 
 The overlay is toggled by **F1** and does **not** affect frame timing when hidden — egui is not
@@ -254,9 +254,9 @@ broader **command-to-photon** pipeline and the render-loop design choices that a
 | Input generated (hardware) | Eye tracker, joystick, DAQ | hardware-dependent |
 | Written to shared memory | Producer process | < 1 µs |
 | Read by render thread | `AnimExternalPos::advance()` | < 1 µs |
-| Tessellate + `write_buffer` | CPU + PCIe DMA | 0.1–0.5 ms |
-| GPU renders | wgpu render pass | 0.5–2 ms |
-| `surface.present()` blocks | Wait for next vsync | 0–1 frame |
+| Tessellate + buffer upload | CPU + PCIe DMA | 0.1–0.5 ms |
+| GPU renders | Vulkan render pass | 0.5–2 ms |
+| `vkQueuePresentKHR` blocks | Wait for next vsync | 0–1 frame |
 | Display panel response | LCD/OLED hardware | 1–10 ms |
 | **Total (120 Hz, best case)** | | **~9–27 ms** |
 
@@ -266,7 +266,7 @@ and the display panel response (outside software control). ZMQ command latency a
 
 #### Present mode
 
-Use `PresentMode::Fifo` (vsync, double-buffer) for all production use. `Mailbox`
+Use `VK_PRESENT_MODE_FIFO_KHR` (vsync, double-buffer) for all production use. `MAILBOX_KHR`
 (triple-buffer) reduces the vsync wait by up to one frame but makes it impossible to
 determine precisely which vsync a deferred flip was first visible on — unacceptable for
 psychophysics timing. Expose `--present-mode [fifo|mailbox]` as a CLI flag for
@@ -298,25 +298,22 @@ machines. The ZMQ server thread and messenger thread should run at normal priori
 
 #### GPU queue depth
 
-Set `SurfaceConfiguration::desired_maximum_frame_latency = 1` to prevent the driver from
-buffering more than one frame ahead. Keep the swap chain at 2 images (double-buffer). Do not
-request 3 without profiling first.
+Request 2 swapchain images (`minImageCount = 2`) to prevent the driver from buffering more
+than one frame ahead. Do not request 3 without profiling first.
 
 #### Flip timestamp reporting (open question)
 
 Clients need to know which display frame a deferred flip became visible on. The original
 `CmdQueryTimestamp` returned a Win32 performance-counter value from
-`IDXGISwapChain1::GetFrameStatistics`. wgpu does not expose swap-chain frame statistics
-directly. Options in increasing precision:
+`IDXGISwapChain1::GetFrameStatistics`. Options in increasing precision:
 
 1. **Frame counter + known frame rate** — report `(frame_index, frame_rate_hz)` as the
    timestamp payload. Simple, sufficient for most experiment analysis.
-2. **`Instant::now()` after `surface.present()`** — wall-clock time, within ~1 ms of the
-   actual vsync. Present returns slightly before the vsync on some backends.
-3. **wgpu timestamp queries** (`QuerySet` / `QueryType::Timestamp`) — GPU-side timestamps
-   latched at render-pass start/end. Requires `TIMESTAMP_QUERY` device feature.
-4. **`VK_EXT_present_timing`** — exact Vulkan presentation timestamps; not yet exposed by
-   wgpu, driver support varies.
+2. **`Instant::now()` after `vkQueuePresentKHR`** — wall-clock time, within ~1 ms of the
+   actual vsync. Present returns slightly before the vsync on some drivers.
+3. **Vulkan timestamp queries** (`VkQueryPool` / `VK_QUERY_TYPE_TIMESTAMP`) — GPU-side
+   timestamps latched at render-pass start/end. Requires `timestampComputeAndGraphics`.
+4. **`VK_EXT_present_timing`** — exact Vulkan presentation timestamps; driver support varies.
 
 **Recommended for now:** option 1 (frame counter + rate). Graduate to option 3 when
 experiment pipelines require sub-millisecond flip timing.
@@ -345,7 +342,7 @@ default = []
 # Core rendering
 bytemuck  = { version = "1",    features = ["derive"] }
 indexmap  = "2"
-kurbo     = "0.13"
+lyon_tessellation = "1.0"
 ash       = "0.38"         # Vulkan bindings (both backends)
 ash-window = "0.13"        # Vulkan surface creation from winit window handle
 
@@ -639,7 +636,7 @@ vstimd/
     ├── render/
     │   ├── mod.rs                 # re-exports, WindowMode, RenderTarget, WinitApp
     │   ├── render_state.rs        # RenderState — shared Vulkan resources + per-frame logic
-    │   ├── tess.rs                # kurbo tessellation (Rect, Disc, Ellipse)
+    │   ├── tess.rs                # lyon tessellation (Rect, Circle, Ellipse)
     │   ├── overlay.rs             # egui overlay: System, Frame Timing, Stimuli, IPC Log, Benchmarks, Server Log
     │   ├── system_metrics.rs      # MetricsSampler (CPU/RAM via sysinfo, GPU via nvml-wrapper)
     │   ├── system_info.rs         # SystemInfo, ClockSource
@@ -682,7 +679,7 @@ variant composes. This avoids the pitfalls of mirroring the C++ inheritance hier
 **Implemented in:**
 - Component structs (`StimulusFlags`, `Transform2D`, `ShapeAppearance`): `src/scene/stimulus/{stimulus_flags,transform2d,shape_appearance}.rs`
 - `Deferred<T>` wrapper: `src/scene/deferred.rs`
-- Concrete stimulus structs (Rect, Disc, Ellipse): `src/scene/stimulus/primitive_shapes.rs`
+- Concrete stimulus structs (Rect, Circle, Ellipse): `src/scene/stimulus/primitive_shapes.rs`
 - Grating stimulus: `src/scene/stimulus/grating/`
 - `Stimulus` enum, `StimulusEntry`, dispatch methods: `src/scene/stimulus/mod.rs`
 
@@ -729,11 +726,11 @@ pattern in `src/scene/command.rs`.
 **Coordinate system:** Pixel-space with origin at screen centre, Y-up. The vertex shader
 converts to Vulkan NDC.
 
-**Tessellation** (`render/tess.rs`): Rect → 4 vertices, Disc/Ellipse → kurbo centroid fan.
+**Tessellation** (`render/tess.rs`): Rect → 4 vertices, Circle/Ellipse → lyon fill tessellation.
 Grating → shared quad vertices (one per grating, parameters uploaded as push constants).
 Still needed: Petal (arc + QuadBez) and Wedge (3 line segments) tessellation.
 
-**Pipelines:** Solid-colour pipeline for Rect/Disc/Ellipse. Grating pipeline (WGSL compiled to
+**Pipelines:** Solid-colour pipeline for Rect/Circle/Ellipse. Grating pipeline (WGSL compiled to
 SPIR-V at build time via naga). Wireframe variants of both pipelines (toggle with F3).
 Still needed: `textured_pipeline` (bitmaps).
 
@@ -1110,7 +1107,7 @@ The structured protobuf messages are far easier to work with than the hand-packe
 ## 10. Suggested Implementation Order
 
 - [x] **Phase 1** — Scene state: `Stimulus` enum + component structs, `Deferred<T>`, `StimulusFlags`, `Transform2D`, `ShapeAppearance`, `SceneState` with deferred-mode logic, `PhotoDiodeState`
-- [x] **Phase 2** *(substantially complete)* — Renderer: both backends (DRM + winit), `RenderState` shared, solid-colour + grating pipelines, wireframe variants, Rect/Disc/Ellipse/Grating tessellation, frame timing with phase breakdown, vblank fallback chain. Remaining: textured pipeline (bitmaps), Petal/Wedge tessellation
+- [x] **Phase 2** *(substantially complete)* — Renderer: both backends (DRM + winit), `RenderState` shared, solid-colour + grating pipelines, wireframe variants, Rect/Circle/Ellipse/Grating tessellation, frame timing with phase breakdown, vblank fallback chain. Remaining: textured pipeline (bitmaps), Petal/Wedge tessellation
 - [x] **Phase 3** — Scaffolding: ZeroMQ / protobuf deps, `build.rs` (prost + naga), `proto/vstimd/v1/` (4 files), `src/proto.rs`, `src/lib.rs`, CLI arg parsing in `main.rs`
 - [x] **Phase 4** — ZeroMQ server: `src/ipc.rs`, wired to `SceneState::handle_request`; integration tests
 - [ ] **Phase 5** — Shared-memory reader: `AnimExternalPos`

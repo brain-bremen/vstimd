@@ -8,6 +8,10 @@ use super::stimulus::grating::{
     GratingStimulus, grating_params_from_proto, grating_query_params, proto_to_mask,
     proto_to_waveform,
 };
+use super::stimulus::text::{
+    TextStimulus, anchor_from_str, proto_to_language_style, text_query_params,
+    text_render_params_from_proto,
+};
 use crate::ipc::{err, err_not_found, err_wrong_type, ok_ack, ok_body, ok_handle_with_id};
 use crate::proto;
 use crate::proto::request;
@@ -64,6 +68,17 @@ fn command_summary(req: &proto::Request) -> String {
                 center.map_or(0.0, |v| v.y),
             )
         }
+        Some(request::Body::CreateText(c)) => {
+            let pos = c.pos.as_ref();
+            format!(
+                "CreateText {:?} pos=({:.1},{:.1})",
+                c.text,
+                pos.map_or(0.0, |v| v.x),
+                pos.map_or(0.0, |v| v.y),
+            )
+        }
+        Some(request::Body::SetText(c)) => format!("SetText({:?})", c.text),
+        Some(request::Body::SetTextColor(_)) => "SetTextColor".into(),
         Some(request::Body::SetGratingPhase(c)) => format!("SetGratingPhase({:.3})", c.phase),
         Some(request::Body::SetGratingSf(c)) => format!("SetGratingSf({:.4})", c.sf),
         Some(request::Body::SetGratingContrast(c)) => {
@@ -156,6 +171,7 @@ impl SceneState {
             request::Body::CreateCircle(cmd) => self.cmd_create_circle(cmd),
             request::Body::CreateEllipse(cmd) => self.cmd_create_ellipse(cmd),
             request::Body::CreateGrating(cmd) => self.cmd_create_grating(cmd),
+            request::Body::CreateText(cmd) => self.cmd_create_text(cmd),
             request::Body::SetBackground(cmd) => self.cmd_set_background(cmd),
             request::Body::SetDeferredMode(cmd) => self.cmd_set_deferred_mode(cmd),
             request::Body::DeleteAll(_) => self.cmd_delete_all(),
@@ -177,6 +193,7 @@ impl SceneState {
             | request::Body::CreateCircle(_)
             | request::Body::CreateEllipse(_)
             | request::Body::CreateGrating(_)
+            | request::Body::CreateText(_)
             | request::Body::SetBackground(_)
             | request::Body::SetDeferredMode(_)
             | request::Body::DeleteAll(_)
@@ -222,6 +239,8 @@ impl SceneState {
             request::Body::SetGratingOpacity(cmd) => {
                 self.cmd_set_grating_opacity(handle, cmd)
             }
+            request::Body::SetText(cmd) => self.cmd_set_text(handle, cmd),
+            request::Body::SetTextColor(cmd) => self.cmd_set_text_color(handle, cmd),
             request::Body::QueryStimulus(_) => self.cmd_query_stimulus(handle),
         }
     }
@@ -675,6 +694,74 @@ impl SceneState {
         }
     }
 
+    // ── CreateText ────────────────────────────────────────────────────────────
+
+    fn cmd_create_text(&mut self, cmd: proto::CreateTextRequest) -> proto::Response {
+        let id = match parse_or_new_uuid(&cmd.id) {
+            Ok(id) => id,
+            Err(resp) => return *resp,
+        };
+        let pos = cmd.pos.unwrap_or_default();
+        let size = cmd.size.unwrap_or_default();
+        let box_size = [
+            if size.x == 0.0 { 200.0 } else { size.x },
+            if size.y == 0.0 { 100.0 } else { size.y },
+        ];
+        let letter_height_px = if cmd.letter_height == 0.0 { 32.0 } else { cmd.letter_height };
+        let anchor = anchor_from_str(&cmd.anchor);
+        let language_style = proto_to_language_style(cmd.language_style);
+        let params = text_render_params_from_proto(&cmd);
+        let name = nonempty(cmd.name);
+        let handle = self.alloc_stim_handle();
+        self.stimuli.insert(handle, StimulusEntry::new(id, name,
+            Stimulus::Text(TextStimulus::new(
+                [pos.x, pos.y],
+                box_size,
+                cmd.text,
+                cmd.font,
+                letter_height_px,
+                anchor,
+                language_style,
+                params,
+            )),
+        ));
+        ok_handle_with_id(handle, &id)
+    }
+
+    // ── SetText ───────────────────────────────────────────────────────────────
+
+    fn cmd_set_text(&mut self, handle: u32, cmd: proto::SetTextRequest) -> proto::Response {
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(entry) => match &mut entry.stimulus {
+                Stimulus::Text(s) => {
+                    s.set_text(self.deferred_mode, cmd.text);
+                    ok_ack()
+                }
+                stim => err_wrong_type(stim, "SetText", "Text"),
+            },
+        }
+    }
+
+    // ── SetTextColor ──────────────────────────────────────────────────────────
+
+    fn cmd_set_text_color(&mut self, handle: u32, cmd: proto::SetTextColorRequest) -> proto::Response {
+        let c = match cmd.color {
+            Some(c) => [c.r, c.g, c.b, c.a],
+            None => return err(proto::ErrorCode::InvalidArgument, "color must be set"),
+        };
+        match self.stimuli.get_mut(&handle) {
+            None => err_not_found(handle),
+            Some(entry) => match &mut entry.stimulus {
+                Stimulus::Text(s) => {
+                    s.set_color(self.deferred_mode, c);
+                    ok_ack()
+                }
+                stim => err_wrong_type(stim, "SetTextColor", "Text"),
+            },
+        }
+    }
+
     // ── SetBackground ─────────────────────────────────────────────────────────
 
     fn cmd_set_background(&mut self, cmd: proto::SetBackgroundRequest) -> proto::Response {
@@ -808,6 +895,18 @@ impl SceneState {
                         op,
                     )
                 }
+                Stimulus::Text(s) => {
+                    let c = s.params.live.color;
+                    (
+                        proto::StimulusType::Text as i32,
+                        Some(text_query_params(s)),
+                        Some(proto::Color { r: c[0], g: c[1], b: c[2], a: c[3] }),
+                        None,
+                        0.0,
+                        proto::DrawMode::Filled as i32,
+                        c[3],
+                    )
+                }
             };
 
         ok_body(proto::response::Body::StimulusInfo(proto::QueryStimulusResponse {
@@ -837,8 +936,9 @@ impl SceneState {
                 let stimulus_type = match stim {
                     Stimulus::Shape(ShapeStimulus::Rect(_))    => proto::StimulusType::Rect,
                     Stimulus::Shape(ShapeStimulus::Ellipse(_)) => proto::StimulusType::Ellipse,
-                    Stimulus::Shape(ShapeStimulus::Circle(_))    => proto::StimulusType::Circle,
+                    Stimulus::Shape(ShapeStimulus::Circle(_))  => proto::StimulusType::Circle,
                     Stimulus::Grating(_)                       => proto::StimulusType::Grating,
+                    Stimulus::Text(_)                          => proto::StimulusType::Text,
                 } as i32;
                 proto::StimulusEntry {
                     handle,

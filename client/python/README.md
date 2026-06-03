@@ -52,9 +52,10 @@ tests/
 | Method | Creates |
 |---|---|
 | `create_rect(*, x, y, width, height, r, g, b, a, name, id)` | Rectangle |
-| `create_circle(*, x, y, radius, r, g, b, a, name, id)` | Disc |
+| `create_circle(*, x, y, radius, r, g, b, a, name, id)` | Circle |
 | `create_ellipse(*, x, y, width, height, angle, r, g, b, a, name, id)` | Ellipse |
 | `create_grating(*, pos, width, height, sf, phase, angle, contrast, fore_color, back_color, opacity, waveform, mask, mask_param, drift_speed, drift_decoupled, drift_angle, name, id)` | Grating |
+| `create_text(*, x, y, width, height, text, font_family, letter_height_px, r, g, b, a, anchor, language_style, name, id)` | Text |
 
 All `create_*` methods accept an optional `id` (client-supplied UUID string) and
 `name` (human-readable label). If `id` is empty the server generates a UUID.
@@ -73,7 +74,7 @@ All `create_*` methods accept an optional `id` (client-supplied UUID string) and
 | `set_outline_color(handle, r, g, b, a=1)` | Outline colour |
 | `set_outline_width(handle, line_width)` | Outline stroke width |
 | `set_rect_size(handle, width, height)` | Resize a Rect |
-| `set_disc_radius(handle, radius)` | Resize a Disc |
+| `set_circle_radius(handle, radius)` | Resize a Circle |
 | `set_ellipse_size(handle, width, height)` | Resize an Ellipse |
 | `set_grating_phase(handle, phase)` | Phase `[0, 1]` |
 | `set_grating_sf(handle, sf)` | Spatial frequency in cycles/pixel |
@@ -86,6 +87,8 @@ All `create_*` methods accept an optional `id` (client-supplied UUID string) and
 | `set_grating_fore_color(handle, r, g, b, a=1)` | Peak colour |
 | `set_grating_back_color(handle, r, g, b, a=1)` | Trough colour |
 | `set_grating_opacity(handle, opacity)` | Grating global opacity |
+| `set_text(handle, text)` | Replace the displayed string |
+| `set_text_color(handle, r, g, b, a=1)` | Text colour |
 | `query(handle)` | Returns `StimulusInfo` |
 
 ### Coordinate system

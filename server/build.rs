@@ -22,6 +22,7 @@ fn main() {
 
     compile_shader("shaders/solid.wgsl", "solid.spv");
     compile_shader("shaders/grating.wgsl", "grating.spv");
+    compile_shader("shaders/text.wgsl", "text.spv");
     compile_shader("src/render/vk/egui/shaders.wgsl", "egui.spv");
 }
 

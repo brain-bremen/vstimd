@@ -52,6 +52,7 @@ message Request {
     CreateCircleRequest   create_circle   = 11;
     CreateEllipseRequest  create_ellipse  = 12;
     CreateGratingRequest  create_grating  = 13;
+    CreateTextRequest     create_text     = 14;
 
     // ── Stimulus mutations (stimulus target only) ───────────────────────────
     SetEnabledRequest     set_enabled      = 30;
@@ -80,6 +81,10 @@ message Request {
     SetGratingForeColorRequest   set_grating_fore_color   = 58;
     SetGratingBackColorRequest   set_grating_back_color   = 59;
     SetGratingOpacityRequest     set_grating_opacity      = 60;
+
+    // ── Text-specific mutations (stimulus target only) ──────────────────────
+    SetTextRequest               set_text                 = 61;
+    SetTextColorRequest          set_text_color           = 62;
 
     // ── System mutations (system target only) ───────────────────────────────
     SetBackgroundRequest   set_background   = 70;

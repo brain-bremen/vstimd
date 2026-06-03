@@ -43,9 +43,70 @@ pub struct PhotodiodeCache {
     pub screen_size: (u32, u32),
 }
 
+// ── Shared allocation utilities ───────────────────────────────────────────────
+// pub(super): visible to sibling modules within render::vk (e.g. text_pipeline).
+
+pub(super) fn find_memory_type(
+    mem_props: &vk::PhysicalDeviceMemoryProperties,
+    filter: u32,
+    flags: vk::MemoryPropertyFlags,
+) -> Option<u32> {
+    (0..mem_props.memory_type_count).find(|&i| {
+        (filter & (1 << i)) != 0
+            && mem_props.memory_types[i as usize].property_flags.contains(flags)
+    })
+}
+
+pub(super) fn alloc_upload_bytes(
+    mem_props: &vk::PhysicalDeviceMemoryProperties,
+    device: &ash::Device,
+    usage: vk::BufferUsageFlags,
+    data: &[u8],
+) -> (vk::Buffer, vk::DeviceMemory) {
+    let size = data.len() as vk::DeviceSize;
+    let buf = unsafe {
+        device
+            .create_buffer(
+                &vk::BufferCreateInfo::default()
+                    .size(size)
+                    .usage(usage)
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE),
+                None,
+            )
+            .expect("failed to create buffer")
+    };
+    let reqs = unsafe { device.get_buffer_memory_requirements(buf) };
+    let mem_type = find_memory_type(
+        mem_props,
+        reqs.memory_type_bits,
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+    )
+    .expect("no HOST_VISIBLE|HOST_COHERENT memory");
+    let mem = unsafe {
+        device
+            .allocate_memory(
+                &vk::MemoryAllocateInfo::default()
+                    .allocation_size(reqs.size)
+                    .memory_type_index(mem_type),
+                None,
+            )
+            .expect("failed to allocate buffer memory")
+    };
+    unsafe {
+        device.bind_buffer_memory(buf, mem, 0).unwrap();
+        let ptr = device
+            .map_memory(mem, 0, size, vk::MemoryMapFlags::empty())
+            .expect("failed to map buffer") as *mut u8;
+        std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+        device.unmap_memory(mem);
+    }
+    (buf, mem)
+}
+
+// ── SolidMeshCache ────────────────────────────────────────────────────────────
+
 /// GPU mesh cache for the solid triangle-list pipeline (shape stimuli and the
-/// photodiode indicator).  Gratings use their own shared quad; future 3-D
-/// stimuli will use a separate buffer type.
+/// photodiode indicator).  Gratings use their own shared quad.
 pub struct SolidMeshCache {
     pub fill_meshes:   HashMap<u32, VkMesh>,
     pub stroke_meshes: HashMap<u32, VkMesh>,
@@ -117,71 +178,8 @@ impl SolidMeshCache {
         if verts.is_empty() || idxs.is_empty() {
             return;
         }
-        let (vb, vm) = Self::alloc_upload(mem_props, device, vk::BufferUsageFlags::VERTEX_BUFFER, bytemuck::cast_slice(verts));
-        let (ib, im) = Self::alloc_upload(mem_props, device, vk::BufferUsageFlags::INDEX_BUFFER,  bytemuck::cast_slice(idxs));
-        map.insert(handle, VkMesh {
-            vertex_buffer: vb,
-            vertex_memory: vm,
-            index_buffer:  ib,
-            index_memory:  im,
-            index_count:   idxs.len() as u32,
-        });
-    }
-
-    fn alloc_upload(
-        mem_props: &vk::PhysicalDeviceMemoryProperties,
-        device:    &ash::Device,
-        usage:     vk::BufferUsageFlags,
-        data:      &[u8],
-    ) -> (vk::Buffer, vk::DeviceMemory) {
-        let size = data.len() as vk::DeviceSize;
-        let buf = unsafe {
-            device
-                .create_buffer(
-                    &vk::BufferCreateInfo::default()
-                        .size(size)
-                        .usage(usage)
-                        .sharing_mode(vk::SharingMode::EXCLUSIVE),
-                    None,
-                )
-                .expect("failed to create buffer")
-        };
-        let reqs = unsafe { device.get_buffer_memory_requirements(buf) };
-        let mem_type = Self::find_memory_type(
-            mem_props,
-            reqs.memory_type_bits,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        )
-        .expect("no HOST_VISIBLE|HOST_COHERENT memory");
-        let mem = unsafe {
-            device
-                .allocate_memory(
-                    &vk::MemoryAllocateInfo::default()
-                        .allocation_size(reqs.size)
-                        .memory_type_index(mem_type),
-                    None,
-                )
-                .expect("failed to allocate buffer memory")
-        };
-        unsafe {
-            device.bind_buffer_memory(buf, mem, 0).unwrap();
-            let ptr = device
-                .map_memory(mem, 0, size, vk::MemoryMapFlags::empty())
-                .expect("failed to map buffer") as *mut u8;
-            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
-            device.unmap_memory(mem);
-        }
-        (buf, mem)
-    }
-
-    fn find_memory_type(
-        mem_props: &vk::PhysicalDeviceMemoryProperties,
-        filter: u32,
-        flags: vk::MemoryPropertyFlags,
-    ) -> Option<u32> {
-        (0..mem_props.memory_type_count).find(|&i| {
-            (filter & (1 << i)) != 0
-                && mem_props.memory_types[i as usize].property_flags.contains(flags)
-        })
+        let (vb, vm) = alloc_upload_bytes(mem_props, device, vk::BufferUsageFlags::VERTEX_BUFFER, bytemuck::cast_slice(verts));
+        let (ib, im) = alloc_upload_bytes(mem_props, device, vk::BufferUsageFlags::INDEX_BUFFER,  bytemuck::cast_slice(idxs));
+        map.insert(handle, VkMesh::from_raw(vb, vm, ib, im, idxs.len() as u32));
     }
 }

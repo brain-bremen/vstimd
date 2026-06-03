@@ -77,7 +77,7 @@ SceneState
 
 Render thread
 └── wgpu render pass
-    ├── solid_pipeline      (shapes tessellated from kurbo BezPath)
+    ├── solid_pipeline      (shapes tessellated with lyon)
     ├── textured_pipeline   (bitmaps)
     └── shader_pipeline     (custom WGSL fragment shaders)
 ```

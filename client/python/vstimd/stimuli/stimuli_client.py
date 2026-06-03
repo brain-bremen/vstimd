@@ -158,6 +158,66 @@ class StimuliClient:
         )
         return self._send(req).handle
 
+    def create_text(
+        self,
+        *,
+        text: str = "",
+        x: float = 0.0,
+        y: float = 0.0,
+        box_width: float = 400.0,
+        box_height: float = 100.0,
+        letter_height: float = 32.0,
+        font: str = "",
+        anchor: str = "center",
+        r: float = 1.0,
+        g: float = 1.0,
+        b: float = 1.0,
+        a: float = 1.0,
+        fill_r: float = 0.0,
+        fill_g: float = 0.0,
+        fill_b: float = 0.0,
+        fill_a: float = 0.0,
+        language_style: int = 0,
+        name: str = "",
+        id: str = "",
+    ) -> int:
+        """Create a text stimulus and return its handle."""
+        req = service_pb2.Request(
+            system=service_pb2.SystemTarget(),
+            create_text=stimuli_pb2.CreateTextRequest(
+                text=text,
+                font=font,
+                letter_height=letter_height,
+                size=common_pb2.Vec2(x=box_width, y=box_height),
+                pos=common_pb2.Vec2(x=x, y=y),
+                anchor=anchor,
+                color=common_pb2.Color(r=r, g=g, b=b, a=a),
+                fill_color=common_pb2.Color(r=fill_r, g=fill_g, b=fill_b, a=fill_a),
+                language_style=language_style,
+                name=name,
+                id=id,
+            ),
+        )
+        return self._send(req).handle
+
+    # ── Text-specific mutations ───────────────────────────────────────────────
+
+    def set_text(self, handle: int, text: str) -> None:
+        req = service_pb2.Request(
+            stimulus=handle,
+            set_text=stimuli_pb2.SetTextRequest(text=text),
+        )
+        self._send(req)
+
+    def set_text_color(self, handle: int, r: float, g: float, b: float, a: float = 1.0) -> None:
+        req = service_pb2.Request(
+            stimulus=handle,
+            set_text_color=stimuli_pb2.SetTextColorRequest(
+                color=common_pb2.Color(r=r, g=g, b=b, a=a),
+            ),
+        )
+        self._send(req)
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def set_name(self, handle: int, name: str) -> None:

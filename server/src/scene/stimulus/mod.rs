@@ -1,4 +1,5 @@
 pub mod grating;
+pub mod text;
 mod primitive_shapes;
 mod shape_appearance;
 mod shape_stimulus;
@@ -6,6 +7,7 @@ mod stimulus_flags;
 mod transform2d;
 
 pub use grating::{GratingMask, GratingParams, GratingStimulus, Waveform};
+pub use text::{Anchor, LanguageStyle, TextRenderParams, TextStimulus};
 pub use primitive_shapes::{CircleStimulus, EllipseStimulus, RectStimulus};
 pub use shape_stimulus::ShapeStimulus;
 pub use shape_appearance::{DrawMode, ShapeAppearance};
@@ -40,6 +42,7 @@ impl StimulusEntry {
 pub enum Stimulus {
     Shape(ShapeStimulus),
     Grating(GratingStimulus),
+    Text(TextStimulus),
 }
 
 impl Stimulus {
@@ -49,6 +52,7 @@ impl Stimulus {
         match self {
             Stimulus::Shape(s)   => s.flags(),
             Stimulus::Grating(s) => &s.flags,
+            Stimulus::Text(s)    => &s.flags,
         }
     }
 
@@ -56,6 +60,7 @@ impl Stimulus {
         match self {
             Stimulus::Shape(s)   => s.flags_mut(),
             Stimulus::Grating(s) => &mut s.flags,
+            Stimulus::Text(s)    => &mut s.flags,
         }
     }
 
@@ -63,6 +68,7 @@ impl Stimulus {
         match self {
             Stimulus::Shape(s)   => s.transform(),
             Stimulus::Grating(s) => &s.transform,
+            Stimulus::Text(s)    => &s.transform,
         }
     }
 
@@ -70,6 +76,7 @@ impl Stimulus {
         match self {
             Stimulus::Shape(s)   => s.transform_mut(),
             Stimulus::Grating(s) => &mut s.transform,
+            Stimulus::Text(s)    => &mut s.transform,
         }
     }
 
@@ -80,6 +87,7 @@ impl Stimulus {
         match self {
             Stimulus::Shape(s)   => s.make_copy(),
             Stimulus::Grating(s) => s.make_copy(),
+            Stimulus::Text(s)    => s.make_copy(),
         }
     }
 
@@ -88,6 +96,7 @@ impl Stimulus {
         match self {
             Stimulus::Shape(s)   => s.flip(),
             Stimulus::Grating(s) => s.flip(),
+            Stimulus::Text(s)    => s.flip(),
         }
     }
 
@@ -131,6 +140,7 @@ impl Stimulus {
         match self {
             Stimulus::Shape(s)   => s.type_name(),
             Stimulus::Grating(_) => "Grating",
+            Stimulus::Text(_)    => "Text",
         }
     }
 }

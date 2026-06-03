@@ -7,6 +7,8 @@ edition = "2024"
 ash        = "0.38"
 ash-window = "0.13"
 bytemuck   = { version = "1", features = ["derive"] }
+cosmic-text          = "0.12"
+epaint_default_fonts = "0.34.2"
 egui       = "0.34.2"
 egui-winit = "0.34.2"
 env_logger = "0.11"

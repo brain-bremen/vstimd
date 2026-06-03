@@ -33,7 +33,7 @@ stimulus server and Andreas Kreiter's **VStim** project.
 ```sh
 # Terminal 1 — start the server
 cargo run --release
-# Press D to spawn demo stimuli (cyan disc + magenta rect)
+# Press D to spawn demo stimuli (cyan circle + magenta rect)
 # Press F1 to toggle the debug overlay (frame timing, stimulus list, command log)
 
 # Terminal 2 — run the flash example

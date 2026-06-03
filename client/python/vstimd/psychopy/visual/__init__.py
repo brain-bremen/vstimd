@@ -13,5 +13,6 @@ from .window import Window
 from .rect import Rect
 from .circle import Circle
 from .grating import GratingStim, GratingMask, GratingTexture
+from .text import TextBox2
 
-__all__ = ["Window", "Rect", "Circle", "GratingStim", "GratingMask", "GratingTexture"]
+__all__ = ["Window", "Rect", "Circle", "GratingStim", "GratingMask", "GratingTexture", "TextBox2"]

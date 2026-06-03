@@ -15,7 +15,7 @@ planned:
 
 **Spline note:** PsychoPy has no built-in spline support. Users approximate curves by passing
 dense vertex arrays. vstimd's `SplineStimulus` stores control points and evaluates the curve
-server-side using kurbo.
+server-side using lyon.
 
 ---
 
@@ -28,7 +28,7 @@ server-side using kurbo.
 | Named shapes / N-gons | Resolved client-side in Python | Keeps server simple; mirrors PsychoPy's own architecture |
 | `closeShape` | Immutable after creation | PsychoPy disallows dynamic changes; no deferred bookkeeping needed |
 | `SplineStimulus` placement | `ShapeStimulus` variant | Shares tessellated-geometry pipeline (Grating is a top-level variant because it uses a fragment shader) |
-| Spline evaluation | kurbo `BezPath` | Reuses existing cubic-path interpolation utilities and can be converted into lyon paths for tessellation |
+| Spline evaluation | lyon `Path` | Cubic-path interpolation utilities fed directly into lyon tessellation |
 | Catmull-Rom → Bézier | Standard tangent formula: `C1 = P[i] + (P[i+1]−P[i−1])/6`, `C2 = P[i+1] − (P[i+2]−P[i])/6` | Produces smooth C1-continuous cubic spline |
 | Cubic Bézier encoding | `[P0, C1, C2, P1, C1, C2, P2, …]` — 1+3N points for N segments | Compact, unambiguous |
 | Stroke/outline | Supported | Existing shape rendering supports fill, stroke, and fill+stroke draw modes |
@@ -158,14 +158,14 @@ Add `Spline(SplineStimulus)` variant; update `shape_field!` macro and `type_name
 `server/src/render/tess.rs`:
 
 ```rust
-fn catmull_rom_to_bezpath(pts: &[[f32;2]], closed: bool) -> kurbo::BezPath {
+fn catmull_rom_to_path(pts: &[[f32;2]], closed: bool) -> lyon_tessellation::path::Path {
     // For each segment (P[i-1], P[i], P[i+1], P[i+2]):
     //   C1 = P[i]   + (P[i+1] - P[i-1]) / 6
     //   C2 = P[i+1] - (P[i+2] - P[i])   / 6
     // Closed: wrap indices mod N
 }
 
-fn cubic_bezier_to_bezpath(pts: &[[f32;2]], closed: bool) -> kurbo::BezPath {
+fn cubic_bezier_to_path(pts: &[[f32;2]], closed: bool) -> lyon_tessellation::path::Path {
     // Encoding: [P0, C1, C2, P1, C1, C2, P2, ...] — 1+3N points for N segments
     // Validate: (pts.len() - 1) % 3 == 0
 }

@@ -10,7 +10,8 @@ use crate::render::BenchmarkState;
 use crate::render::MetricsSampler;
 use crate::render::RenderState;
 use crate::render::system_info::ClockSource;
-use crate::render::vk::{PhotodiodeCache, SolidMeshCache, VkEguiRenderer, VkGratingPipeline, VkPipeline};
+use crate::render::vk::{GlyphAtlas, SceneCache, VkEguiRenderer, VkGratingPipeline, VkPipeline, VkTextPipeline};
+use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
 use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, query_local_ip};
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats};
@@ -125,7 +126,6 @@ impl DrmRenderState {
             ctx.set_debug_name(*img, &format!("swapchain[{i}]"));
         }
 
-        let solid_meshes = SolidMeshCache::new(&ctx.instance, ctx.physical_device);
         let egui_renderer = VkEguiRenderer::new(
             &ctx.device,
             &ctx.instance,
@@ -133,6 +133,13 @@ impl DrmRenderState {
             ctx.egui_render_pass,
         );
 
+        let scene_cache = SceneCache::new(&ctx.instance, ctx.physical_device);
+        let glyph_atlas = GlyphAtlas::new(&ctx.device, &ctx.instance, ctx.physical_device);
+        let text_pipeline = VkTextPipeline::new(
+            &ctx.device,
+            ctx.render_pass,
+            glyph_atlas.descriptor_set_layout,
+        );
         let rs = RenderState {
             frame_stats: FrameStats::new(display_info.refresh_hz),
             ctx,
@@ -141,8 +148,11 @@ impl DrmRenderState {
             wireframe_pipeline,
             wireframe_grating,
             wireframe: false,
-            solid_meshes,
-            pd_cache: PhotodiodeCache::default(),
+            scene_cache,
+            glyph_atlas,
+            text_pipeline,
+            font_system: TextFontSystem::new(),
+            swash_cache: TextSwashCache::new(),
             egui_renderer,
             egui_ctx: egui::Context::default(),
             scene,
