@@ -1,0 +1,17 @@
+syntax = "proto3";
+package vstimd.v1;
+
+// Known stimulus types; used in query responses and list results.
+enum StimulusType {
+  STIMULUS_TYPE_UNSPECIFIED = 0;
+  STIMULUS_TYPE_RECT        = 1;
+  STIMULUS_TYPE_CIRCLE      = 2;
+  STIMULUS_TYPE_ELLIPSE     = 3;
+  // 4–6 reserved for Wedge / Petal / Pixel when their renderers arrive
+  STIMULUS_TYPE_BITMAP      = 7;
+  STIMULUS_TYPE_SHADER      = 8;
+  STIMULUS_TYPE_PARTICLE    = 9;
+  STIMULUS_TYPE_GRATING     = 10;
+  STIMULUS_TYPE_TEXT        = 11;
+  STIMULUS_TYPE_POLYGON     = 12;
+}

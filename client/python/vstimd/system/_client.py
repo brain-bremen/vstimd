@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from vstimd._proto import common_pb2, service_pb2, system_pb2
+from vstimd._proto import service_pb2, system_pb2
+from vstimd._proto.vstimd.v1 import color_pb2
 from ._models import ServerInfo, ServerVersion
 
 
@@ -39,7 +40,7 @@ class SystemClient:
         req = service_pb2.Request(
             system=service_pb2.SystemTarget(),
             set_background=system_pb2.SetBackgroundRequest(
-                color=common_pb2.Color(r=r, g=g, b=b, a=a)
+                color=color_pb2.Color(r=r, g=g, b=b, a=a)
             ),
         )
         self._send(req)

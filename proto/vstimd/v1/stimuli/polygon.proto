@@ -1,0 +1,41 @@
+syntax = "proto3";
+package vstimd.v1;
+
+import "vstimd/v1/vec2.proto";
+import "vstimd/v1/color.proto";
+import "vstimd/v1/stimuli/shapes.proto";
+
+// ── Polygon creation ──────────────────────────────────────────────────────────
+
+// System command: create a polygon stimulus.
+// Returns the new handle in Response.handle and the UUID in Response.id.
+//
+// `vertices` are in pixel-space, Y-up, relative to the stimulus centre.
+// When close_shape is true the last vertex is implicitly connected back to
+// the first, forming a closed polygon.  When false, only the stroke outline
+// is drawn (fill is silently ignored).
+message CreatePolygonRequest {
+  repeated Vec2 vertices      = 1;
+  bool          close_shape   = 2;
+  Color         fill_color    = 3;   // fill colour (absent → scene default_fill)
+  Color         outline_color = 4;   // outline colour (absent → scene default_outline)
+  float         outline_width = 5;   // stroke width in pixels (0 → default)
+  ShapeDrawMode draw_mode     = 6;   // fill / outline / both (absent → FILLED)
+  string        id            = 7;   // client-supplied UUID (empty → server generates one)
+  string        name          = 8;   // optional human-readable label
+}
+
+// ── Polygon-specific mutations ────────────────────────────────────────────────
+
+// Stimulus command: replace all vertices of a Polygon stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Polygon.
+message SetPolygonVerticesRequest {
+  repeated Vec2 vertices = 1;
+}
+
+// ── Polygon query params ──────────────────────────────────────────────────────
+
+message PolygonParams {
+  repeated Vec2 vertices    = 1;
+  bool          close_shape = 2;
+}

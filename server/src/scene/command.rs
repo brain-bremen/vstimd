@@ -109,22 +109,22 @@ fn command_summary(req: &proto::Request) -> String {
 // ── DrawMode conversion ───────────────────────────────────────────────────────
 
 fn proto_draw_mode_to_scene(mode: i32) -> Result<SceneDrawMode, Box<proto::Response>> {
-    match proto::DrawMode::try_from(mode).unwrap_or(proto::DrawMode::Unspecified) {
-        proto::DrawMode::Unspecified => Err(Box::new(err(
+    match proto::ShapeDrawMode::try_from(mode).unwrap_or(proto::ShapeDrawMode::Unspecified) {
+        proto::ShapeDrawMode::Unspecified => Err(Box::new(err(
             proto::ErrorCode::InvalidArgument,
             "draw_mode must be set explicitly (UNSPECIFIED is not a valid value)",
         ))),
-        proto::DrawMode::Filled => Ok(SceneDrawMode::Fill),
-        proto::DrawMode::Outlined => Ok(SceneDrawMode::Stroke),
-        proto::DrawMode::FilledAndOutlined => Ok(SceneDrawMode::FillAndStroke),
+        proto::ShapeDrawMode::Filled => Ok(SceneDrawMode::Fill),
+        proto::ShapeDrawMode::Outlined => Ok(SceneDrawMode::Stroke),
+        proto::ShapeDrawMode::FilledAndOutlined => Ok(SceneDrawMode::FillAndStroke),
     }
 }
 
 fn scene_draw_mode_to_proto(mode: SceneDrawMode) -> i32 {
     match mode {
-        SceneDrawMode::Fill => proto::DrawMode::Filled as i32,
-        SceneDrawMode::Stroke => proto::DrawMode::Outlined as i32,
-        SceneDrawMode::FillAndStroke => proto::DrawMode::FilledAndOutlined as i32,
+        SceneDrawMode::Fill => proto::ShapeDrawMode::Filled as i32,
+        SceneDrawMode::Stroke => proto::ShapeDrawMode::Outlined as i32,
+        SceneDrawMode::FillAndStroke => proto::ShapeDrawMode::FilledAndOutlined as i32,
     }
 }
 
@@ -251,7 +251,7 @@ impl SceneState {
         let center = cmd.center.unwrap_or_default();
         let width = if cmd.width == 0.0 { 100.0 } else { cmd.width };
         let height = if cmd.height == 0.0 { 100.0 } else { cmd.height };
-        let fill = color_or_default(cmd.fill, self.default_fill);
+        let fill = color_or_default(cmd.fill_color, self.default_fill);
         let id = match parse_or_new_uuid(&cmd.id) {
             Ok(id) => id,
             Err(resp) => return *resp,
@@ -276,7 +276,7 @@ impl SceneState {
     fn cmd_create_circle(&mut self, cmd: proto::CreateCircleRequest) -> proto::Response {
         let center = cmd.center.unwrap_or_default();
         let radius = if cmd.radius == 0.0 { 50.0 } else { cmd.radius };
-        let fill = color_or_default(cmd.fill, self.default_fill);
+        let fill = color_or_default(cmd.fill_color, self.default_fill);
         let id = match parse_or_new_uuid(&cmd.id) {
             Ok(id) => id,
             Err(resp) => return *resp,
@@ -302,7 +302,7 @@ impl SceneState {
         let center = cmd.center.unwrap_or_default();
         let width = if cmd.width == 0.0 { 100.0 } else { cmd.width };
         let height = if cmd.height == 0.0 { 100.0 } else { cmd.height };
-        let fill = color_or_default(cmd.fill, self.default_fill);
+        let fill = color_or_default(cmd.fill_color, self.default_fill);
         let id = match parse_or_new_uuid(&cmd.id) {
             Ok(id) => id,
             Err(resp) => return *resp,
@@ -815,7 +815,7 @@ impl SceneState {
             height: h,
             frame_rate: self.frame_rate,
             background_color: Some(proto::Color { r: bg[0], g: bg[1], b: bg[2], a: bg[3] }),
-            backend: proto::Backend::Unspecified as i32,
+            backend: proto::RenderBackend::Unspecified as i32,
             version: Some(version),
         }))
     }
@@ -891,7 +891,7 @@ impl SceneState {
                         Some(proto::Color { r: fc[0], g: fc[1], b: fc[2], a: op }),
                         None,
                         0.0,
-                        proto::DrawMode::Filled as i32,
+                        proto::ShapeDrawMode::Filled as i32,
                         op,
                     )
                 }
@@ -903,7 +903,7 @@ impl SceneState {
                         Some(proto::Color { r: c[0], g: c[1], b: c[2], a: c[3] }),
                         None,
                         0.0,
-                        proto::DrawMode::Filled as i32,
+                        proto::ShapeDrawMode::Filled as i32,
                         c[3],
                     )
                 }

@@ -1,0 +1,25 @@
+syntax = "proto3";
+package vstimd.v1;
+
+import "vstimd/v1/vec2.proto";
+import "vstimd/v1/color.proto";
+
+// System command: create a rectangle stimulus.
+// Returns the new handle in Response.handle and the UUID in Response.id.
+message CreateRectRequest {
+  Vec2   center = 1;   // pixel-space position (origin = screen centre, Y-up)
+  float  width  = 2;   // full width in pixels  (0 → default 100)
+  float  height = 3;   // full height in pixels (0 → default 100)
+  Color  fill_color = 4;   // fill colour (absent → scene default_fill)
+  string id     = 5;   // client-supplied UUID (empty string → server generates one)
+  string name   = 6;   // optional human-readable label
+}
+
+// Stimulus command: resize a Rect stimulus.
+// Returns WRONG_STIMULUS_TYPE if the handle is not a Rect.
+message SetRectSizeRequest {
+  float width  = 1;
+  float height = 2;
+}
+
+message RectParams { float width = 1; float height = 2; }

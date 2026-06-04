@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Union
 
-from vstimd._proto import common_pb2, stimuli_2d_pb2 as stimuli_pb2
+from vstimd._proto.vstimd.v1 import vec2_pb2, color_pb2
+from vstimd._proto.vstimd.v1.stimuli import query_pb2, shapes_pb2, stimulus_type_pb2
 from .grating_models import GratingMask, GratingParams, GratingTexture
 
 
@@ -33,7 +34,7 @@ class Color:
     a: float = 1.0
 
     @classmethod
-    def from_proto(cls, proto: common_pb2.Color) -> Color:
+    def from_proto(cls, proto: color_pb2.Color) -> Color:
         return cls(r=proto.r, g=proto.g, b=proto.b, a=proto.a)
 
 
@@ -43,7 +44,7 @@ class Vec2:
     y: float
 
     @classmethod
-    def from_proto(cls, proto: common_pb2.Vec2) -> Vec2:
+    def from_proto(cls, proto: vec2_pb2.Vec2) -> Vec2:
         return cls(x=proto.x, y=proto.y)
 
 
@@ -67,19 +68,19 @@ class EllipseParams:
 StimulusParams = Union[RectParams, CircleParams, EllipseParams, GratingParams]
 
 _STIMULUS_TYPE_MAP: dict[int, StimulusType] = {
-    common_pb2.STIMULUS_TYPE_RECT:     StimulusType.RECT,
-    common_pb2.STIMULUS_TYPE_CIRCLE:   StimulusType.CIRCLE,
-    common_pb2.STIMULUS_TYPE_ELLIPSE:  StimulusType.ELLIPSE,
-    common_pb2.STIMULUS_TYPE_BITMAP:   StimulusType.BITMAP,
-    common_pb2.STIMULUS_TYPE_SHADER:   StimulusType.SHADER,
-    common_pb2.STIMULUS_TYPE_PARTICLE: StimulusType.PARTICLE,
-    common_pb2.STIMULUS_TYPE_GRATING:  StimulusType.GRATING,
+    stimulus_type_pb2.STIMULUS_TYPE_RECT:     StimulusType.RECT,
+    stimulus_type_pb2.STIMULUS_TYPE_CIRCLE:   StimulusType.CIRCLE,
+    stimulus_type_pb2.STIMULUS_TYPE_ELLIPSE:  StimulusType.ELLIPSE,
+    stimulus_type_pb2.STIMULUS_TYPE_BITMAP:   StimulusType.BITMAP,
+    stimulus_type_pb2.STIMULUS_TYPE_SHADER:   StimulusType.SHADER,
+    stimulus_type_pb2.STIMULUS_TYPE_PARTICLE: StimulusType.PARTICLE,
+    stimulus_type_pb2.STIMULUS_TYPE_GRATING:  StimulusType.GRATING,
 }
 
 _DRAW_MODE_MAP: dict[int, DrawMode] = {
-    common_pb2.DRAW_MODE_FILLED:              DrawMode.FILLED,
-    common_pb2.DRAW_MODE_OUTLINED:            DrawMode.OUTLINED,
-    common_pb2.DRAW_MODE_FILLED_AND_OUTLINED: DrawMode.FILLED_AND_OUTLINED,
+    shapes_pb2.SHAPE_DRAW_MODE_FILLED:              DrawMode.FILLED,
+    shapes_pb2.SHAPE_DRAW_MODE_OUTLINED:            DrawMode.OUTLINED,
+    shapes_pb2.SHAPE_DRAW_MODE_FILLED_AND_OUTLINED: DrawMode.FILLED_AND_OUTLINED,
 }
 
 
@@ -99,7 +100,7 @@ class StimulusInfo:
     name: str = ""
 
     @classmethod
-    def from_proto(cls, proto: stimuli_pb2.QueryStimulusResponse) -> StimulusInfo:
+    def from_proto(cls, proto: query_pb2.QueryStimulusResponse) -> StimulusInfo:
         shape_which = proto.params.WhichOneof("shape") if proto.HasField("params") else None
         if shape_which == "rect":
             params: StimulusParams | None = RectParams(

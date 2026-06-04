@@ -1,0 +1,56 @@
+syntax = "proto3";
+package vstimd.v1;
+
+import "vstimd/v1/color.proto";
+import "vstimd/v1/stimuli/shapes.proto";
+
+// ── Generic stimulus mutations (all types) ────────────────────────────────────
+
+// Stimulus command: show or hide a stimulus.
+message SetEnabledRequest {
+  bool enabled = 1;
+}
+
+// Stimulus command: remove a stimulus from the scene.
+message DeleteRequest {}
+
+// Stimulus command: set or clear the human-readable name of a stimulus.
+message SetNameRequest {
+  string name = 1;   // empty string clears the name
+}
+
+// Stimulus command: move the centre of a stimulus.
+message SetPositionRequest {
+  float x = 1;
+  float y = 2;
+}
+
+// Stimulus command: set rotation angle (counter-clockwise degrees).
+message SetOrientationRequest {
+  float angle_deg = 1;
+}
+
+// Stimulus command: set fill/body colour.
+message SetFillColorRequest {
+  Color color = 1;
+}
+
+// Stimulus command: set global opacity (0.0 = transparent, 1.0 = opaque).
+message SetAlphaRequest {
+  float opacity = 1;
+}
+
+// Stimulus command: set draw mode (fill only, outline only, or both).
+message SetDrawModeRequest {
+  ShapeDrawMode mode = 1;
+}
+
+// Stimulus command: set outline colour.
+message SetOutlineColorRequest {
+  Color color = 1;
+}
+
+// Stimulus command: set outline stroke width in pixels.
+message SetOutlineWidthRequest {
+  float line_width = 1;
+}

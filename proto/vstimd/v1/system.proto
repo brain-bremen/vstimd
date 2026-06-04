@@ -1,7 +1,15 @@
 syntax = "proto3";
 package vstimd.v1;
 
-import "vstimd/v1/common.proto";
+import "vstimd/v1/color.proto";
+import "vstimd/v1/stimuli/stimulus_type.proto";
+
+// Render backend the server is running on.
+enum RenderBackend {
+  RENDER_BACKEND_UNSPECIFIED = 0;
+  RENDER_BACKEND_DRM         = 1; // VK_KHR_display, bare-metal Linux
+  RENDER_BACKEND_WINIT       = 2; // X11 / Wayland / Win32 window
+}
 
 // ── System mutations ──────────────────────────────────────────────────────────
 
@@ -52,7 +60,7 @@ message QueryServerInfoResponse {
   uint32  height           = 2;   // display height in pixels
   float   frame_rate       = 3;   // measured frame rate in Hz
   Color   background_color = 4;
-  Backend backend          = 5;
+  RenderBackend backend    = 5;
   Version version          = 6;
 }
 
