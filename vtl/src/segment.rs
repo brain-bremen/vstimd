@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 
 use crate::layout::{
     Direction, VtlHeader, VtlLineEntry, VtlNamesSection, VtlStateSection,
-    MAX_NAMED_LINES, NAMES_OFFSET, STATE_OFFSET,
+    MAX_BANKS, MAX_NAMED_LINES, NAMES_OFFSET, STATE_OFFSET,
 };
 
 /// Raw access to a VTL shared memory segment.
@@ -111,11 +111,11 @@ impl VtlSegment {
     // ── Named line table ──────────────────────────────────────────────────────
 
     pub fn n_named_lines(&self) -> usize {
-        self.names().n_entries.load(Ordering::Acquire) as usize
+        (self.names().n_entries.load(Ordering::Acquire) as usize).min(MAX_NAMED_LINES)
     }
 
     pub fn named_line(&self, idx: usize) -> Option<(&VtlLineEntry, Direction)> {
-        if idx >= MAX_NAMED_LINES {
+        if idx >= self.n_named_lines() {
             return None;
         }
         let entry = &self.names().entries[idx];
@@ -199,6 +199,8 @@ impl VtlSegment {
     /// Atomically set one bit of `input_state[bank]`.
     /// Returns `true` if the bit was previously clear (rising edge).
     pub fn set_input_bit(&self, bank: usize, bit: u8) -> bool {
+        assert!(bank < MAX_BANKS, "bank must be < {}", MAX_BANKS);
+        assert!(bit < 64, "bit must be 0..63");
         let mask = 1u64 << bit;
         self.state().input_state[bank].fetch_or(mask, Ordering::AcqRel) & mask == 0
     }
@@ -206,7 +208,18 @@ impl VtlSegment {
     /// Atomically clear one bit of `input_state[bank]`.
     /// Returns `true` if the bit was previously set (falling edge).
     pub fn clear_input_bit(&self, bank: usize, bit: u8) -> bool {
+        assert!(bank < MAX_BANKS, "bank must be < {}", MAX_BANKS);
+        assert!(bit < 64, "bit must be 0..63");
         let mask = 1u64 << bit;
         self.state().input_state[bank].fetch_and(!mask, Ordering::AcqRel) & mask != 0
+    }
+
+    /// Atomically toggle one bit of `input_state[bank]`.
+    /// Returns `true` if the bit transitioned low→high, `false` for high→low.
+    pub fn toggle_input_bit(&self, bank: usize, bit: u8) -> bool {
+        assert!(bank < MAX_BANKS, "bank must be < {}", MAX_BANKS);
+        assert!(bit < 64, "bit must be 0..63");
+        let mask = 1u64 << bit;
+        self.state().input_state[bank].fetch_xor(mask, Ordering::AcqRel) & mask == 0
     }
 }

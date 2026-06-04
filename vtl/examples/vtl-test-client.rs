@@ -29,8 +29,15 @@ fn main() {
                 eprintln!("Usage: vtl-test-client <shm-path> set <name> <0|1>");
                 std::process::exit(1);
             }
-            let value: u64 = args[4].parse().unwrap_or_else(|_| { eprintln!("value must be 0 or 1"); std::process::exit(1); });
-            cmd_set(&client, &args[3], value != 0);
+            let value = match args[4].as_str() {
+                "0" => false,
+                "1" => true,
+                _ => {
+                    eprintln!("value must be 0 or 1");
+                    std::process::exit(1);
+                }
+            };
+            cmd_set(&client, &args[3], value);
         }
         "pulse" => {
             if args.len() < 4 {
@@ -60,7 +67,11 @@ fn cmd_list(client: &VtlClient) {
         let Some((entry, dir)) = client.named_line(i) else { continue };
         let b  = entry.bank as usize;
         let mask = 1u64 << entry.bit;
-        let state = if client.input_state(b) & mask != 0 { 1u8 } else { 0u8 };
+        let state_word = match dir {
+            Direction::Input  => client.input_state(b),
+            Direction::Output => client.output_state(b),
+        };
+        let state = if state_word & mask != 0 { 1u8 } else { 0u8 };
         let rise  = (client.peek_input_rise(b) & mask != 0) as u8;
         let fall  = (client.peek_input_fall(b) & mask != 0) as u8;
         let dir_s = match dir { Direction::Input => "in", Direction::Output => "out" };

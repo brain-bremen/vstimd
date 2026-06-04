@@ -100,11 +100,9 @@ pub fn render_frame(
             sc.apply_flip();
         }
 
-        // Poll VTL edges once per frame (render-thread-local state, no extra lock needed).
-        if let (Some(vtl_fs), Some(owner)) = (vtl_frame_state, sc.vtl.as_ref()) {
-            let _edges = vtl_fs.poll(owner);
-            // _edges will be passed to advance_animations in a later step.
-        }
+        // Keep references alive for upcoming VTL edge consumption wiring.
+        // Do not drain latches here until edges are actually consumed.
+        let _ = (vtl_frame_state, sc.vtl.as_ref());
 
         sc.screen_size = Some(screen_size);
         sc.frame_rate = fps;

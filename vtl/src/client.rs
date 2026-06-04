@@ -1,7 +1,7 @@
 use std::io;
 use std::ops::Deref;
 
-use crate::layout::SHM_SIZE;
+use crate::layout::{SHM_SIZE, MAX_BANKS};
 use crate::segment::VtlSegment;
 
 /// Attaches to an existing VTL shared memory segment created by a [`VtlOwner`](crate::VtlOwner).
@@ -16,6 +16,17 @@ impl VtlClient {
     ///
     /// Returns an error if the segment does not exist or the magic/version are invalid.
     pub fn open(shm_name: &str) -> io::Result<Self> {
+        #[cfg(not(unix))]
+        {
+            let _ = shm_name;
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "VTL shared memory is only supported on unix",
+            ));
+        }
+
+        #[cfg(unix)]
+        {
         let name = std::ffi::CString::new(shm_name).expect("shm_name must not contain nul");
         let fd = unsafe { libc::shm_open(name.as_ptr(), libc::O_RDWR, 0) };
         if fd < 0 {
@@ -46,7 +57,16 @@ impl VtlClient {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid VTL magic/version"));
         }
 
+        if seg.num_input_banks() as usize > MAX_BANKS || seg.num_output_banks() as usize > MAX_BANKS {
+            unsafe { libc::munmap(ptr, SHM_SIZE) };
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid VTL bank counts (max {MAX_BANKS})"),
+            ));
+        }
+
         Ok(Self { seg })
+        }
     }
 }
 
@@ -59,6 +79,7 @@ impl Deref for VtlClient {
 
 impl Drop for VtlClient {
     fn drop(&mut self) {
+        #[cfg(unix)]
         unsafe {
             libc::munmap(self.seg.ptr as *mut libc::c_void, self.seg.size);
         }

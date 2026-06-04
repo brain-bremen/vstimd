@@ -18,6 +18,8 @@ class StimulusType(Enum):
     SHADER   = "shader"
     PARTICLE = "particle"
     GRATING  = "grating"
+    TEXT     = "text"
+    POLYGON  = "polygon"
 
 
 class DrawMode(Enum):
@@ -75,6 +77,8 @@ _STIMULUS_TYPE_MAP: dict[int, StimulusType] = {
     stimulus_type_pb2.STIMULUS_TYPE_SHADER:   StimulusType.SHADER,
     stimulus_type_pb2.STIMULUS_TYPE_PARTICLE: StimulusType.PARTICLE,
     stimulus_type_pb2.STIMULUS_TYPE_GRATING:  StimulusType.GRATING,
+    stimulus_type_pb2.STIMULUS_TYPE_TEXT:     StimulusType.TEXT,
+    stimulus_type_pb2.STIMULUS_TYPE_POLYGON:  StimulusType.POLYGON,
 }
 
 _DRAW_MODE_MAP: dict[int, DrawMode] = {

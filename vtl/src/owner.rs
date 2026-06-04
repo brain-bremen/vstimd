@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::io;
 use std::ops::Deref;
 
-use crate::layout::{SHM_SIZE, MAGIC, VERSION};
+use crate::layout::{SHM_SIZE, MAGIC, VERSION, MAX_BANKS};
 use crate::segment::VtlSegment;
 
 /// Creates and owns a VTL shared memory segment.
@@ -21,6 +21,24 @@ impl VtlOwner {
     ///
     /// `num_input_banks` and `num_output_banks` should both be 1 for v1.
     pub fn create(shm_name: &str, num_input_banks: u32, num_output_banks: u32) -> io::Result<Self> {
+        if num_input_banks as usize > MAX_BANKS || num_output_banks as usize > MAX_BANKS {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("bank counts must be <= {MAX_BANKS}"),
+            ));
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = (shm_name, num_input_banks, num_output_banks);
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "VTL shared memory is only supported on unix",
+            ));
+        }
+
+        #[cfg(unix)]
+        {
         let name = CString::new(shm_name).expect("shm_name must not contain nul");
         let fd = unsafe {
             libc::shm_open(
@@ -68,6 +86,7 @@ impl VtlOwner {
         }
 
         Ok(Self { seg, name })
+        }
     }
 }
 
@@ -80,6 +99,7 @@ impl Deref for VtlOwner {
 
 impl Drop for VtlOwner {
     fn drop(&mut self) {
+        #[cfg(unix)]
         unsafe {
             libc::munmap(self.seg.ptr as *mut libc::c_void, self.seg.size);
             libc::shm_unlink(self.name.as_ptr());

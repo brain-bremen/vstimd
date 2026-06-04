@@ -159,6 +159,7 @@ fn long_name_is_truncated_not_panicked() {
     let owner = VtlOwner::create(&name, 1, 1).expect("create");
     let long = "x".repeat(200);
     owner.write_named_line(0, &long, 0, 0, Direction::Input);
+    owner.set_n_named_lines(1);
     let (e, _) = owner.named_line(0).unwrap();
     assert_eq!(e.name_str().len(), 55); // max 55 usable bytes (56th is nul)
     drop(owner);

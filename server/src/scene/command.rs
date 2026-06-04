@@ -118,10 +118,7 @@ fn command_summary(req: &proto::Request) -> String {
 
 fn proto_draw_mode_to_scene(mode: i32) -> Result<SceneDrawMode, Box<proto::Response>> {
     match proto::ShapeDrawMode::try_from(mode).unwrap_or(proto::ShapeDrawMode::Unspecified) {
-        proto::ShapeDrawMode::Unspecified => Err(Box::new(err(
-            proto::ErrorCode::InvalidArgument,
-            "draw_mode must be set explicitly (UNSPECIFIED is not a valid value)",
-        ))),
+        proto::ShapeDrawMode::Unspecified => Ok(SceneDrawMode::Fill),
         proto::ShapeDrawMode::Filled => Ok(SceneDrawMode::Fill),
         proto::ShapeDrawMode::Outlined => Ok(SceneDrawMode::Stroke),
         proto::ShapeDrawMode::FilledAndOutlined => Ok(SceneDrawMode::FillAndStroke),
@@ -972,8 +969,14 @@ impl SceneState {
         let dir = match proto::VirtualTriggerLineDirection::try_from(cmd.direction) {
             Ok(proto::VirtualTriggerLineDirection::Input)  => Direction::Input,
             Ok(proto::VirtualTriggerLineDirection::Output) => Direction::Output,
-            _ => Direction::Input,
+            _ => return err(proto::ErrorCode::InvalidArgument, "direction must be INPUT or OUTPUT"),
         };
+
+        if !cmd.name.is_empty()
+            && self.vtl_names.iter().any(|e| e.name == cmd.name && (e.bank != cmd.bank as u8 || e.bit != cmd.bit as u8))
+        {
+            return err(proto::ErrorCode::InvalidArgument, "name already assigned to a different line");
+        }
 
         self.vtl_names.retain(|e| !(e.bank == cmd.bank as u8 && e.bit == cmd.bit as u8));
         if !cmd.name.is_empty() {
@@ -1051,15 +1054,13 @@ impl SceneState {
             Err(e) => return *e,
         };
         let mask = 1u64 << bit;
-        let was_high = owner.input_state(bank) & mask != 0;
-        if was_high {
-            owner.clear_input_bit(bank, bit);
-            owner.set_input_fall(bank, mask);
-        } else {
-            owner.set_input_bit(bank, bit);
+        let rose = owner.toggle_input_bit(bank, bit);
+        if rose {
             owner.set_input_rise(bank, mask);
+        } else {
+            owner.set_input_fall(bank, mask);
         }
-        let high = !was_high;
+        let high = rose;
         ok_body(proto::response::Body::VirtualTriggerLineState(
             proto::VirtualTriggerLineStateResponse { high },
         ))

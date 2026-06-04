@@ -36,8 +36,12 @@ impl VtlFrameState {
 
         for bank in 0..n.min(MAX_BANKS) {
             let cur = owner.input_state(bank);
-            edges.rising[bank]  = owner.drain_input_rise(bank, u64::MAX);
-            edges.falling[bank] = owner.drain_input_fall(bank, u64::MAX);
+            let latched_rising = owner.drain_input_rise(bank, u64::MAX);
+            let latched_falling = owner.drain_input_fall(bank, u64::MAX);
+            let derived_rising = (!self.prev[bank]) & cur;
+            let derived_falling = self.prev[bank] & (!cur);
+            edges.rising[bank] = latched_rising | derived_rising;
+            edges.falling[bank] = latched_falling | derived_falling;
             edges.current[bank] = cur;
             self.prev[bank] = cur;
         }
