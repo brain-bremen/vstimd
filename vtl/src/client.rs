@@ -32,10 +32,11 @@ impl VtlClient {
                 0,
             )
         };
+        // Capture the mmap error before close() can overwrite errno.
+        let mmap_err = if ptr == libc::MAP_FAILED { Some(io::Error::last_os_error()) } else { None };
         unsafe { libc::close(fd) };
-
-        if ptr == libc::MAP_FAILED {
-            return Err(io::Error::last_os_error());
+        if let Some(e) = mmap_err {
+            return Err(e);
         }
 
         let seg = VtlSegment { ptr: ptr as *mut u8, size: SHM_SIZE };

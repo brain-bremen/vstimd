@@ -81,26 +81,22 @@ fn cmd_set(client: &VtlClient, line_name: &str, value: bool) {
     if dir != Direction::Input {
         eprintln!("Warning: '{}' is an output line — writing input state anyway", line_name);
     }
-    let b    = entry.bank as usize;
-    let bit  = entry.bit;
-    let mask = 1u64 << bit;
+    let b   = entry.bank as usize;
+    let bit = entry.bit;
 
-    let prev = client.input_state(b);
-    let was_high = prev & mask != 0;
-
-    // Update level
+    // Use atomic fetch_or/fetch_and so a concurrent writer cannot be silently clobbered.
     if value {
-        client.set_input_state(b, prev | mask);
-        if !was_high {
-            client.set_input_rise(b, mask);
+        let was_low = client.set_input_bit(b, bit);
+        if was_low {
+            client.set_input_rise(b, 1u64 << bit);
             println!("↑ rising edge on '{}'  (bank={} bit={})", line_name, b, bit);
         } else {
             println!("  already high: '{}'  (bank={} bit={})", line_name, b, bit);
         }
     } else {
-        client.set_input_state(b, prev & !mask);
+        let was_high = client.clear_input_bit(b, bit);
         if was_high {
-            client.set_input_fall(b, mask);
+            client.set_input_fall(b, 1u64 << bit);
             println!("↓ falling edge on '{}'  (bank={} bit={})", line_name, b, bit);
         } else {
             println!("  already low: '{}'  (bank={} bit={})", line_name, b, bit);

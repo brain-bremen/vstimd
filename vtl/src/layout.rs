@@ -1,4 +1,4 @@
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU32, AtomicU64};
 
 pub const MAX_BANKS: usize = 4;
 pub const MAX_NAMED_LINES: usize = 256;
@@ -77,7 +77,9 @@ impl VtlLineEntry {
 /// 64-byte header + 256 entries × 60 bytes = 15424 bytes total.
 #[repr(C)]
 pub struct VtlNamesSection {
-    pub n_entries: u32,
+    /// Number of valid entries. Written with `Release`, read with `Acquire`
+    /// so that the preceding entry-data stores are visible to the reader.
+    pub n_entries: AtomicU32,
     pub _pad:      [u8; 60],
     pub entries:   [VtlLineEntry; MAX_NAMED_LINES],
 }

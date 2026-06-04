@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 
 use crate::layout::{
     Direction, VtlHeader, VtlLineEntry, VtlNamesSection, VtlStateSection,
-    MAX_BANKS, NAMES_OFFSET, STATE_OFFSET,
+    MAX_NAMED_LINES, NAMES_OFFSET, STATE_OFFSET,
 };
 
 /// Raw access to a VTL shared memory segment.
@@ -15,7 +15,12 @@ pub struct VtlSegment {
     pub(crate) size: usize,
 }
 
-// SAFETY: all mutable state is accessed through AtomicU64; the raw ptr is stable.
+// SAFETY: the raw ptr is stable (mmap never moves).
+// State-section fields are exclusively AtomicU64, so concurrent access is safe.
+// Names-section writes go through raw-pointer ops (no &mut reference is ever
+// created), and n_entries is AtomicU32 with Release/Acquire ordering.  Callers
+// must serialize writes to the entry fields themselves (protocol: owner writes
+// during setup, clients read-only afterwards).
 unsafe impl Send for VtlSegment {}
 unsafe impl Sync for VtlSegment {}
 
@@ -28,8 +33,8 @@ impl VtlSegment {
         unsafe { &*(self.ptr.add(NAMES_OFFSET) as *const VtlNamesSection) }
     }
 
-    fn names_mut(&self) -> &mut VtlNamesSection {
-        unsafe { &mut *(self.ptr.add(NAMES_OFFSET) as *mut VtlNamesSection) }
+    fn names_ptr(&self) -> *mut VtlNamesSection {
+        unsafe { self.ptr.add(NAMES_OFFSET) as *mut VtlNamesSection }
     }
 
     fn state(&self) -> &VtlStateSection {
@@ -106,12 +111,11 @@ impl VtlSegment {
     // ── Named line table ──────────────────────────────────────────────────────
 
     pub fn n_named_lines(&self) -> usize {
-        // Relaxed read of a u32; written only under protocol setup, not per-frame.
-        unsafe { std::ptr::read_volatile(&self.names().n_entries) as usize }
+        self.names().n_entries.load(Ordering::Acquire) as usize
     }
 
     pub fn named_line(&self, idx: usize) -> Option<(&VtlLineEntry, Direction)> {
-        if idx >= MAX_BANKS * 64 {
+        if idx >= MAX_NAMED_LINES {
             return None;
         }
         let entry = &self.names().entries[idx];
@@ -121,7 +125,7 @@ impl VtlSegment {
 
     /// Find a named line by name. Returns (index, entry, direction) or None.
     pub fn find_named_line(&self, name: &str) -> Option<(usize, &VtlLineEntry, Direction)> {
-        let n = self.n_named_lines().min(MAX_BANKS * 64);
+        let n = self.n_named_lines().min(MAX_NAMED_LINES);
         for i in 0..n {
             let e = &self.names().entries[i];
             if e.name_str() == name {
@@ -133,32 +137,42 @@ impl VtlSegment {
     }
 
     /// Set or update a named line entry at `idx`. Writes into the shm names table.
+    ///
+    /// Uses raw-pointer writes so no `&mut` reference is ever created over shared
+    /// memory, avoiding aliasing UB with concurrent `&`-reads on the same segment.
     pub fn write_named_line(&self, idx: usize, name: &str, bank: u8, bit: u8, dir: Direction) {
-        assert!(idx < MAX_BANKS * 64);
-        let entry = &mut self.names_mut().entries[idx];
-        entry.name = [0u8; 56];
+        assert!(idx < MAX_NAMED_LINES);
         let bytes = name.as_bytes();
         let len = bytes.len().min(55);
-        entry.name[..len].copy_from_slice(&bytes[..len]);
-        entry.bank      = bank;
-        entry.bit       = bit;
-        entry.direction = dir as u8;
-        entry._pad      = 0;
+        unsafe {
+            let base = self.names_ptr();
+            let entry = std::ptr::addr_of_mut!((*base).entries[idx]);
+            let name_ptr = std::ptr::addr_of_mut!((*entry).name) as *mut u8;
+            std::ptr::write_bytes(name_ptr, 0, 56);
+            if len > 0 {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), name_ptr, len);
+            }
+            std::ptr::write(std::ptr::addr_of_mut!((*entry).bank),      bank);
+            std::ptr::write(std::ptr::addr_of_mut!((*entry).bit),       bit);
+            std::ptr::write(std::ptr::addr_of_mut!((*entry).direction), dir as u8);
+            std::ptr::write(std::ptr::addr_of_mut!((*entry)._pad),      0u8);
+        }
     }
 
     /// Clear a named line entry (zero out the name field).
     pub fn clear_named_line(&self, idx: usize) {
-        assert!(idx < MAX_BANKS * 64);
-        self.names_mut().entries[idx].name = [0u8; 56];
+        assert!(idx < MAX_NAMED_LINES);
+        unsafe {
+            let base = self.names_ptr();
+            let name_ptr = std::ptr::addr_of_mut!((*base).entries[idx].name) as *mut u8;
+            std::ptr::write_bytes(name_ptr, 0, 56);
+        }
     }
 
+    /// Publish the number of valid entries with Release ordering so all preceding
+    /// `write_named_line` stores are visible to any reader that Acquire-loads this.
     pub fn set_n_named_lines(&self, n: usize) {
-        unsafe {
-            std::ptr::write_volatile(
-                &mut self.names_mut().n_entries,
-                n.min(MAX_BANKS * 64) as u32,
-            );
-        }
+        self.names().n_entries.store(n.min(MAX_NAMED_LINES) as u32, Ordering::Release);
     }
 
     // ── Header ────────────────────────────────────────────────────────────────
@@ -178,5 +192,21 @@ impl VtlSegment {
             std::ptr::read_volatile(&h.magic)   == crate::layout::MAGIC
                 && std::ptr::read_volatile(&h.version) == crate::layout::VERSION
         }
+    }
+
+    // ── Atomic bit helpers ────────────────────────────────────────────────────
+
+    /// Atomically set one bit of `input_state[bank]`.
+    /// Returns `true` if the bit was previously clear (rising edge).
+    pub fn set_input_bit(&self, bank: usize, bit: u8) -> bool {
+        let mask = 1u64 << bit;
+        self.state().input_state[bank].fetch_or(mask, Ordering::AcqRel) & mask == 0
+    }
+
+    /// Atomically clear one bit of `input_state[bank]`.
+    /// Returns `true` if the bit was previously set (falling edge).
+    pub fn clear_input_bit(&self, bank: usize, bit: u8) -> bool {
+        let mask = 1u64 << bit;
+        self.state().input_state[bank].fetch_and(!mask, Ordering::AcqRel) & mask != 0
     }
 }
