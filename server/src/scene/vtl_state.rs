@@ -17,9 +17,15 @@ pub struct VtlFrameState {
     prev: [u64; MAX_BANKS],
 }
 
+impl Default for VtlFrameState {
+    fn default() -> Self {
+        Self { prev: [0; MAX_BANKS] }
+    }
+}
+
 impl VtlFrameState {
     pub fn new() -> Self {
-        Self { prev: [0; MAX_BANKS] }
+        Self::default()
     }
 
     /// Drain latches and return the edges seen since the last call.

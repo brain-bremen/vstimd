@@ -1025,7 +1025,7 @@ impl SceneState {
         };
         let (bank, bit) = match resolve_vtl_handle(cmd.handle.as_ref(), &self.vtl_names) {
             Ok(v) => v,
-            Err(e) => return e,
+            Err(e) => return *e,
         };
         if cmd.value {
             if owner.set_input_bit(bank, bit) {
@@ -1048,7 +1048,7 @@ impl SceneState {
         };
         let (bank, bit) = match resolve_vtl_handle(cmd.handle.as_ref(), &self.vtl_names) {
             Ok(v) => v,
-            Err(e) => return e,
+            Err(e) => return *e,
         };
         let mask = 1u64 << bit;
         let was_high = owner.input_state(bank) & mask != 0;
@@ -1074,7 +1074,7 @@ impl SceneState {
         };
         let (bank, bit) = match resolve_vtl_handle(cmd.handle.as_ref(), &self.vtl_names) {
             Ok(v) => v,
-            Err(e) => return e,
+            Err(e) => return *e,
         };
         let mask = 1u64 << bit;
         owner.drain_input_rise(bank, mask);
@@ -1144,15 +1144,15 @@ impl SceneState {
 fn resolve_vtl_handle(
     handle: Option<&proto::VirtualTriggerLineHandle>,
     names: &[super::state::VtlNameEntry],
-) -> Result<(usize, u8), proto::Response> {
+) -> Result<(usize, u8), Box<proto::Response>> {
     use proto::virtual_trigger_line_handle::Handle;
     match handle.and_then(|h| h.handle.as_ref()) {
         Some(Handle::BankBit(bb)) => {
             if bb.bank >= vtl::MAX_BANKS as u32 {
-                return Err(err(proto::ErrorCode::InvalidArgument, "bank out of range"));
+                return Err(Box::new(err(proto::ErrorCode::InvalidArgument, "bank out of range")));
             }
             if bb.bit >= 64 {
-                return Err(err(proto::ErrorCode::InvalidArgument, "bit must be 0..63"));
+                return Err(Box::new(err(proto::ErrorCode::InvalidArgument, "bit must be 0..63")));
             }
             Ok((bb.bank as usize, bb.bit as u8))
         }
@@ -1160,10 +1160,10 @@ fn resolve_vtl_handle(
             names.iter()
                 .find(|e| e.name == *name)
                 .map(|e| (e.bank as usize, e.bit))
-                .ok_or_else(|| err(proto::ErrorCode::InvalidArgument,
-                    format!("no virtual trigger line named {name:?}")))
+                .ok_or_else(|| Box::new(err(proto::ErrorCode::InvalidArgument,
+                    format!("no virtual trigger line named {name:?}"))))
         }
-        None => Err(err(proto::ErrorCode::InvalidArgument, "handle must be set")),
+        None => Err(Box::new(err(proto::ErrorCode::InvalidArgument, "handle must be set"))),
     }
 }
 
