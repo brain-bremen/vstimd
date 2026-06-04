@@ -1,0 +1,185 @@
+use vtl::{Direction, VtlClient, VtlOwner};
+
+fn unique_name() -> String {
+    // Use PID + thread-id hash to avoid collisions between parallel test threads.
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    std::thread::current().id().hash(&mut h);
+    format!("/vtl_test_{}_{:x}", std::process::id(), h.finish())
+}
+
+#[test]
+fn create_and_validate_header() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+    assert!(owner.is_valid());
+    assert_eq!(owner.num_input_banks(), 1);
+    assert_eq!(owner.num_output_banks(), 1);
+    drop(owner); // shm_unlink
+}
+
+#[test]
+fn client_attaches_and_reads_header() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+    let client = VtlClient::open(&name).expect("open");
+    assert!(client.is_valid());
+    drop(client);
+    drop(owner);
+}
+
+#[test]
+fn input_state_roundtrip() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+    owner.set_input_state(0, 0b1010);
+    assert_eq!(owner.input_state(0), 0b1010);
+    drop(owner);
+}
+
+#[test]
+fn rise_latch_set_and_drain() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+
+    // Simulate nidaqd: OR two rising bits.
+    owner.set_input_rise(0, 0b0101);
+    owner.set_input_rise(0, 0b1010);
+
+    // Peek without clearing — both sets should be visible.
+    assert_eq!(owner.peek_input_rise(0), 0b1111);
+
+    // Drain bit 0 only.
+    let drained = owner.drain_input_rise(0, 0b0001);
+    assert_eq!(drained, 0b0001);
+    assert_eq!(owner.peek_input_rise(0), 0b1110);
+
+    // Drain all remaining.
+    let drained = owner.drain_input_rise(0, u64::MAX);
+    assert_eq!(drained, 0b1110);
+    assert_eq!(owner.peek_input_rise(0), 0);
+
+    drop(owner);
+}
+
+#[test]
+fn fall_latch_set_and_drain() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+    owner.set_input_fall(0, 1 << 7);
+    assert_eq!(owner.drain_input_fall(0, u64::MAX), 1 << 7);
+    assert_eq!(owner.peek_input_fall(0), 0);
+    drop(owner);
+}
+
+#[test]
+fn output_state_and_pulse() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+
+    owner.set_output_state(0, 0xFF);
+    assert_eq!(owner.output_state(0), 0xFF);
+
+    owner.set_output_pulse(0, 1 << 3);
+    assert_eq!(owner.drain_output_pulse(0, u64::MAX), 1 << 3);
+    assert_eq!(owner.peek_output_pulse(0), 0);
+
+    drop(owner);
+}
+
+#[test]
+fn cross_process_latch_via_client() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+    let client = VtlClient::open(&name).expect("open");
+
+    // nidaqd (client) sets a rising edge.
+    client.set_input_rise(0, 1 << 5);
+    client.set_input_state(0, 1 << 5);
+
+    // vstimd (owner) drains it.
+    let edges = owner.drain_input_rise(0, u64::MAX);
+    assert_eq!(edges, 1 << 5);
+    assert_eq!(owner.input_state(0), 1 << 5);
+
+    drop(client);
+    drop(owner);
+}
+
+#[test]
+fn named_line_write_and_read() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+
+    owner.write_named_line(0, "stim_trigger", 0, 3, Direction::Input);
+    owner.write_named_line(1, "frame_onset",  0, 0, Direction::Output);
+    owner.set_n_named_lines(2);
+
+    assert_eq!(owner.n_named_lines(), 2);
+
+    let (e0, d0) = owner.named_line(0).unwrap();
+    assert_eq!(e0.name_str(), "stim_trigger");
+    assert_eq!(e0.bank, 0);
+    assert_eq!(e0.bit, 3);
+    assert_eq!(d0, Direction::Input);
+
+    let (e1, d1) = owner.named_line(1).unwrap();
+    assert_eq!(e1.name_str(), "frame_onset");
+    assert_eq!(d1, Direction::Output);
+
+    // find_named_line
+    let found = owner.find_named_line("stim_trigger");
+    assert!(found.is_some());
+    let (idx, _, _) = found.unwrap();
+    assert_eq!(idx, 0);
+
+    drop(owner);
+}
+
+#[test]
+fn named_line_visible_via_client() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+    owner.write_named_line(0, "hello_vtl", 0, 1, Direction::Input);
+    owner.set_n_named_lines(1);
+
+    let client = VtlClient::open(&name).expect("open");
+    assert_eq!(client.n_named_lines(), 1);
+    let (e, _) = client.named_line(0).unwrap();
+    assert_eq!(e.name_str(), "hello_vtl");
+
+    drop(client);
+    drop(owner);
+}
+
+#[test]
+fn long_name_is_truncated_not_panicked() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+    let long = "x".repeat(200);
+    owner.write_named_line(0, &long, 0, 0, Direction::Input);
+    let (e, _) = owner.named_line(0).unwrap();
+    assert_eq!(e.name_str().len(), 55); // max 55 usable bytes (56th is nul)
+    drop(owner);
+}
+
+#[test]
+fn open_nonexistent_returns_error() {
+    let result = VtlClient::open("/vtl_nonexistent_xyzzy_123");
+    assert!(result.is_err());
+}
+
+#[test]
+fn multiple_banks_independent() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 4, 4).expect("create");
+
+    for bank in 0..4 {
+        owner.set_input_state(bank, 1u64 << bank);
+    }
+    for bank in 0..4 {
+        assert_eq!(owner.input_state(bank), 1u64 << bank);
+    }
+    drop(owner);
+}

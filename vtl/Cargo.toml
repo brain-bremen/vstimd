@@ -1,0 +1,11 @@
+[package]
+name    = "vtl"
+version = "0.1.0"
+edition = "2024"
+description = "Virtual Trigger Line shared-memory interface for vstimd"
+
+[dependencies]
+libc = "0.2"
+
+[[example]]
+name = "vtl-test-client"
