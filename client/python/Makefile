@@ -11,6 +11,7 @@ PROTO_SRC  := ../../proto/vstimd/v1/vec2.proto \
               ../../proto/vstimd/v1/stimuli/polygon.proto \
               ../../proto/vstimd/v1/stimuli/shared_set_requests.proto \
               ../../proto/vstimd/v1/system.proto \
+              ../../proto/vstimd/v1/vtl.proto \
               ../../proto/vstimd/v1/service.proto
 PROTO_OUT  := vstimd/_proto
 
