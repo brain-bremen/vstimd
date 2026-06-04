@@ -3597,6 +3597,7 @@ dependencies = [
  "sysinfo",
  "tokio",
  "uuid",
+ "vtl",
  "wayland-backend",
  "wayland-client",
  "wayland-sys",

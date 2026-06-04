@@ -13,6 +13,7 @@ use crate::render::system_info::ClockSource;
 use crate::render::vk::{GlyphAtlas, SceneCache, VkEguiRenderer, VkGratingPipeline, VkPipeline, VkTextPipeline};
 use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
 use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, query_local_ip};
+use crate::scene::vtl_state::VtlFrameState;
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats};
 
@@ -140,6 +141,17 @@ impl DrmRenderState {
             ctx.render_pass,
             glyph_atlas.descriptor_set_layout,
         );
+        // Create VTL shared memory owner (Linux only — DRM backend always runs on Linux).
+        let vtl_owner = vtl::VtlOwner::create("/vstimd_vtl", 1, 1)
+            .map(std::sync::Arc::new)
+            .map_err(|e| log::warn!("vtl: failed to create shm segment: {e}"))
+            .ok();
+        let vtl_frame_state = vtl_owner.as_ref().map(|_| VtlFrameState::new());
+        if let Some(ref owner) = vtl_owner {
+            scene.write().unwrap().vtl = Some(owner.clone());
+            log::info!("vtl: shared memory segment created at /vstimd_vtl");
+        }
+
         let rs = RenderState {
             frame_stats: FrameStats::new(display_info.refresh_hz),
             ctx,
@@ -163,6 +175,7 @@ impl DrmRenderState {
             local_ip: query_local_ip(),
             log_buffer,
             metrics: MetricsSampler::new(),
+            vtl_frame_state,
         };
 
         Self {

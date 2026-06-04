@@ -10,6 +10,7 @@ import "vstimd/v1/stimuli/grating.proto";
 import "vstimd/v1/stimuli/text.proto";
 import "vstimd/v1/stimuli/polygon.proto";
 import "vstimd/v1/system.proto";
+import "vstimd/v1/vtl.proto";
 
 // ── Error codes ───────────────────────────────────────────────────────────────
 
@@ -107,6 +108,14 @@ message Request {
     QueryServerInfoRequest query_server_info = 80;  // system target
     QueryStimulusRequest   query_stimulus    = 81;  // stimulus target
     ListStimuliRequest     list_stimuli      = 82;  // system target
+
+    // ── VTL (Virtual Trigger Lines) ─────────────────────────────────────────
+    SetVirtualTriggerLineNameRequest      set_virtual_trigger_line_name       = 90;
+    ListVirtualTriggerLinesRequest        list_virtual_trigger_lines          = 91;
+    SetVirtualTriggerLineRequest          set_virtual_trigger_line            = 92;
+    ToggleVirtualTriggerLineRequest       toggle_virtual_trigger_line         = 93;
+    ClearVirtualTriggerLineLatchesRequest clear_virtual_trigger_line_latches  = 94;
+    SetVirtualTriggerLineBankRequest      set_virtual_trigger_line_bank       = 95;
   }
 }
 
@@ -134,6 +143,8 @@ message Response {
     QueryServerInfoResponse server_info   = 10;
     QueryStimulusResponse   stimulus_info = 11;
     ListStimuliResponse     stimulus_list = 12;
+    ListVirtualTriggerLinesResponse      virtual_trigger_line_list  = 13;
+    VirtualTriggerLineStateResponse      virtual_trigger_line_state = 14;
   }
 }
 

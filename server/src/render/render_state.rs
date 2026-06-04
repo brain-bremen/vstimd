@@ -10,6 +10,7 @@ use crate::render::vk::{
     VkEguiRenderer, VkGratingPipeline, VkPipeline, VkTextPipeline, render_frame,
 };
 use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
+use crate::scene::vtl_state::VtlFrameState;
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats, FrameTick};
 
@@ -44,6 +45,7 @@ pub struct RenderState {
     pub local_ip: String,
     pub log_buffer: LogBuffer,
     pub metrics: MetricsSampler,
+    pub vtl_frame_state: Option<VtlFrameState>,
 }
 
 impl Drop for RenderState {
@@ -149,6 +151,7 @@ impl RenderState {
             egui_renderer,
             egui_data,
             screen_clock,
+            self.vtl_frame_state.as_mut(),
         );
 
         if let Some(ref t) = tick {

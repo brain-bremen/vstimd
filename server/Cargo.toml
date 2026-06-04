@@ -16,6 +16,7 @@ indexmap   = "2"
 lyon_tessellation = "1.0"
 log        = "0.4"
 prost      = "0.13"
+vtl        = { path = "../vtl" }
 nvml-wrapper = "0.10"
 rand         = "0.10.1"
 uuid         = { version = "1", features = ["v4"] }

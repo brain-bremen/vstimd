@@ -1,0 +1,73 @@
+syntax = "proto3";
+package vstimd.v1;
+
+enum VirtualTriggerLineDirection {
+  VIRTUAL_TRIGGER_LINE_DIRECTION_INPUT  = 0;
+  VIRTUAL_TRIGGER_LINE_DIRECTION_OUTPUT = 1;
+}
+
+// ── Line addressing ───────────────────────────────────────────────────────────
+
+message VirtualTriggerLineBankBit {
+  uint32 bank = 1;
+  uint32 bit  = 2;
+}
+
+// Address a virtual trigger line either by (bank, bit) index or by registered name.
+message VirtualTriggerLineHandle {
+  oneof handle {
+    VirtualTriggerLineBankBit bank_bit = 1;
+    string                    name     = 2;
+  }
+}
+
+// ── Naming ────────────────────────────────────────────────────────────────────
+
+message SetVirtualTriggerLineNameRequest {
+  uint32                      bank      = 1;
+  uint32                      bit       = 2;
+  VirtualTriggerLineDirection direction = 3;
+  string                      name      = 4; // empty string clears the name
+}
+
+message ListVirtualTriggerLinesRequest {}
+
+message VirtualTriggerLineInfo {
+  string                      name      = 1;
+  uint32                      bank      = 2;
+  uint32                      bit       = 3;
+  VirtualTriggerLineDirection direction = 4;
+  bool                        high      = 5;
+}
+
+message ListVirtualTriggerLinesResponse {
+  repeated VirtualTriggerLineInfo lines = 1;
+}
+
+// ── Line control ──────────────────────────────────────────────────────────────
+
+message SetVirtualTriggerLineRequest {
+  VirtualTriggerLineHandle handle = 1;
+  bool                     value  = 2;
+}
+
+message ToggleVirtualTriggerLineRequest {
+  VirtualTriggerLineHandle handle = 1;
+}
+
+// Returned by Toggle (and optionally Set) to report the resulting state.
+message VirtualTriggerLineStateResponse {
+  bool high = 1;
+}
+
+// Drain accumulated rise/fall latches for a line without affecting its level.
+message ClearVirtualTriggerLineLatchesRequest {
+  VirtualTriggerLineHandle handle = 1;
+}
+
+// Set all 64 lines of a bank at once. Rising and falling edges are derived
+// from the previous state and latched automatically, exactly as hardware would.
+message SetVirtualTriggerLineBankRequest {
+  uint32 bank  = 1;
+  uint64 value = 2;
+}

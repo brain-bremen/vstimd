@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use indexmap::IndexMap;
 
 use super::deferred::Deferred;
@@ -67,6 +69,20 @@ pub struct SceneState {
     pub command_log_total: u64,
     pub command_log_errors: u64,
     pub server_start: std::time::Instant,
+
+    /// VTL shared memory owner. `None` when running without VTL (e.g. null renderer on non-Linux).
+    /// `Arc` so the render thread can hold a ref without going through the scene RwLock each frame.
+    pub vtl: Option<Arc<vtl::VtlOwner>>,
+    /// Named VTL lines registered via `SetVtlLineName`. Source of truth; shm table mirrors this.
+    pub vtl_names: Vec<VtlNameEntry>,
+}
+
+/// A named VTL line stored in `SceneState`.
+pub struct VtlNameEntry {
+    pub name: String,
+    pub bank: u8,
+    pub bit:  u8,
+    pub direction: vtl::Direction,
 }
 
 impl SceneState {
@@ -89,6 +105,8 @@ impl SceneState {
             command_log_total: 0,
             command_log_errors: 0,
             server_start: std::time::Instant::now(),
+            vtl: None,
+            vtl_names: Vec::new(),
         }
     }
 

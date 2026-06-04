@@ -292,4 +292,72 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                 }
             });
     });
+
+    egui::Window::new("VTL Lines").default_size([420.0, 160.0]).show(ctx, |ui| {
+        if let Ok(sc) = scene.try_read() {
+            if sc.vtl.is_none() {
+                ui.label(egui::RichText::new("VTL not available").color(egui::Color32::DARK_GRAY));
+                return;
+            }
+            let owner = sc.vtl.as_ref().unwrap();
+            let n = sc.vtl_names.len();
+            if n == 0 {
+                ui.label(egui::RichText::new("(no named lines)").color(egui::Color32::DARK_GRAY));
+                return;
+            }
+
+            // Split into input and output lines.
+            let inputs:  Vec<_> = sc.vtl_names.iter().filter(|e| e.direction == vtl::Direction::Input).collect();
+            let outputs: Vec<_> = sc.vtl_names.iter().filter(|e| e.direction == vtl::Direction::Output).collect();
+
+            let dot = |ui: &mut egui::Ui, high: bool| {
+                let color = if high { egui::Color32::from_rgb(80, 200, 80) } else { egui::Color32::DARK_GRAY };
+                let (resp, painter) = ui.allocate_painter(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                painter.circle_filled(resp.rect.center(), 5.0, color);
+            };
+
+            if !inputs.is_empty() {
+                ui.label(egui::RichText::new("Inputs").strong());
+                egui::Grid::new("vtl_input_grid").striped(true).num_columns(4).spacing([8.0, 2.0]).show(ui, |ui| {
+                    ui.label(egui::RichText::new("Name").strong());
+                    ui.label(egui::RichText::new("Bank/Bit").strong());
+                    ui.label(egui::RichText::new("Level").strong());
+                    ui.label(egui::RichText::new("Rise/Fall").strong());
+                    ui.end_row();
+                    for e in &inputs {
+                        let b = e.bank as usize;
+                        let mask = 1u64 << e.bit;
+                        let high  = owner.input_state(b) & mask != 0;
+                        let rise  = owner.peek_input_rise(b) & mask != 0;
+                        let fall  = owner.peek_input_fall(b) & mask != 0;
+                        ui.label(&e.name);
+                        ui.label(format!("{}/{}", e.bank, e.bit));
+                        dot(ui, high);
+                        ui.label(format!("{}/{}", rise as u8, fall as u8));
+                        ui.end_row();
+                    }
+                });
+                ui.add_space(4.0);
+            }
+
+            if !outputs.is_empty() {
+                ui.label(egui::RichText::new("Outputs").strong());
+                egui::Grid::new("vtl_output_grid").striped(true).num_columns(3).spacing([8.0, 2.0]).show(ui, |ui| {
+                    ui.label(egui::RichText::new("Name").strong());
+                    ui.label(egui::RichText::new("Bank/Bit").strong());
+                    ui.label(egui::RichText::new("Level").strong());
+                    ui.end_row();
+                    for e in &outputs {
+                        let b = e.bank as usize;
+                        let mask = 1u64 << e.bit;
+                        let high = owner.output_state(b) & mask != 0;
+                        ui.label(&e.name);
+                        ui.label(format!("{}/{}", e.bank, e.bit));
+                        dot(ui, high);
+                        ui.end_row();
+                    }
+                });
+            }
+        }
+    });
 }

@@ -16,6 +16,7 @@ use crate::render::system_info::ClockSource;
 use crate::render::vk::{GlyphAtlas, SceneCache, VkEguiRenderer, VkGratingPipeline, VkPipeline, VkTextPipeline};
 use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
 use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, WindowMode, query_local_ip};
+use crate::scene::vtl_state::VtlFrameState;
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats};
 
@@ -139,6 +140,24 @@ impl State {
             ctx.render_pass,
             glyph_atlas.descriptor_set_layout,
         );
+        // Create VTL shared memory owner (Linux only; no-op on Windows).
+        #[cfg(target_os = "linux")]
+        let (vtl_owner, vtl_frame_state) = {
+            let owner = vtl::VtlOwner::create("/vstimd_vtl", 1, 1)
+                .map(std::sync::Arc::new)
+                .map_err(|e| log::warn!("vtl: failed to create shm segment: {e}"))
+                .ok();
+            let fs = owner.as_ref().map(|_| VtlFrameState::new());
+            (owner, fs)
+        };
+        #[cfg(not(target_os = "linux"))]
+        let (vtl_owner, vtl_frame_state) = (None::<std::sync::Arc<vtl::VtlOwner>>, None::<VtlFrameState>);
+
+        if let Some(ref owner) = vtl_owner {
+            scene.write().unwrap().vtl = Some(owner.clone());
+            log::info!("vtl: shared memory segment created at /vstimd_vtl");
+        }
+
         let rs = RenderState {
             frame_stats: FrameStats::new(hz),
             ctx,
@@ -162,6 +181,7 @@ impl State {
             local_ip: query_local_ip(),
             log_buffer,
             metrics: MetricsSampler::new(),
+            vtl_frame_state,
         };
 
         Self {
