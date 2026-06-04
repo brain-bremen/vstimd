@@ -45,6 +45,32 @@ jobs:
           name: vstimd
           path: target/release/vstimd
 
+  vtl-miri:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-miri-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-miri-
+
+      # Checks for aliasing UB (stacked-borrows violations), invalid pointer
+      # provenance, and data races in the vtl shared-memory crate.
+      - run: cargo miri test -p vtl
+        env:
+          MIRIFLAGS: -Zmiri-strict-provenance
+
   python-unit:
     runs-on: ubuntu-latest
     defaults:

@@ -183,3 +183,108 @@ fn multiple_banks_independent() {
     }
     drop(owner);
 }
+
+// ── set_input_bit / clear_input_bit ──────────────────────────────────────────
+
+#[test]
+fn set_and_clear_input_bit_return_edge_direction() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+
+    // Low → high: rising edge (returns true).
+    assert!(owner.set_input_bit(0, 5), "first set must report rising edge");
+    // High → high: no edge (returns false).
+    assert!(!owner.set_input_bit(0, 5), "second set must not report rising edge");
+
+    // High → low: falling edge (returns true).
+    assert!(owner.clear_input_bit(0, 5), "first clear must report falling edge");
+    // Low → low: no edge (returns false).
+    assert!(!owner.clear_input_bit(0, 5), "second clear must not report falling edge");
+}
+
+#[test]
+fn concurrent_set_input_bit_no_lost_updates() {
+    use std::sync::Arc;
+    use std::thread;
+
+    let name = unique_name();
+    let owner = Arc::new(VtlOwner::create(&name, 1, 1).expect("create"));
+
+    // Under Miri threads are expensive; use fewer bits to keep the suite fast.
+    let n_bits: u8 = if cfg!(miri) { 8 } else { 64 };
+    let all_set: u64 = if n_bits == 64 { u64::MAX } else { (1u64 << n_bits) - 1 };
+
+    let handles: Vec<_> = (0..n_bits)
+        .map(|bit| {
+            let o = Arc::clone(&owner);
+            thread::spawn(move || { o.set_input_bit(0, bit); })
+        })
+        .collect();
+    for h in handles { h.join().unwrap(); }
+
+    assert_eq!(owner.input_state(0), all_set, "no bit updates must be lost");
+}
+
+#[test]
+fn concurrent_clear_input_bit_no_lost_updates() {
+    use std::sync::Arc;
+    use std::thread;
+
+    let name = unique_name();
+    let owner = Arc::new(VtlOwner::create(&name, 1, 1).expect("create"));
+
+    let n_bits: u8 = if cfg!(miri) { 8 } else { 64 };
+    let all_set: u64 = if n_bits == 64 { u64::MAX } else { (1u64 << n_bits) - 1 };
+    owner.set_input_state(0, all_set);
+
+    let handles: Vec<_> = (0..n_bits)
+        .map(|bit| {
+            let o = Arc::clone(&owner);
+            thread::spawn(move || { o.clear_input_bit(0, bit); })
+        })
+        .collect();
+    for h in handles { h.join().unwrap(); }
+
+    assert_eq!(owner.input_state(0), 0, "no bit clears must be lost");
+}
+
+// ── Release / Acquire ordering on n_entries ───────────────────────────────────
+
+#[test]
+fn named_line_ordering_write_before_publish() {
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    let name = unique_name();
+    let owner = Arc::new(VtlOwner::create(&name, 1, 1).expect("create"));
+    let barrier = Arc::new(Barrier::new(2));
+
+    // Writer: populate entries first, then publish with a Release store.
+    let o_w = Arc::clone(&owner);
+    let b_w = Arc::clone(&barrier);
+    let writer = thread::spawn(move || {
+        o_w.write_named_line(0, "alpha", 0, 0, Direction::Input);
+        o_w.write_named_line(1, "beta",  0, 1, Direction::Output);
+        b_w.wait(); // let reader thread start before the publish
+        o_w.set_n_named_lines(2); // Release — all preceding writes visible after this
+    });
+
+    // Reader: synchronise, then join writer (guarantees the Release store happened),
+    // then Acquire-load n_entries and verify the entry data is visible.
+    let o_r = Arc::clone(&owner);
+    let b_r = Arc::clone(&barrier);
+    thread::spawn(move || {
+        b_r.wait();
+        writer.join().unwrap();
+        // Acquire load on n_entries pairs with the Release store in the writer.
+        assert_eq!(o_r.n_named_lines(), 2);
+        let (e0, d0) = o_r.named_line(0).unwrap();
+        assert_eq!(e0.name_str(), "alpha");
+        assert_eq!(d0, Direction::Input);
+        let (e1, d1) = o_r.named_line(1).unwrap();
+        assert_eq!(e1.name_str(), "beta");
+        assert_eq!(d1, Direction::Output);
+    })
+    .join()
+    .unwrap();
+}
