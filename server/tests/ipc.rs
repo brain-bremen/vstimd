@@ -85,7 +85,7 @@ fn test_zmq_create_rect() {
                         center: Some(proto::Vec2 { x: 10.0, y: -20.0 }),
                         width: 200.0,
                         height: 100.0,
-                        fill: Some(proto::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
+                        fill_color: Some(proto::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
                         ..Default::default()
                     })),
                 },

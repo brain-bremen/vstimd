@@ -60,7 +60,7 @@ fn test_create_rect() {
             center: Some(proto::Vec2 { x: 10.0, y: -20.0 }),
             width: 200.0,
             height: 100.0,
-            fill: None,
+            fill_color: None,
             ..Default::default()
         },
     ));
@@ -80,7 +80,7 @@ fn test_create_rect_with_fill() {
             center: None,
             width: 0.0,
             height: 0.0,
-            fill: Some(fill.clone()),
+            fill_color: Some(fill.clone()),
             ..Default::default()
         },
     ));
@@ -101,7 +101,7 @@ fn test_create_rect_defaults() {
     let default_fill = scene.default_fill;
     let resp = scene.handle_request(create_rect_req(
         sys(),
-        proto::CreateRectRequest { center: None, width: 0.0, height: 0.0, fill: None, ..Default::default() },
+        proto::CreateRectRequest { center: None, width: 0.0, height: 0.0, fill_color: None, ..Default::default() },
     ));
     assert!(is_ok(&resp));
     let h = resp.handle as u32;
@@ -189,7 +189,7 @@ fn test_proto_roundtrip() {
             center: Some(proto::Vec2 { x: 1.0, y: 2.0 }),
             width: 50.0,
             height: 30.0,
-            fill: Some(proto::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
+            fill_color: Some(proto::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
             ..Default::default()
         })),
     };
@@ -199,7 +199,7 @@ fn test_proto_roundtrip() {
 
     if let Some(request::Body::CreateRect(c)) = decoded.body {
         assert_eq!(c.width, 50.0);
-        assert_eq!(c.fill.unwrap().r, 1.0);
+        assert_eq!(c.fill_color.unwrap().r, 1.0);
         // id/name are proto string fields; default is empty string
     } else {
         panic!("unexpected body variant");
@@ -215,7 +215,7 @@ fn test_create_ellipse() {
             center: Some(proto::Vec2 { x: 0.0, y: 0.0 }),
             width: 120.0,
             height: 60.0,
-            fill: Some(proto::Color { r: 0.0, g: 1.0, b: 0.0, a: 1.0 }),
+            fill_color: Some(proto::Color { r: 0.0, g: 1.0, b: 0.0, a: 1.0 }),
             angle: 45.0,
             ..Default::default()
         })),
@@ -295,7 +295,7 @@ fn test_immediate_mode_composes_mutations_and_marks_dirty() {
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetDrawMode(proto::SetDrawModeRequest {
-            mode: proto::DrawMode::Outlined as i32,
+            mode: proto::ShapeDrawMode::Outlined as i32,
         })),
     });
     assert!(is_ok(&resp));
@@ -375,7 +375,7 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetDrawMode(proto::SetDrawModeRequest {
-            mode: proto::DrawMode::Outlined as i32,
+            mode: proto::ShapeDrawMode::Outlined as i32,
         })),
     });
     assert!(is_ok(&resp));
@@ -476,7 +476,7 @@ fn test_query_stimulus() {
             center: Some(proto::Vec2 { x: 5.0, y: 10.0 }),
             width: 200.0,
             height: 100.0,
-            fill: Some(proto::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
+            fill_color: Some(proto::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
             ..Default::default()
         })),
     }).handle as u32;
