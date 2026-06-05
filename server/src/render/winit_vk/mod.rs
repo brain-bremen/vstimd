@@ -1,6 +1,6 @@
 mod init;
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -16,9 +16,9 @@ use crate::render::system_info::ClockSource;
 use crate::render::vk::{GlyphAtlas, SceneCache, VkEguiRenderer, VkGratingPipeline, VkPipeline, VkTextPipeline};
 use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
 use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, WindowMode, query_local_ip};
-use crate::scene::vtl_state::VtlFrameState;
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats};
+use crate::vtl_state::VtlState;
 
 // FIFO is the only present mode used throughout the application.
 //
@@ -40,6 +40,7 @@ struct State {
     // because they hold surface handles and wl_surface proxies into the window
     // that become dangling once the window is destroyed.
     rs: RenderState,
+    vtl: Option<Arc<Mutex<VtlState>>>,
     egui_winit: egui_winit::State,
     // ── Window comes after all borrowers ─────────────────────────────────────
     window: Arc<Window>,
@@ -51,6 +52,7 @@ impl State {
     fn new(
         window: Arc<Window>,
         scene: Arc<RwLock<SceneState>>,
+        vtl: Option<Arc<Mutex<VtlState>>>,
         event_loop: &ActiveEventLoop,
         window_mode: WindowMode,
         log_buffer: LogBuffer,
@@ -140,24 +142,6 @@ impl State {
             ctx.render_pass,
             glyph_atlas.descriptor_set_layout,
         );
-        // Create VTL shared memory owner (Linux only; no-op on Windows).
-        #[cfg(target_os = "linux")]
-        let (vtl_owner, vtl_frame_state) = {
-            let owner = vtl::VtlOwner::create("/vstimd_vtl", 1, 1)
-                .map(std::sync::Arc::new)
-                .map_err(|e| log::warn!("vtl: failed to create shm segment: {e}"))
-                .ok();
-            let fs = owner.as_ref().map(|_| VtlFrameState::new());
-            (owner, fs)
-        };
-        #[cfg(not(target_os = "linux"))]
-        let (vtl_owner, vtl_frame_state) = (None::<std::sync::Arc<vtl::VtlOwner>>, None::<VtlFrameState>);
-
-        if let Some(ref owner) = vtl_owner {
-            scene.write().unwrap().vtl = Some(owner.clone());
-            log::info!("vtl: shared memory segment created at /vstimd_vtl");
-        }
-
         let rs = RenderState {
             frame_stats: FrameStats::new(hz),
             ctx,
@@ -181,11 +165,11 @@ impl State {
             local_ip: query_local_ip(),
             log_buffer,
             metrics: MetricsSampler::new(),
-            vtl_frame_state,
         };
 
         Self {
             rs,
+            vtl,
             egui_winit,
             window,
             refresh_hz: hz,
@@ -226,7 +210,7 @@ impl State {
         // 2. Render: build overlay UI, tessellate scene, record Vulkan commands,
         //    submit to GPU, present to display.
         let sys_info = self.sys_info();
-        let (tick, platform_output) = self.rs.render_one_frame(None, egui_raw_input, &sys_info);
+        let (tick, platform_output) = self.rs.render_one_frame(None, egui_raw_input, &sys_info, self.vtl.as_deref());
 
         // 3. Forward egui platform output (cursor changes, clipboard, etc.).
         if let Some(po) = platform_output {
@@ -248,6 +232,7 @@ impl State {
 
 pub struct WinitApp {
     scene: Option<Arc<RwLock<SceneState>>>,
+    vtl: Option<Arc<Mutex<VtlState>>>,
     window_mode: WindowMode,
     state: Option<State>,
     modifiers: winit::event::Modifiers,
@@ -258,11 +243,13 @@ pub struct WinitApp {
 impl WinitApp {
     pub fn new(
         scene: Arc<RwLock<SceneState>>,
+        vtl: Option<Arc<Mutex<VtlState>>>,
         window_mode: WindowMode,
         log_buffer: LogBuffer,
     ) -> Self {
         Self {
             scene: Some(scene),
+            vtl,
             is_fullscreen: window_mode == WindowMode::Fullscreen,
             window_mode,
             state: None,
@@ -334,6 +321,7 @@ impl ApplicationHandler for WinitApp {
             self.state = Some(State::new(
                 window,
                 scene,
+                self.vtl.clone(),
                 event_loop,
                 self.window_mode,
                 log_buffer,

@@ -62,6 +62,19 @@ impl Drop for VkContext {
             log::debug!("vstimd: [drop] device_wait_idle");
             self.device.device_wait_idle().ok();
 
+            // vkDestroySwapchainKHR blocks until the presentation engine releases
+            // all images.  device_wait_idle() only waits for the GPU — the
+            // presentation engine is external and may still hold the last image.
+            // Explicitly wait for the last present so destroy_swapchain returns
+            // immediately instead of blocking for several seconds on NVIDIA drivers.
+            if let Some(ref pw) = self.present_wait {
+                let last_id = self.next_present_id.get().saturating_sub(1);
+                if last_id > 0 {
+                    log::debug!("vstimd: [drop] wait_for_present id={last_id}");
+                    let _ = pw.wait_for_present(self.swapchain, last_id, 1_000_000_000);
+                }
+            }
+
             log::debug!("vstimd: [drop] destroy sync objects");
             for frame in &self.frames {
                 self.device.destroy_semaphore(frame.image_available, None);

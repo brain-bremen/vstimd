@@ -3,7 +3,6 @@ pub mod deferred;
 pub mod photodiode;
 mod state;
 pub mod stimulus;
-pub mod vtl_state;
 
 pub use deferred::Deferred;
 pub use photodiode::PhotoDiodeState;

@@ -8,7 +8,6 @@ use crate::scene::stimulus::text::{
     TextFontSystem, TextSwashCache, layout_and_rasterize,
 };
 use crate::scene::stimulus::{DrawMode, Stimulus};
-use crate::scene::vtl_state::VtlFrameState;
 
 const PHOTODIODE_HANDLE: u32 = u32::MAX;
 use crate::scene::SceneState;
@@ -50,7 +49,6 @@ pub fn render_frame(
     mut egui_renderer: Option<&mut VkEguiRenderer>,
     egui_data: Option<EguiFrameData>,
     screen_clock: Option<std::time::Instant>,
-    vtl_frame_state: Option<&mut VtlFrameState>,
 ) -> Option<FrameTick> {
     let this_present_id = ctx.next_present_id.get();
 
@@ -69,7 +67,7 @@ pub fn render_frame(
         t
     } else if let (Some(pw), true) = (&ctx.present_wait, this_present_id > 1) {
         unsafe {
-            match pw.wait_for_present(ctx.swapchain, this_present_id - 1, 3_000_000_000) {
+            match pw.wait_for_present(ctx.swapchain, this_present_id - 1, 100_000_000) {
                 Ok(()) => {}
                 Err(vk::Result::TIMEOUT) => {
                     log::warn!(
@@ -100,9 +98,6 @@ pub fn render_frame(
             sc.apply_flip();
         }
 
-        // Keep references alive for upcoming VTL edge consumption wiring.
-        // Do not drain latches here until edges are actually consumed.
-        let _ = (vtl_frame_state, sc.vtl.as_ref());
 
         sc.screen_size = Some(screen_size);
         sc.frame_rate = fps;

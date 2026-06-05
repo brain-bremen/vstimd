@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use prost::Message;
 use zeromq::{Socket, SocketRecv, SocketSend};
@@ -6,6 +6,7 @@ use zeromq::{Socket, SocketRecv, SocketSend};
 use crate::proto;
 use crate::scene::SceneState;
 use crate::scene::stimulus::Stimulus;
+use crate::vtl_state::VtlState;
 use uuid::Uuid;
 
 /// Spawn the ZMQ REP server on a dedicated thread with its own tokio runtime.
@@ -33,6 +34,7 @@ use uuid::Uuid;
 /// Returns the `JoinHandle` for the thread (detach or join on shutdown).
 pub fn spawn_zmq_thread(
     scene: Arc<RwLock<SceneState>>,
+    vtl: Option<Arc<Mutex<VtlState>>>,
     bind_addr: &str,
 ) -> std::thread::JoinHandle<()> {
     let addr = bind_addr.to_owned();
@@ -43,7 +45,7 @@ pub fn spawn_zmq_thread(
                 .enable_all()
                 .build()
                 .expect("failed to create tokio runtime for ZMQ thread");
-            rt.block_on(zmq_loop(scene, &addr));
+            rt.block_on(zmq_loop(scene, vtl, &addr));
         })
         .expect("failed to spawn ZMQ server thread")
 }
@@ -92,7 +94,7 @@ pub(crate) fn err_wrong_type(stim: &Stimulus, cmd: &str, expected: &str) -> prot
     }
 }
 
-async fn zmq_loop(scene: Arc<RwLock<SceneState>>, addr: &str) {
+async fn zmq_loop(scene: Arc<RwLock<SceneState>>, vtl: Option<Arc<Mutex<VtlState>>>, addr: &str) {
     let mut socket = zeromq::RepSocket::new();
     socket
         .bind(addr)
@@ -118,7 +120,9 @@ async fn zmq_loop(scene: Arc<RwLock<SceneState>>, addr: &str) {
         let response = match proto::Request::decode(bytes.as_slice()) {
             Ok(req) => {
                 let mut scene = scene.write().expect("scene lock poisoned");
-                scene.handle_request(req)
+                let mut vtl_guard = vtl.as_ref().and_then(|v| v.lock().ok());
+                let vtl_ref = vtl_guard.as_deref_mut();
+                scene.handle_request(req, vtl_ref)
             }
             Err(e) => proto::Response {
                 code: proto::ErrorCode::Unknown as i32,

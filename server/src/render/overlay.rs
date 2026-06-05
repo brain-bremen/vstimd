@@ -1,10 +1,11 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::log_buffer::LogBuffer;
 use crate::render::SystemMetrics;
 use crate::scene::stimulus::ShapeStimulus;
 use crate::scene::{SceneState, Stimulus};
 use crate::timing::{FramePhases, FrameStats};
+use crate::vtl_state::VtlState;
 
 pub use super::system_info::{ClockSource, SystemInfo};
 use super::benchmark::BenchmarkState;
@@ -14,6 +15,7 @@ enum BankFmt { #[default] Dec, Hex, Bin }
 
 pub struct OverlayArgs<'a> {
     pub scene: &'a Arc<RwLock<SceneState>>,
+    pub vtl: Option<&'a Mutex<VtlState>>,
     pub frame_stats: &'a mut FrameStats,
     pub last_phases: FramePhases,
     pub sys: &'a SystemInfo,
@@ -23,7 +25,7 @@ pub struct OverlayArgs<'a> {
 }
 
 pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
-    let OverlayArgs { scene, frame_stats, last_phases, sys, metrics, log_buffer, bench } = args;
+    let OverlayArgs { scene, vtl, frame_stats, last_phases, sys, metrics, log_buffer, bench } = args;
     let last_phases = *last_phases;
     egui::Window::new("System").show(ctx, |ui| {
         ui.label(format!(
@@ -297,20 +299,20 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
     });
 
     egui::Window::new("VTL Lines").default_size([420.0, 160.0]).show(ctx, |ui| {
-        if let Ok(sc) = scene.try_read() {
-            if sc.vtl.is_none() {
-                ui.label(egui::RichText::new("VTL not available").color(egui::Color32::DARK_GRAY));
-                return;
-            }
-            let owner = sc.vtl.as_ref().unwrap();
-            let n = sc.vtl_names.len();
-            if n == 0 {
-                ui.label(egui::RichText::new("(no named lines)").color(egui::Color32::DARK_GRAY));
-            }
-
+        let vtl_guard = vtl.and_then(|v| v.try_lock().ok());
+        let Some(ref vtl_st) = vtl_guard else {
+            ui.label(egui::RichText::new("VTL not available").color(egui::Color32::DARK_GRAY));
+            return;
+        };
+        let owner = vtl_st.owner();
+        let n = vtl_st.names.len();
+        if n == 0 {
+            ui.label(egui::RichText::new("(no named lines)").color(egui::Color32::DARK_GRAY));
+        }
+        {
             // Split into input and output lines.
-            let inputs:  Vec<_> = sc.vtl_names.iter().filter(|e| e.direction == vtl::Direction::Input).collect();
-            let outputs: Vec<_> = sc.vtl_names.iter().filter(|e| e.direction == vtl::Direction::Output).collect();
+            let inputs:  Vec<_> = vtl_st.names.iter().filter(|e| e.direction == vtl::Direction::Input).collect();
+            let outputs: Vec<_> = vtl_st.names.iter().filter(|e| e.direction == vtl::Direction::Output).collect();
 
             // --- Bank view (integer representation) ---
             let fmt_id = egui::Id::new("vtl_bank_fmt");

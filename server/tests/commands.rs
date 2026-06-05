@@ -63,7 +63,7 @@ fn test_create_rect() {
             fill_color: None,
             ..Default::default()
         },
-    ));
+    ), None);
     assert!(is_ok(&resp), "unexpected error: {}", resp.error);
     let new_handle = resp.handle as u32;
     assert!(new_handle > 0, "handle should be positive");
@@ -83,7 +83,7 @@ fn test_create_rect_with_fill() {
             fill_color: Some(fill.clone()),
             ..Default::default()
         },
-    ));
+    ), None);
     assert!(is_ok(&resp));
     let h = resp.handle as u32;
     let entry = scene.stimuli.get_mut(&h).unwrap();
@@ -102,7 +102,7 @@ fn test_create_rect_defaults() {
     let resp = scene.handle_request(create_rect_req(
         sys(),
         proto::CreateRectRequest { center: None, width: 0.0, height: 0.0, fill_color: None, ..Default::default() },
-    ));
+    ), None);
     assert!(is_ok(&resp));
     let h = resp.handle as u32;
     let entry = scene.stimuli.get_mut(&h).unwrap();
@@ -116,17 +116,17 @@ fn test_create_rect_defaults() {
 fn test_enable_disable() {
     let mut scene = SceneState::new();
     let h = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
 
     assert!(scene.stimuli[&h].stimulus.is_visible());
 
-    let resp = scene.handle_request(set_enabled_req(h, false));
+    let resp = scene.handle_request(set_enabled_req(h, false), None);
     assert!(is_ok(&resp));
     assert_eq!(resp.handle, -1);
     assert!(!scene.stimuli[&h].stimulus.flags().enabled);
 
-    let resp = scene.handle_request(set_enabled_req(h, true));
+    let resp = scene.handle_request(set_enabled_req(h, true), None);
     assert!(is_ok(&resp));
     assert!(scene.stimuli[&h].stimulus.flags().enabled);
 }
@@ -135,12 +135,12 @@ fn test_enable_disable() {
 fn test_delete() {
     let mut scene = SceneState::new();
     let h = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
 
     assert!(scene.stimuli.contains_key(&h));
 
-    let resp = scene.handle_request(delete_req(h));
+    let resp = scene.handle_request(delete_req(h), None);
     assert!(is_ok(&resp));
     assert_eq!(resp.handle, -1);
     assert!(!scene.stimuli.contains_key(&h));
@@ -149,7 +149,7 @@ fn test_delete() {
 #[test]
 fn test_delete_nonexistent() {
     let mut scene = SceneState::new();
-    let resp = scene.handle_request(delete_req(9999));
+    let resp = scene.handle_request(delete_req(9999), None);
     assert!(!is_ok(&resp));
     assert_eq!(resp.handle, 0);
     assert!(resp.error.contains("9999"));
@@ -158,7 +158,7 @@ fn test_delete_nonexistent() {
 #[test]
 fn test_enable_nonexistent() {
     let mut scene = SceneState::new();
-    let resp = scene.handle_request(set_enabled_req(9999, true));
+    let resp = scene.handle_request(set_enabled_req(9999, true), None);
     assert!(!is_ok(&resp));
     assert_eq!(resp.handle, 0);
     assert!(resp.error.contains("9999"));
@@ -167,7 +167,7 @@ fn test_enable_nonexistent() {
 #[test]
 fn test_empty_body_returns_error() {
     let mut scene = SceneState::new();
-    let resp = scene.handle_request(proto::Request { target: Some(sys()), body: None });
+    let resp = scene.handle_request(proto::Request { target: Some(sys()), body: None }, None);
     assert!(!is_ok(&resp));
     assert_eq!(resp.handle, 0);
 }
@@ -176,7 +176,7 @@ fn test_empty_body_returns_error() {
 fn test_create_rect_wrong_handle() {
     let mut scene = SceneState::new();
     // CreateRect with a stimulus target should return an error.
-    let resp = scene.handle_request(create_rect_req(stim(5), proto::CreateRectRequest::default()));
+    let resp = scene.handle_request(create_rect_req(stim(5), proto::CreateRectRequest::default()), None);
     assert!(!is_ok(&resp));
     assert_eq!(resp.code, proto::ErrorCode::WrongTarget as i32);
 }
@@ -219,7 +219,7 @@ fn test_create_ellipse() {
             angle: 45.0,
             ..Default::default()
         })),
-    });
+    }, None);
     assert!(is_ok(&resp), "unexpected error: {}", resp.error);
     let h = resp.handle as u32;
     assert!(h > 0);
@@ -234,12 +234,12 @@ fn test_create_ellipse() {
 fn test_set_position() {
     let mut scene = SceneState::new();
     let h = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetPosition(proto::SetPositionRequest { x: 42.0, y: -7.0 })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     assert_eq!(scene.stimuli[&h].stimulus.get_pos(), [42.0, -7.0]);
 }
@@ -248,14 +248,14 @@ fn test_set_position() {
 fn test_set_fill_color() {
     let mut scene = SceneState::new();
     let h = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetFillColor(proto::SetFillColorRequest {
             color: Some(proto::Color { r: 1.0, g: 0.0, b: 0.5, a: 0.8 }),
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let Stimulus::Shape(s) = &scene.stimuli.get(&h).unwrap().stimulus else { panic!("expected shape") };
     let app = s.appearance();
@@ -266,50 +266,50 @@ fn test_set_fill_color() {
 fn test_immediate_mode_composes_mutations_and_marks_dirty() {
     let mut scene = SceneState::new();
     let h = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
     scene.stimuli.get_mut(&h).unwrap().stimulus.flags_mut().dirty = false;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetPosition(proto::SetPositionRequest { x: 15.0, y: 25.0 })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetOrientation(proto::SetOrientationRequest { angle_deg: 30.0 })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetFillColor(proto::SetFillColorRequest {
             color: Some(proto::Color { r: 0.1, g: 0.2, b: 0.3, a: 0.4 }),
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetAlpha(proto::SetAlphaRequest { opacity: 0.9 })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetDrawMode(proto::SetDrawModeRequest {
             mode: proto::ShapeDrawMode::Outlined as i32,
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetOutlineColor(proto::SetOutlineColorRequest {
             color: Some(proto::Color { r: 0.8, g: 0.7, b: 0.6, a: 0.5 }),
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetOutlineWidth(proto::SetOutlineWidthRequest { line_width: 7.0 })),
-    });
+    }, None);
     assert!(is_ok(&resp));
 
     let entry = scene.stimuli.get(&h).unwrap();
@@ -331,7 +331,7 @@ fn test_immediate_mode_composes_mutations_and_marks_dirty() {
 fn test_deferred_mode_stages_composed_mutations_until_flip() {
     let mut scene = SceneState::new();
     let h = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
 
     let stim_obj = &mut scene.stimuli.get_mut(&h).unwrap().stimulus;
@@ -346,50 +346,50 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     }
     s.flags_mut().dirty = false;
 
-    let resp = scene.handle_request(set_deferred_mode_req(true, false));
+    let resp = scene.handle_request(set_deferred_mode_req(true, false), None);
     assert!(is_ok(&resp));
     assert!(scene.deferred_mode);
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetPosition(proto::SetPositionRequest { x: 15.0, y: 25.0 })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetOrientation(proto::SetOrientationRequest { angle_deg: 30.0 })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetFillColor(proto::SetFillColorRequest {
             color: Some(proto::Color { r: 0.1, g: 0.2, b: 0.3, a: 0.4 }),
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetAlpha(proto::SetAlphaRequest { opacity: 0.9 })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetDrawMode(proto::SetDrawModeRequest {
             mode: proto::ShapeDrawMode::Outlined as i32,
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetOutlineColor(proto::SetOutlineColorRequest {
             color: Some(proto::Color { r: 0.8, g: 0.7, b: 0.6, a: 0.5 }),
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetOutlineWidth(proto::SetOutlineWidthRequest { line_width: 7.0 })),
-    });
+    }, None);
     assert!(is_ok(&resp));
 
     let entry = scene.stimuli.get(&h).unwrap();
@@ -412,7 +412,7 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     assert!(app.copy.draw_mode == vstimd::scene::DrawMode::Stroke);
     assert!(!s.flags().dirty);
 
-    let resp = scene.handle_request(set_deferred_mode_req(false, false));
+    let resp = scene.handle_request(set_deferred_mode_req(false, false), None);
     assert!(is_ok(&resp));
     assert!(!scene.deferred_mode);
     assert!(scene.pending_flip);
@@ -438,7 +438,7 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
 fn test_set_rect_size() {
     let mut scene = SceneState::new();
     let h = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
@@ -446,7 +446,7 @@ fn test_set_rect_size() {
             width: 80.0,
             height: 40.0,
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let Stimulus::Shape(ShapeStimulus::Rect(r)) = &scene.stimuli[&h].stimulus else { panic!("expected Rect") };
     assert_eq!(r.size.live, [40.0, 20.0]);
@@ -458,11 +458,11 @@ fn test_set_rect_size_wrong_type() {
     let h = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::CreateCircle(proto::CreateCircleRequest::default())),
-    }).handle as u32;
+    }, None).handle as u32;
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetRectSize(proto::SetRectSizeRequest { width: 50.0, height: 50.0 })),
-    });
+    }, None);
     assert!(!is_ok(&resp));
     assert_eq!(resp.code, proto::ErrorCode::WrongStimulusType as i32);
 }
@@ -479,12 +479,12 @@ fn test_query_stimulus() {
             fill_color: Some(proto::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
             ..Default::default()
         })),
-    }).handle as u32;
+    }, None).handle as u32;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::QueryStimulus(proto::QueryStimulusRequest {})),
-    });
+    }, None);
     assert!(is_ok(&resp), "query error: {}", resp.error);
 
     if let Some(proto::response::Body::StimulusInfo(info)) = resp.body {
@@ -510,16 +510,16 @@ fn test_query_stimulus() {
 fn test_list_stimuli() {
     let mut scene = SceneState::new();
     let h1 = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
     let h2 = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::ListStimuli(proto::ListStimuliRequest {})),
-    });
+    }, None);
     assert!(is_ok(&resp));
 
     if let Some(proto::response::Body::StimulusList(list)) = resp.body {
@@ -539,7 +539,7 @@ fn test_query_server_info() {
     let resp = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::QueryServerInfo(proto::QueryServerInfoRequest {})),
-    });
+    }, None);
     assert!(is_ok(&resp), "error: {}", resp.error);
     assert!(matches!(resp.body, Some(proto::response::Body::ServerInfo(_))));
 }
@@ -547,14 +547,14 @@ fn test_query_server_info() {
 #[test]
 fn test_delete_all() {
     let mut scene = SceneState::new();
-    scene.handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()));
-    scene.handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()));
+    scene.handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None);
+    scene.handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None);
     assert_eq!(scene.stimuli.len(), 2);
 
     let resp = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::DeleteAll(proto::DeleteAllRequest {})),
-    });
+    }, None);
     assert!(is_ok(&resp));
     assert_eq!(scene.stimuli.len(), 0);
 }
@@ -568,7 +568,7 @@ fn test_create_with_name_and_query_returns_name_and_uuid() {
             name: "fix_cross".into(),
             ..Default::default()
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     let h = resp.handle as u32;
     assert!(!resp.id.is_empty(), "create response should contain UUID");
@@ -576,7 +576,7 @@ fn test_create_with_name_and_query_returns_name_and_uuid() {
     let qresp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::QueryStimulus(proto::QueryStimulusRequest {})),
-    });
+    }, None);
     assert!(is_ok(&qresp));
     if let Some(proto::response::Body::StimulusInfo(info)) = qresp.body {
         assert_eq!(info.name, "fix_cross");
@@ -596,7 +596,7 @@ fn test_create_with_client_uuid_echoed_back() {
             id: client_id.into(),
             ..Default::default()
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
     assert_eq!(resp.id, client_id);
 }
@@ -605,19 +605,19 @@ fn test_create_with_client_uuid_echoed_back() {
 fn test_set_name() {
     let mut scene = SceneState::new();
     let h = scene
-        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()))
+        .handle_request(create_rect_req(sys(), proto::CreateRectRequest::default()), None)
         .handle as u32;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetName(proto::SetNameRequest { name: "new_name".into() })),
-    });
+    }, None);
     assert!(is_ok(&resp));
 
     let qresp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::QueryStimulus(proto::QueryStimulusRequest {})),
-    });
+    }, None);
     assert!(is_ok(&qresp));
     if let Some(proto::response::Body::StimulusInfo(info)) = qresp.body {
         assert_eq!(info.name, "new_name");
@@ -641,7 +641,7 @@ fn test_create_text() {
             color: Some(proto::Color { r: 1.0, g: 1.0, b: 0.0, a: 1.0 }),
             ..Default::default()
         })),
-    });
+    }, None);
     assert!(is_ok(&resp), "unexpected error: {}", resp.error);
     let h = resp.handle as u32;
     assert!(h > 0);
@@ -668,7 +668,7 @@ fn test_create_text_defaults() {
             text: "test".into(),
             ..Default::default()
         })),
-    });
+    }, None);
     assert!(is_ok(&resp), "unexpected error: {}", resp.error);
     let h = resp.handle as u32;
     let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else {
@@ -688,12 +688,12 @@ fn test_set_text() {
             text: "before".into(),
             ..Default::default()
         })),
-    }).handle as u32;
+    }, None).handle as u32;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetText(proto::SetTextRequest { text: "after".into() })),
-    });
+    }, None);
     assert!(is_ok(&resp));
 
     let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
@@ -711,14 +711,14 @@ fn test_set_text_color() {
             text: "hi".into(),
             ..Default::default()
         })),
-    }).handle as u32;
+    }, None).handle as u32;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetTextColor(proto::SetTextColorRequest {
             color: Some(proto::Color { r: 0.0, g: 1.0, b: 0.5, a: 0.8 }),
         })),
-    });
+    }, None);
     assert!(is_ok(&resp));
 
     let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
@@ -731,12 +731,12 @@ fn test_set_text_wrong_type() {
     let h = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::CreateRect(proto::CreateRectRequest::default())),
-    }).handle as u32;
+    }, None).handle as u32;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetText(proto::SetTextRequest { text: "oops".into() })),
-    });
+    }, None);
     assert!(!is_ok(&resp));
     assert_eq!(resp.code, proto::ErrorCode::WrongStimulusType as i32);
 }
@@ -749,12 +749,12 @@ fn test_set_text_color_missing_color() {
         body: Some(request::Body::CreateText(proto::CreateTextRequest {
             text: "hi".into(), ..Default::default()
         })),
-    }).handle as u32;
+    }, None).handle as u32;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetTextColor(proto::SetTextColorRequest { color: None })),
-    });
+    }, None);
     assert!(!is_ok(&resp));
     assert_eq!(resp.code, proto::ErrorCode::InvalidArgument as i32);
 }
@@ -774,12 +774,12 @@ fn test_query_text_stimulus() {
             color: Some(proto::Color { r: 0.5, g: 0.5, b: 1.0, a: 1.0 }),
             ..Default::default()
         })),
-    }).handle as u32;
+    }, None).handle as u32;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::QueryStimulus(proto::QueryStimulusRequest {})),
-    });
+    }, None);
     assert!(is_ok(&resp), "query error: {}", resp.error);
 
     if let Some(proto::response::Body::StimulusInfo(info)) = resp.body {
@@ -811,21 +811,21 @@ fn test_text_deferred_set_text_and_color() {
             text: "initial".into(),
             ..Default::default()
         })),
-    }).handle as u32;
+    }, None).handle as u32;
 
     // Enter deferred mode
-    scene.handle_request(set_deferred_mode_req(true, false));
+    scene.handle_request(set_deferred_mode_req(true, false), None);
 
     scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetText(proto::SetTextRequest { text: "deferred".into() })),
-    });
+    }, None);
     scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::SetTextColor(proto::SetTextColorRequest {
             color: Some(proto::Color { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }),
         })),
-    });
+    }, None);
 
     // Live values unchanged before flip
     let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
@@ -835,7 +835,7 @@ fn test_text_deferred_set_text_and_color() {
     assert_eq!(t.params.copy.color, [1.0, 0.0, 0.0, 1.0]);
 
     // End deferred and flip
-    scene.handle_request(set_deferred_mode_req(false, false));
+    scene.handle_request(set_deferred_mode_req(false, false), None);
     scene.apply_flip();
 
     let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
@@ -849,14 +849,14 @@ fn test_create_text_wrong_target() {
     let h = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::CreateRect(proto::CreateRectRequest::default())),
-    }).handle as u32;
+    }, None).handle as u32;
     // CreateText must use system target
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
         body: Some(request::Body::CreateText(proto::CreateTextRequest {
             text: "bad".into(), ..Default::default()
         })),
-    });
+    }, None);
     assert!(!is_ok(&resp));
     assert_eq!(resp.code, proto::ErrorCode::WrongTarget as i32);
 }
@@ -870,19 +870,19 @@ fn test_list_stimuli_includes_id_and_name() {
             name: "rect_a".into(),
             ..Default::default()
         })),
-    }).handle as u32;
+    }, None).handle as u32;
     let h2 = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::CreateCircle(proto::CreateCircleRequest {
             name: "disc_b".into(),
             ..Default::default()
         })),
-    }).handle as u32;
+    }, None).handle as u32;
 
     let resp = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::ListStimuli(proto::ListStimuliRequest {})),
-    });
+    }, None);
     assert!(is_ok(&resp));
     if let Some(proto::response::Body::StimulusList(list)) = resp.body {
         let by_handle: std::collections::HashMap<u32, &proto::StimulusEntry> =

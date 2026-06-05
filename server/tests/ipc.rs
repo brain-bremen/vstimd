@@ -44,7 +44,7 @@ where
     let bind_addr = format!("tcp://127.0.0.1:{port}");
     let connect_addr = format!("tcp://127.0.0.1:{port}");
 
-    let _server = ipc::spawn_zmq_thread(Arc::clone(&scene), &bind_addr);
+    let _server = ipc::spawn_zmq_thread(Arc::clone(&scene), None, &bind_addr);
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
