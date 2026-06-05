@@ -142,7 +142,7 @@ impl DrmRenderState {
             glyph_atlas.descriptor_set_layout,
         );
         // Create VTL shared memory owner (Linux only — DRM backend always runs on Linux).
-        let vtl_owner = vtl::VtlOwner::create("/vstimd_vtl", 1, 1)
+        let vtl_owner = vtl::VtlOwner::create("/vstimd_vtl", 4, 1)
             .map(std::sync::Arc::new)
             .map_err(|e| log::warn!("vtl: failed to create shm segment: {e}"))
             .ok();
