@@ -201,16 +201,58 @@ impl State {
     }
 
     fn render(&mut self) {
+        // NOTE: vblank timing in the winit backend differs from DRM.
+        //
+        // In DRM mode, wait_vblank() is a dedicated blocking call before render,
+        // giving a clean "frame start" boundary.  Here, the vblank boundary is
+        // implicit: vkAcquireNextImageKHR blocks on FIFO until vblank, and
+        // vkWaitForPresentKHR (at the top of render_frame, if present_wait is
+        // available) confirms the previous frame is on screen.
+        //
+        // VTL input poll [A] and output write [B/C] should therefore be placed
+        // around render_one_frame, but the precise vblank-relative position is
+        // less clean than in DRM mode.  See vtl_state.rs for the canonical
+        // description of the frame timeline.
+
         // 1. Collect egui input (via winit event integration, if overlay is on).
         let egui_raw_input = self
             .rs
             .show_overlay
             .then(|| self.egui_winit.take_egui_input(&self.window));
 
+        // TODO: VTL [A] — input poll.
+        // In the winit backend, the best equivalent to the DRM "after vblank"
+        // moment is after vkWaitForPresentKHR confirms the previous frame visible.
+        // That call is inside render_frame(), so the poll must also go inside
+        // render_one_frame (or render_frame) once the frame timeline is
+        // refactored to expose a "vblank confirmed" callback.
+        //
+        // Placeholder: poll would go here or be returned as part of FrameTick.
+        //
+        // if let Some(vtl) = &self.vtl {
+        //     let _edges = vtl.lock().unwrap().poll();
+        // }
+
+        // TODO: VTL [B] — preparation-gated output write (optional).
+        // See DRM backend and vtl_state.rs for pattern description.
+        //
+        // if let Some(vtl) = &self.vtl {
+        //     vtl.lock().unwrap().write_outputs(&frame_start_outputs);
+        // }
+
         // 2. Render: build overlay UI, tessellate scene, record Vulkan commands,
         //    submit to GPU, present to display.
+        //    The frame prepared here will become visible at the next vblank.
         let sys_info = self.sys_info();
         let (tick, platform_output) = self.rs.render_one_frame(None, egui_raw_input, &sys_info, self.vtl.as_deref());
+
+        // TODO: VTL [C] — output write (normal position).
+        // Write outputs here, after present, to commit the state for the frame
+        // just submitted.  Mirrors position [C] in the DRM backend.
+        //
+        // if let Some(vtl) = &self.vtl {
+        //     vtl.lock().unwrap().write_outputs(&frame_end_outputs);
+        // }
 
         // 3. Forward egui platform output (cursor changes, clipboard, etc.).
         if let Some(po) = platform_output {

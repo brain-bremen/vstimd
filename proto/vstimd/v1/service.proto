@@ -110,12 +110,15 @@ message Request {
     ListStimuliRequest     list_stimuli      = 82;  // system target
 
     // ── VTL (Virtual Trigger Lines) ─────────────────────────────────────────
-    SetVirtualTriggerLineNameRequest      set_virtual_trigger_line_name       = 90;
-    ListVirtualTriggerLinesRequest        list_virtual_trigger_lines          = 91;
-    SetVirtualTriggerLineRequest          set_virtual_trigger_line            = 92;
-    ToggleVirtualTriggerLineRequest       toggle_virtual_trigger_line         = 93;
-    ClearVirtualTriggerLineLatchesRequest clear_virtual_trigger_line_latches  = 94;
-    SetVirtualTriggerLineBankRequest      set_virtual_trigger_line_bank       = 95;
+    SetVirtualTriggerLineNameRequest           set_virtual_trigger_line_name            = 90;
+    ListVirtualTriggerLinesRequest             list_virtual_trigger_lines               = 91;
+    SetInputVirtualTriggerLineRequest          set_input_virtual_trigger_line           = 92;
+    ToggleInputVirtualTriggerLineRequest       toggle_input_virtual_trigger_line        = 93;
+    ClearInputVirtualTriggerLineLatchesRequest clear_input_virtual_trigger_line_latches = 94;
+    SetInputVirtualTriggerLineBankRequest      set_input_virtual_trigger_line_bank      = 95;
+    SetOutputVirtualTriggerLineRequest         set_output_virtual_trigger_line          = 96;
+    ToggleOutputVirtualTriggerLineRequest      toggle_output_virtual_trigger_line       = 97;
+    SetOutputVirtualTriggerLineBankRequest     set_output_virtual_trigger_line_bank     = 98;
   }
 }
 

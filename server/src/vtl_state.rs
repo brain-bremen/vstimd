@@ -2,8 +2,81 @@
 ///
 /// Created in `main()` and shared as `Arc<Mutex<VtlState>>` with:
 /// - The ZMQ thread (software-trigger and naming commands)
-/// - The render backends (per-frame edge polling, future animation driving)
+/// - The render backends (per-frame edge polling, output driving)
 /// - The overlay (read-only display via try_lock)
+///
+/// # Input vs Output
+///
+/// **Input lines** (`input_state`, `input_rise_latch`, `input_fall_latch`)
+/// represent signals arriving *into* vstimd from the outside world.
+/// Canonical writer: `nidaqd` — sets bits and latches when a DAQ edge fires.
+/// Software writer: ZMQ `SetInput*` commands (simulate a hardware trigger).
+/// Reader: the render loop, via [`VtlState::poll`].
+///
+/// **Output lines** (`output_state`) represent signals driven *by* vstimd.
+/// Canonical writer: the render loop, via [`VtlState::write_outputs`].
+/// Software writer: ZMQ `SetOutput*` commands (manual override / testing).
+/// Reader: `nidaqd` — pulses hardware DAQ lines when a bit goes high.
+///
+/// # Timing: where VTL fits in the render loop
+///
+/// The render loop runs once per vblank.  Frame N refers to the content that
+/// becomes visible at vblank N.  The loop for frame N looks like this:
+///
+/// ```text
+/// ── vblank N fires ──────────────────────────────────────────────────────────
+///   (DRM: wait_vblank() returns)
+///   (winit: vkWaitForPresentKHR confirms that frame N-1 is now on screen)
+///
+///   [A] INPUT POLL — call VtlState::poll() here.
+///       Reads input_state and drains rise/fall latches that nidaqd wrote
+///       since the last poll.  Returns VtlEdges (per-bank rising/falling masks)
+///       for the animation system.
+///       This is the first moment we know frame N-1 is confirmed on screen,
+///       so edges here represent events that occurred during frame N-1's display.
+///
+///   [B] OUTPUT WRITE (frame-start position) — optional, for "preparation-gated"
+///       output patterns.  Write outputs HERE if they should be high while
+///       vstimd is preparing frame N (see below).
+///
+///   tessellate scene / advance animations → produces frame N's pixel content
+///   record Vulkan command buffer
+///   vkQueueSubmit
+///   vkQueuePresentKHR  ← frame N is now queued; it will appear at vblank N+1
+///
+///   [C] OUTPUT WRITE (frame-end position) — call VtlState::write_outputs() here.
+///       Writes the output state that animations computed for frame N.
+///       nidaqd will read this state and can pulse hardware lines during the
+///       interval between now and vblank N+1, just before frame N becomes visible.
+///       For a stimulus-onset marker ("frame N is now on screen"), this is the
+///       right place: outputs go high just before vblank N+1.
+///
+/// ── vblank N+1 fires ────────────────────────────────────────────────────────
+///   frame N becomes visible on the display
+///   next iteration: poll() sees any edges that occurred since the last poll
+/// ```
+///
+/// # Output patterns
+///
+/// **Sustained output (default):** Write at [C].  The output stays high until
+/// the animation clears it.  Used for "stimulus is currently visible" flags.
+///
+/// **Stimulus-onset pulse:** Animation sets the bit at the final frame of a
+/// transition.  Written at [C] → the pulse goes high just before vblank N+1
+/// (frame N appears) and is cleared by the animation at [C] in the next frame.
+/// Duration: one frame period.
+///
+/// **Preparation-gated pulse** (special case): Write HIGH at [B] and LOW at [C]
+/// in the same iteration.  The trigger is high only during vstimd's compute and
+/// render time for frame N (~half a frame period, GPU-dependent).  Use when
+/// nidaqd needs to know exactly when vstimd is actively computing, rather than
+/// when the frame is on screen.  This requires two separate `write_outputs`
+/// calls per frame with different state arrays.
+///
+/// > **Status:** [`VtlState::poll`] and [`VtlState::write_outputs`] are
+/// > implemented but not yet wired into the render loop.  See the `// TODO: VTL`
+/// > comments in `render/drm/mod.rs` and `render/winit_vk/mod.rs`.
+/// > Currently, both directions are only accessible via ZMQ commands.
 
 use vtl::{Direction, VtlOwner, MAX_BANKS};
 

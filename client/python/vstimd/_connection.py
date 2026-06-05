@@ -5,6 +5,7 @@ import zmq  # type: ignore[import]
 from vstimd._proto import service_pb2
 from vstimd.stimuli import StimuliClient
 from vstimd.system import SystemClient
+from vstimd.vtl import VtlClient
 from vstimd.exceptions import (
     VstimdError,
     HandleNotFoundError,
@@ -45,6 +46,7 @@ class Connection:
         self._sock.connect(address)
         self.stimuli = StimuliClient(self._send)
         self.system = SystemClient(self._send)
+        self.vtl = VtlClient(self._send)
 
     def _send(self, req: service_pb2.Request) -> service_pb2.Response:
         self._sock.send(req.SerializeToString())

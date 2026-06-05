@@ -280,12 +280,52 @@ impl DrmRenderState {
                 .then(|| self.build_egui_raw_input(nav_events));
 
             // 3. Wait for the next vblank (blocking kernel scanout ioctl).
+            //    When this returns, the previous frame is confirmed visible on
+            //    the display.  This is the canonical "frame start" boundary.
             let screen_clock = self.wait_vblank();
+
+            // TODO: VTL [A] — input poll.
+            // Call VtlState::poll() here, immediately after vblank confirmation.
+            // This drains rise/fall latches and detects edges on input lines.
+            // Pass the returned VtlEdges to the scene/animation system so that
+            // input transitions observed during the previous frame's display
+            // period can drive stimulus changes in the frame we are about to
+            // prepare.
+            //
+            // if let Some(vtl) = &self.vtl {
+            //     let _edges = vtl.lock().unwrap().poll();
+            //     // TODO: feed _edges into animation system
+            // }
+
+            // TODO: VTL [B] — preparation-gated output write (optional).
+            // Write output state HERE only for "preparation-gated" output
+            // patterns — triggers that should be high while vstimd is actively
+            // computing and rendering the upcoming frame (not while it is on
+            // screen).  Must be paired with a LOW write at position [C] below.
+            // See vtl_state.rs for a full description of output patterns.
+            //
+            // if let Some(vtl) = &self.vtl {
+            //     vtl.lock().unwrap().write_outputs(&frame_start_outputs);
+            // }
 
             // 4. Render: build overlay UI, tessellate scene, record Vulkan
             //    commands, submit to GPU, present to display.
+            //    The frame prepared here will become visible at the next vblank.
             let sys_info = self.sys_info();
             self.rs.render_one_frame(screen_clock, egui_raw_input, &sys_info, self.vtl.as_deref());
+
+            // TODO: VTL [C] — output write (normal position).
+            // Call VtlState::write_outputs() here, after present.
+            // Outputs written here reflect the state of the frame just submitted.
+            // nidaqd will read them during the interval before the next vblank,
+            // giving it lead time to pulse hardware lines as the frame appears.
+            // For stimulus-onset markers this is the correct position: the output
+            // goes high just before the frame becomes visible on screen.
+            // If a preparation-gated write was issued at [B], clear it here.
+            //
+            // if let Some(vtl) = &self.vtl {
+            //     vtl.lock().unwrap().write_outputs(&frame_end_outputs);
+            // }
         }
         // When the loop exits, `self` is consumed and fields drop in
         // declaration order: `rs` (Vulkan teardown) → `input` → `drm_vblank`

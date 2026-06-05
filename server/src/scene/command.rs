@@ -107,10 +107,13 @@ fn command_summary(req: &proto::Request) -> String {
         Some(request::Body::SetPolygonVertices(_)) => "SetPolygonVertices".into(),
         Some(request::Body::SetVirtualTriggerLineName(c)) => format!("SetVirtualTriggerLineName({:?})", c.name),
         Some(request::Body::ListVirtualTriggerLines(_)) => "ListVirtualTriggerLines".into(),
-        Some(request::Body::SetVirtualTriggerLine(c)) => format!("SetVirtualTriggerLine(val={})", c.value),
-        Some(request::Body::ToggleVirtualTriggerLine(_)) => "ToggleVirtualTriggerLine".into(),
-        Some(request::Body::ClearVirtualTriggerLineLatches(_)) => "ClearVirtualTriggerLineLatches".into(),
-        Some(request::Body::SetVirtualTriggerLineBank(c)) => format!("SetVirtualTriggerLineBank(bank={} val={:#018x})", c.bank, c.value),
+        Some(request::Body::SetInputVirtualTriggerLine(c)) => format!("SetInputVirtualTriggerLine(val={})", c.value),
+        Some(request::Body::ToggleInputVirtualTriggerLine(_)) => "ToggleInputVirtualTriggerLine".into(),
+        Some(request::Body::ClearInputVirtualTriggerLineLatches(_)) => "ClearInputVirtualTriggerLineLatches".into(),
+        Some(request::Body::SetInputVirtualTriggerLineBank(c)) => format!("SetInputVirtualTriggerLineBank(bank={} val={:#018x})", c.bank, c.value),
+        Some(request::Body::SetOutputVirtualTriggerLine(c)) => format!("SetOutputVirtualTriggerLine(val={})", c.value),
+        Some(request::Body::ToggleOutputVirtualTriggerLine(_)) => "ToggleOutputVirtualTriggerLine".into(),
+        Some(request::Body::SetOutputVirtualTriggerLineBank(c)) => format!("SetOutputVirtualTriggerLineBank(bank={} val={:#018x})", c.bank, c.value),
         None => "?".into(),
     }
 }
@@ -190,10 +193,13 @@ impl SceneState {
             request::Body::ListStimuli(_) => self.cmd_list_stimuli(),
             request::Body::SetVirtualTriggerLineName(cmd) => self.cmd_set_virtual_trigger_line_name(cmd, vtl),
             request::Body::ListVirtualTriggerLines(_) => self.cmd_list_virtual_trigger_lines(vtl.as_deref()),
-            request::Body::SetVirtualTriggerLine(cmd) => self.cmd_set_virtual_trigger_line(cmd, vtl.as_deref()),
-            request::Body::ToggleVirtualTriggerLine(cmd) => self.cmd_toggle_virtual_trigger_line(cmd, vtl.as_deref()),
-            request::Body::ClearVirtualTriggerLineLatches(cmd) => self.cmd_clear_virtual_trigger_line_latches(cmd, vtl.as_deref()),
-            request::Body::SetVirtualTriggerLineBank(cmd) => self.cmd_set_virtual_trigger_line_bank(cmd, vtl.as_deref()),
+            request::Body::SetInputVirtualTriggerLine(cmd) => self.cmd_set_input_virtual_trigger_line(cmd, vtl.as_deref()),
+            request::Body::ToggleInputVirtualTriggerLine(cmd) => self.cmd_toggle_input_virtual_trigger_line(cmd, vtl.as_deref()),
+            request::Body::ClearInputVirtualTriggerLineLatches(cmd) => self.cmd_clear_input_virtual_trigger_line_latches(cmd, vtl.as_deref()),
+            request::Body::SetInputVirtualTriggerLineBank(cmd) => self.cmd_set_input_virtual_trigger_line_bank(cmd, vtl.as_deref()),
+            request::Body::SetOutputVirtualTriggerLine(cmd) => self.cmd_set_output_virtual_trigger_line(cmd, vtl.as_deref()),
+            request::Body::ToggleOutputVirtualTriggerLine(cmd) => self.cmd_toggle_output_virtual_trigger_line(cmd, vtl.as_deref()),
+            request::Body::SetOutputVirtualTriggerLineBank(cmd) => self.cmd_set_output_virtual_trigger_line_bank(cmd, vtl.as_deref()),
             _ => err(
                 proto::ErrorCode::WrongTarget,
                 "command requires a stimulus handle (target.stimulus > 0)",
@@ -219,10 +225,13 @@ impl SceneState {
             | request::Body::ListStimuli(_)
             | request::Body::SetVirtualTriggerLineName(_)
             | request::Body::ListVirtualTriggerLines(_)
-            | request::Body::SetVirtualTriggerLine(_)
-            | request::Body::ToggleVirtualTriggerLine(_)
-            | request::Body::ClearVirtualTriggerLineLatches(_)
-            | request::Body::SetVirtualTriggerLineBank(_) => err(
+            | request::Body::SetInputVirtualTriggerLine(_)
+            | request::Body::ToggleInputVirtualTriggerLine(_)
+            | request::Body::ClearInputVirtualTriggerLineLatches(_)
+            | request::Body::SetInputVirtualTriggerLineBank(_)
+            | request::Body::SetOutputVirtualTriggerLine(_)
+            | request::Body::ToggleOutputVirtualTriggerLine(_)
+            | request::Body::SetOutputVirtualTriggerLineBank(_) => err(
                 proto::ErrorCode::WrongTarget,
                 "system command must use target.system (not a stimulus handle)",
             ),
@@ -1029,9 +1038,9 @@ impl SceneState {
         ))
     }
 
-    fn cmd_set_virtual_trigger_line(
+    fn cmd_set_input_virtual_trigger_line(
         &self,
-        cmd: proto::SetVirtualTriggerLineRequest,
+        cmd: proto::SetInputVirtualTriggerLineRequest,
         vtl: Option<&VtlState>,
     ) -> proto::Response {
         let Some(vtl) = vtl else {
@@ -1054,9 +1063,9 @@ impl SceneState {
         ok_ack()
     }
 
-    fn cmd_toggle_virtual_trigger_line(
+    fn cmd_toggle_input_virtual_trigger_line(
         &self,
-        cmd: proto::ToggleVirtualTriggerLineRequest,
+        cmd: proto::ToggleInputVirtualTriggerLineRequest,
         vtl: Option<&VtlState>,
     ) -> proto::Response {
         let Some(vtl) = vtl else {
@@ -1069,19 +1078,15 @@ impl SceneState {
         let owner = vtl.owner();
         let mask = 1u64 << bit;
         let rose = owner.toggle_input_bit(bank, bit);
-        if rose {
-            owner.set_input_rise(bank, mask);
-        } else {
-            owner.set_input_fall(bank, mask);
-        }
+        if rose { owner.set_input_rise(bank, mask); } else { owner.set_input_fall(bank, mask); }
         ok_body(proto::response::Body::VirtualTriggerLineState(
             proto::VirtualTriggerLineStateResponse { high: rose },
         ))
     }
 
-    fn cmd_clear_virtual_trigger_line_latches(
+    fn cmd_clear_input_virtual_trigger_line_latches(
         &self,
-        cmd: proto::ClearVirtualTriggerLineLatchesRequest,
+        cmd: proto::ClearInputVirtualTriggerLineLatchesRequest,
         vtl: Option<&VtlState>,
     ) -> proto::Response {
         let Some(vtl) = vtl else {
@@ -1098,9 +1103,9 @@ impl SceneState {
         ok_ack()
     }
 
-    fn cmd_set_virtual_trigger_line_bank(
+    fn cmd_set_input_virtual_trigger_line_bank(
         &self,
-        cmd: proto::SetVirtualTriggerLineBankRequest,
+        cmd: proto::SetInputVirtualTriggerLineBankRequest,
         vtl: Option<&VtlState>,
     ) -> proto::Response {
         let Some(vtl) = vtl else {
@@ -1118,6 +1123,71 @@ impl SceneState {
         owner.set_input_state(bank, next);
         if rising  != 0 { owner.set_input_rise(bank,  rising);  }
         if falling != 0 { owner.set_input_fall(bank, falling); }
+        ok_ack()
+    }
+
+    fn cmd_set_output_virtual_trigger_line(
+        &self,
+        cmd: proto::SetOutputVirtualTriggerLineRequest,
+        vtl: Option<&VtlState>,
+    ) -> proto::Response {
+        let Some(vtl) = vtl else {
+            return err(proto::ErrorCode::NotSupported, "VTL shared memory not available");
+        };
+        let (bank, bit) = match resolve_vtl_handle(cmd.handle.as_ref(), &vtl.names) {
+            Ok(v) => v,
+            Err(e) => return *e,
+        };
+        let owner = vtl.owner();
+        let mask = 1u64 << bit;
+        let prev = owner.output_state(bank);
+        if cmd.value {
+            owner.set_output_state(bank, prev | mask);
+        } else {
+            owner.set_output_state(bank, prev & !mask);
+        }
+        ok_ack()
+    }
+
+    fn cmd_toggle_output_virtual_trigger_line(
+        &self,
+        cmd: proto::ToggleOutputVirtualTriggerLineRequest,
+        vtl: Option<&VtlState>,
+    ) -> proto::Response {
+        let Some(vtl) = vtl else {
+            return err(proto::ErrorCode::NotSupported, "VTL shared memory not available");
+        };
+        let (bank, bit) = match resolve_vtl_handle(cmd.handle.as_ref(), &vtl.names) {
+            Ok(v) => v,
+            Err(e) => return *e,
+        };
+        let owner = vtl.owner();
+        let mask = 1u64 << bit;
+        let prev = owner.output_state(bank);
+        let high = prev & mask == 0; // will be high after toggle
+        if high {
+            owner.set_output_state(bank, prev | mask);
+        } else {
+            owner.set_output_state(bank, prev & !mask);
+        }
+        ok_body(proto::response::Body::VirtualTriggerLineState(
+            proto::VirtualTriggerLineStateResponse { high },
+        ))
+    }
+
+    fn cmd_set_output_virtual_trigger_line_bank(
+        &self,
+        cmd: proto::SetOutputVirtualTriggerLineBankRequest,
+        vtl: Option<&VtlState>,
+    ) -> proto::Response {
+        let Some(vtl) = vtl else {
+            return err(proto::ErrorCode::NotSupported, "VTL shared memory not available");
+        };
+        if cmd.bank >= vtl::MAX_BANKS as u32 {
+            return err(proto::ErrorCode::InvalidArgument, "bank out of range");
+        }
+        let owner = vtl.owner();
+        owner.set_output_state(cmd.bank as usize, cmd.value);
         ok_ack()
     }
 

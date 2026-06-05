@@ -1,6 +1,27 @@
 syntax = "proto3";
 package vstimd.v1;
 
+// ── Direction ─────────────────────────────────────────────────────────────────
+//
+// Input lines represent signals arriving *into* vstimd.
+//   Canonical writer: nidaqd (hardware DAQ) via the vtl shared-memory segment.
+//   Software writer:  ZMQ SetInput* commands (simulate a hardware trigger).
+//   Intended reader:  vstimd render loop — polled once per frame at the START
+//                     of each frame to detect rising/falling edges that drive
+//                     stimulus animations.
+//
+// Output lines represent signals driven *by* vstimd.
+//   Canonical writer: vstimd render loop — written once per frame at the END
+//                     of each frame (after present/vsync) to reflect what was
+//                     shown on-screen.
+//   Software writer:  ZMQ SetOutput* commands (manual override / testing).
+//   Intended reader:  nidaqd — reads output_state to pulse hardware DAQ lines
+//                     (frame-sync, stimulus-onset markers).
+//
+// NOTE: frame-gated polling (VtlState::poll) and frame-gated output writing
+// (VtlState::write_outputs) are defined but not yet wired into the render loop.
+// Currently, both directions are only accessible via ZMQ commands.
+
 enum VirtualTriggerLineDirection {
   VIRTUAL_TRIGGER_LINE_DIRECTION_INPUT  = 0;
   VIRTUAL_TRIGGER_LINE_DIRECTION_OUTPUT = 1;
@@ -44,30 +65,53 @@ message ListVirtualTriggerLinesResponse {
   repeated VirtualTriggerLineInfo lines = 1;
 }
 
-// ── Line control ──────────────────────────────────────────────────────────────
+// ── Input line control ────────────────────────────────────────────────────────
+// Writes input_state / input_rise_latch / input_fall_latch in the vtl shm segment.
+// Use these to simulate hardware trigger inputs arriving into vstimd.
 
-message SetVirtualTriggerLineRequest {
+message SetInputVirtualTriggerLineRequest {
   VirtualTriggerLineHandle handle = 1;
   bool                     value  = 2;
 }
 
-message ToggleVirtualTriggerLineRequest {
+message ToggleInputVirtualTriggerLineRequest {
   VirtualTriggerLineHandle handle = 1;
 }
+
+// Drain accumulated rise/fall latches for an input line without changing its level.
+message ClearInputVirtualTriggerLineLatchesRequest {
+  VirtualTriggerLineHandle handle = 1;
+}
+
+// Set all 64 input lines of a bank at once.
+message SetInputVirtualTriggerLineBankRequest {
+  uint32 bank  = 1;
+  uint64 value = 2;
+}
+
+// ── Output line control ───────────────────────────────────────────────────────
+// Writes output_state in the vtl shm segment.
+// Use these to manually drive output lines (testing / override).
+// In normal operation, output lines are set by the vstimd render loop after each frame.
+
+message SetOutputVirtualTriggerLineRequest {
+  VirtualTriggerLineHandle handle = 1;
+  bool                     value  = 2;
+}
+
+message ToggleOutputVirtualTriggerLineRequest {
+  VirtualTriggerLineHandle handle = 1;
+}
+
+// Set all 64 output lines of a bank at once.
+message SetOutputVirtualTriggerLineBankRequest {
+  uint32 bank  = 1;
+  uint64 value = 2;
+}
+
+// ── Shared response ───────────────────────────────────────────────────────────
 
 // Returned by Toggle (and optionally Set) to report the resulting state.
 message VirtualTriggerLineStateResponse {
   bool high = 1;
-}
-
-// Drain accumulated rise/fall latches for a line without affecting its level.
-message ClearVirtualTriggerLineLatchesRequest {
-  VirtualTriggerLineHandle handle = 1;
-}
-
-// Set all 64 lines of a bank at once. Rising and falling edges are derived
-// from the previous state and latched automatically, exactly as hardware would.
-message SetVirtualTriggerLineBankRequest {
-  uint32 bank  = 1;
-  uint64 value = 2;
 }
