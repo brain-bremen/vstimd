@@ -13,7 +13,7 @@ use super::stimulus::text::{
     text_render_params_from_proto,
 };
 use crate::ipc::{err, err_not_found, err_wrong_type, ok_ack, ok_body, ok_handle, ok_handle_with_id};
-use super::animation::{AnimParam, AnimState, Animation, AnimationEntry, Edge, FinalAction, VtlBit};
+use super::animation::{AnimState, Animation, AnimationEntry, Edge, FinalAction, VtlBit};
 use crate::proto;
 use crate::proto::request;
 use crate::vtl_state::{VtlNameEntry, VtlState};
@@ -1266,6 +1266,15 @@ impl SceneState {
             None
         };
 
+        let start_trigger = if cmd.start_trigger.is_some() {
+            match resolve_vtl_handle(cmd.start_trigger.as_ref(), vtl_names) {
+                Ok((bank, bit)) => Some((VtlBit { bank, bit }, proto_vtl_edge(cmd.start_edge))),
+                Err(e) => return *e,
+            }
+        } else {
+            None
+        };
+
         let animation = match proto_to_animation(&cmd, vtl_names) {
             Ok(a) => a,
             Err(e) => return *e,
@@ -1277,6 +1286,7 @@ impl SceneState {
             state: AnimState::Idle,
             final_action,
             signal_event,
+            start_trigger,
             animation,
         });
         ok_handle(handle)
@@ -1327,6 +1337,13 @@ impl SceneState {
     }
 }
 
+fn proto_vtl_edge(e: i32) -> Edge {
+    match proto::VtlEdge::try_from(e).unwrap_or(proto::VtlEdge::Rising) {
+        proto::VtlEdge::Rising  => Edge::Rising,
+        proto::VtlEdge::Falling => Edge::Falling,
+    }
+}
+
 // ── Animation proto → Rust mapping ───────────────────────────────────────────
 
 fn proto_to_animation(
@@ -1340,86 +1357,35 @@ fn proto_to_animation(
         Ok(VtlBit { bank, bit })
     };
 
-    let proto_edge = |e: i32| -> Edge {
-        match proto::VtlEdge::try_from(e).unwrap_or(proto::VtlEdge::Rising) {
-            proto::VtlEdge::Rising  => Edge::Rising,
-            proto::VtlEdge::Falling => Edge::Falling,
-        }
-    };
-
-    let proto_param = |p: i32| -> AnimParam {
-        match proto::AnimatedParam::try_from(p).unwrap_or(proto::AnimatedParam::PositionX) {
-            proto::AnimatedParam::PositionX       => AnimParam::PositionX,
-            proto::AnimatedParam::PositionY       => AnimParam::PositionY,
-            proto::AnimatedParam::Alpha           => AnimParam::Alpha,
-            proto::AnimatedParam::GratingPhase    => AnimParam::GratingPhase,
-            proto::AnimatedParam::GratingContrast => AnimParam::GratingContrast,
-            proto::AnimatedParam::GratingSf       => AnimParam::GratingSf,
-        }
-    };
+    let proto_edge = |e: i32| -> Edge { proto_vtl_edge(e) };
 
     match cmd.body.as_ref() {
-        Some(PBody::CoupleVisibility(c)) => Ok(Animation::CoupleVisibility {
+        Some(PBody::CoupleVisibilityToInputTriggerLine(c)) => Ok(Animation::CoupleVisibilityToInputTriggerLine {
             trigger:  vtl_bit(c.trigger.as_ref())?,
             polarity: c.polarity,
-            stimuli: c.stimuli.clone(),
+            stimuli:  c.stimuli.clone(),
         }),
         Some(PBody::EdgeSetEnabled(c)) => Ok(Animation::EdgeSetEnabled {
             trigger:  vtl_bit(c.trigger.as_ref())?,
             edge:     proto_edge(c.edge),
-            stimuli: c.stimuli.clone(),
+            stimuli:  c.stimuli.clone(),
             enabled:  c.enabled,
         }),
-        Some(PBody::TriggerFlash(c)) => Ok(Animation::TriggerFlash {
-            trigger:         vtl_bit(c.trigger.as_ref())?,
-            edge:            proto_edge(c.edge),
-            stimuli: c.stimuli.clone(),
-            duration_frames: c.duration_frames,
-        }),
-        Some(PBody::TriggerFlicker(c)) => Ok(Animation::TriggerFlicker {
-            trigger:      vtl_bit(c.trigger.as_ref())?,
-            edge:         proto_edge(c.edge),
-            stimuli: c.stimuli.clone(),
-            on_frames:    c.on_frames,
-            off_frames:   c.off_frames,
-            total_frames: if c.total_frames == 0 { None } else { Some(c.total_frames) },
-        }),
         Some(PBody::Flash(c)) => Ok(Animation::Flash {
-            stimuli: c.stimuli.clone(),
+            stimuli:         c.stimuli.clone(),
             duration_frames: c.duration_frames,
         }),
         Some(PBody::Flicker(c)) => Ok(Animation::Flicker {
-            stimuli: c.stimuli.clone(),
+            stimuli:      c.stimuli.clone(),
             on_frames:    c.on_frames,
             off_frames:   c.off_frames,
             total_frames: if c.total_frames == 0 { None } else { Some(c.total_frames) },
         }),
-        Some(PBody::Harmonic(c)) => Ok(Animation::Harmonic {
-            stimuli: c.stimuli.clone(),
-            amplitude:     c.amplitude,
-            phase_inc:     c.phase_inc,
-            direction_deg: c.direction_deg,
-        }),
-        Some(PBody::LinearRange(c)) => Ok(Animation::LinearRange {
-            stimuli: c.stimuli.clone(),
-            param:           proto_param(c.param),
-            start:           c.start,
-            end:             c.end,
-            duration_frames: c.duration_frames,
-        }),
-        Some(PBody::ExternalPosition(c)) => Ok(Animation::ExternalPosition {
+        Some(PBody::ExternalPosition2d(c)) => Ok(Animation::ExternalPosition2D {
             stimuli: c.stimuli.clone(),
             shm_name: c.shm_name.clone(),
             x_offset: c.x_offset,
             y_offset: c.y_offset,
-        }),
-        Some(PBody::FrameOnsetOutput(c)) => Ok(Animation::FrameOnsetOutput {
-            output:       vtl_bit(c.output.as_ref())?,
-            pulse_frames: c.pulse_frames,
-        }),
-        Some(PBody::StimulusVisibleOut(c)) => Ok(Animation::StimulusVisibleOut {
-            output:   vtl_bit(c.output.as_ref())?,
-            stimuli: c.stimuli.clone(),
         }),
         None => Err(Box::new(err(proto::ErrorCode::InvalidArgument, "animation body must be set"))),
     }

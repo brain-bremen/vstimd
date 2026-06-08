@@ -28,7 +28,6 @@ from .animations import (
     AnimationClient,
     AnimationInfo,
     AnimationState,
-    AnimatedParam,
     FinalAction,
     VtlEdge,
 )
@@ -64,7 +63,6 @@ __all__ = [
     "AnimationClient",
     "AnimationInfo",
     "AnimationState",
-    "AnimatedParam",
     "FinalAction",
     "VtlEdge",
     "psychopy",

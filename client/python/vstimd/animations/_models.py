@@ -16,15 +16,6 @@ class VtlEdge(IntEnum):
     FALLING = 1
 
 
-class AnimatedParam(IntEnum):
-    POSITION_X = 0
-    POSITION_Y = 1
-    ALPHA = 2
-    GRATING_PHASE = 3
-    GRATING_CONTRAST = 4
-    GRATING_SF = 5
-
-
 class FinalAction(IntFlag):
     DISABLE           = 0x01
     TOGGLE_PHOTODIODE = 0x04

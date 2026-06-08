@@ -3,17 +3,7 @@ package vstimd.v1;
 
 import "vstimd/v1/vtl.proto";
 
-// ── Parameter enums ───────────────────────────────────────────────────────────
-
-// Which stimulus parameter a LinearRange animation drives.
-enum AnimatedParam {
-  ANIMATED_PARAM_POSITION_X        = 0;
-  ANIMATED_PARAM_POSITION_Y        = 1;
-  ANIMATED_PARAM_ALPHA             = 2;
-  ANIMATED_PARAM_GRATING_PHASE     = 3;
-  ANIMATED_PARAM_GRATING_CONTRAST  = 4;
-  ANIMATED_PARAM_GRATING_SF        = 5;
-}
+// ── State enum ────────────────────────────────────────────────────────────────
 
 // Lifecycle state of an animation.
 enum AnimationState {
@@ -26,8 +16,8 @@ enum AnimationState {
 // ── Animation body messages ───────────────────────────────────────────────────
 // One message per animation variant; embedded in CreateAnimationRequest.body.
 
-// Mirror stimulus enabled state to the level of a trigger line.
-message AnimCoupleVisibility {
+// Mirror stimulus enabled state to the level of an input trigger line.
+message AnimCoupleVisibilityToInputTriggerLine {
   VirtualTriggerLineHandle trigger         = 1;
   bool                     polarity        = 2; // true = enable when trigger is HIGH
   repeated uint32          stimuli         = 3;
@@ -41,31 +31,13 @@ message AnimEdgeSetEnabled {
   bool                     enabled         = 4;
 }
 
-// Enable a stimulus for duration_frames after a trigger edge.
-message AnimTriggerFlash {
-  VirtualTriggerLineHandle trigger         = 1;
-  VtlEdge                  edge            = 2;
-  repeated uint32          stimuli         = 3;
-  uint32                   duration_frames = 4;
-}
-
-// Flicker a stimulus on/off after a trigger edge.
-message AnimTriggerFlicker {
-  VirtualTriggerLineHandle trigger         = 1;
-  VtlEdge                  edge            = 2;
-  repeated uint32          stimuli         = 3;
-  uint32                   on_frames       = 4;
-  uint32                   off_frames      = 5;
-  uint32                   total_frames    = 6; // 0 = run forever
-}
-
-// Enable stimuli for duration_frames immediately when armed.
+// Enable stimuli for duration_frames.
 message AnimFlash {
   repeated uint32 stimuli         = 1;
   uint32          duration_frames = 2;
 }
 
-// Flicker stimuli on/off immediately when armed.
+// Flicker stimuli on/off.
 message AnimFlicker {
   repeated uint32 stimuli      = 1;
   uint32          on_frames    = 2;
@@ -73,41 +45,12 @@ message AnimFlicker {
   uint32          total_frames = 4; // 0 = run forever
 }
 
-// Sinusoidal position oscillation.
-message AnimHarmonic {
-  repeated uint32 stimuli       = 1;
-  float           amplitude     = 2;
-  float           phase_inc     = 3; // radians per frame
-  float           direction_deg = 4;
-}
-
-// Linearly interpolate a single parameter over duration_frames.
-message AnimLinearRange {
-  repeated uint32 stimuli         = 1;
-  AnimatedParam   param           = 2;
-  float           start           = 3;
-  float           end             = 4;
-  uint32          duration_frames = 5;
-}
-
 // Read stimulus position from a POSIX shared memory float array each frame.
-message AnimExternalPosition {
+message AnimExternalPosition2D {
   repeated uint32 stimuli  = 1;
   string          shm_name = 2; // e.g. "/vstimd_pos_myobj"
   float           x_offset = 3;
   float           y_offset = 4;
-}
-
-// Drive an output line HIGH for pulse_frames every frame.
-message AnimFrameOnsetOutput {
-  VirtualTriggerLineHandle output       = 1;
-  uint32                   pulse_frames = 2;
-}
-
-// Mirror any of the listed stimuli's visibility to an output line.
-message AnimStimulusVisibleOut {
-  VirtualTriggerLineHandle output   = 1;
-  repeated uint32          stimuli  = 2;
 }
 
 // ── Animation management ──────────────────────────────────────────────────────
@@ -124,19 +67,16 @@ message CreateAnimationRequest {
   uint32 final_action_mask = 2;
   // Required when SIGNAL_EVENT (0x08) is set; the output line to pulse.
   VirtualTriggerLineHandle signal_event_output = 3;
+  // Optional: if set, the animation waits for this edge before starting.
+  VirtualTriggerLineHandle start_trigger = 4;
+  VtlEdge                  start_edge    = 5;
 
   oneof body {
-    AnimCoupleVisibility   couple_visibility    = 10;
+    AnimCoupleVisibilityToInputTriggerLine couple_visibility_to_input_trigger_line = 10;
     AnimEdgeSetEnabled     edge_set_enabled     = 11;
-    AnimTriggerFlash       trigger_flash        = 12;
-    AnimTriggerFlicker     trigger_flicker      = 13;
-    AnimFlash              flash                = 14;
-    AnimFlicker            flicker              = 15;
-    AnimHarmonic           harmonic             = 16;
-    AnimLinearRange        linear_range         = 17;
-    AnimExternalPosition   external_position    = 18;
-    AnimFrameOnsetOutput   frame_onset_output   = 19;
-    AnimStimulusVisibleOut stimulus_visible_out = 20;
+    AnimFlash              flash                = 12;
+    AnimFlicker            flicker              = 13;
+    AnimExternalPosition2D external_position_2d = 18;
   }
 }
 

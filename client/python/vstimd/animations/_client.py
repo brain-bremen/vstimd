@@ -5,7 +5,7 @@ from typing import Callable, Optional, Union
 
 from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import animations_pb2, vtl_pb2
-from ._models import AnimatedParam, AnimationInfo, AnimationState, FinalAction, VtlEdge
+from ._models import AnimationInfo, AnimationState, FinalAction, VtlEdge
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
@@ -143,7 +143,7 @@ class AnimationClient:
 
     # ── Trigger-reactive animations ───────────────────────────────────────────
 
-    def create_couple_visibility(
+    def create_couple_visibility_to_input_trigger_line(
         self,
         trigger: VtlHandle,
         stimuli: Stimuli,
@@ -152,9 +152,11 @@ class AnimationClient:
         name: str = "",
         final_action_mask: FinalAction = FinalAction(0),
         signal_event_output: Optional[VtlHandle] = None,
+        start_trigger: Optional[VtlHandle] = None,
+        start_edge: VtlEdge = VtlEdge.RISING,
     ) -> int:
-        """Mirror stimulus enabled state to the level of a trigger line."""
-        body = animations_pb2.AnimCoupleVisibility(
+        """Mirror stimulus enabled state to the level of an input trigger line."""
+        body = animations_pb2.AnimCoupleVisibilityToInputTriggerLine(
             trigger=_make_vtl_handle(trigger),
             polarity=polarity,
             stimuli=_to_stimuli(stimuli),
@@ -163,7 +165,9 @@ class AnimationClient:
             name=name,
             final_action_mask=int(final_action_mask),
             signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
-            couple_visibility=body,
+            start_trigger=_make_vtl_handle(start_trigger) if start_trigger else None,
+            start_edge=int(start_edge),
+            couple_visibility_to_input_trigger_line=body,
         ))
 
     def create_edge_set_enabled(
@@ -176,6 +180,8 @@ class AnimationClient:
         name: str = "",
         final_action_mask: FinalAction = FinalAction(0),
         signal_event_output: Optional[VtlHandle] = None,
+        start_trigger: Optional[VtlHandle] = None,
+        start_edge: VtlEdge = VtlEdge.RISING,
     ) -> int:
         """Set stimulus enabled once when a trigger edge fires."""
         body = animations_pb2.AnimEdgeSetEnabled(
@@ -188,68 +194,10 @@ class AnimationClient:
             name=name,
             final_action_mask=int(final_action_mask),
             signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
+            start_trigger=_make_vtl_handle(start_trigger) if start_trigger else None,
+            start_edge=int(start_edge),
             edge_set_enabled=body,
         ))
-
-    def create_trigger_flash(
-        self,
-        trigger: VtlHandle,
-        stimuli: Stimuli,
-        duration_frames: int | None = None,
-        *,
-        duration_ms: float | None = None,
-        edge: VtlEdge = VtlEdge.RISING,
-        name: str = "",
-        final_action_mask: FinalAction = FinalAction(0),
-        signal_event_output: Optional[VtlHandle] = None,
-    ) -> int:
-        """Enable a stimulus for the given duration after a trigger edge."""
-        body = animations_pb2.AnimTriggerFlash(
-            trigger=_make_vtl_handle(trigger),
-            edge=int(edge),
-            stimuli=_to_stimuli(stimuli),
-            duration_frames=self._to_frames(duration_frames, duration_ms, "duration"),
-        )
-        return self._create(animations_pb2.CreateAnimationRequest(
-            name=name,
-            final_action_mask=int(final_action_mask),
-            signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
-            trigger_flash=body,
-        ))
-
-    def create_trigger_flicker(
-        self,
-        trigger: VtlHandle,
-        stimuli: Stimuli,
-        on_frames: int | None = None,
-        off_frames: int | None = None,
-        *,
-        on_ms: float | None = None,
-        off_ms: float | None = None,
-        edge: VtlEdge = VtlEdge.RISING,
-        total_frames: int | None = None,
-        total_ms: float | None = None,
-        name: str = "",
-        final_action_mask: FinalAction = FinalAction(0),
-        signal_event_output: Optional[VtlHandle] = None,
-    ) -> int:
-        """Flicker a stimulus on/off after a trigger edge. Omit ``total_*`` to run forever."""
-        body = animations_pb2.AnimTriggerFlicker(
-            trigger=_make_vtl_handle(trigger),
-            edge=int(edge),
-            stimuli=_to_stimuli(stimuli),
-            on_frames=self._to_frames(on_frames, on_ms, "on"),
-            off_frames=self._to_frames(off_frames, off_ms, "off"),
-            total_frames=self._to_optional_frames(total_frames, total_ms, "total"),
-        )
-        return self._create(animations_pb2.CreateAnimationRequest(
-            name=name,
-            final_action_mask=int(final_action_mask),
-            signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
-            trigger_flicker=body,
-        ))
-
-    # ── Free-running animations ───────────────────────────────────────────────
 
     def create_flash(
         self,
@@ -260,8 +208,14 @@ class AnimationClient:
         name: str = "",
         final_action_mask: FinalAction = FinalAction(0),
         signal_event_output: Optional[VtlHandle] = None,
+        start_trigger: Optional[VtlHandle] = None,
+        start_edge: VtlEdge = VtlEdge.RISING,
     ) -> int:
-        """Enable a stimulus for the given duration immediately when armed."""
+        """Enable stimuli for the given duration.
+
+        If ``start_trigger`` is given, waits for that edge before starting;
+        otherwise starts immediately when armed.
+        """
         body = animations_pb2.AnimFlash(
             stimuli=_to_stimuli(stimuli),
             duration_frames=self._to_frames(duration_frames, duration_ms, "duration"),
@@ -270,6 +224,8 @@ class AnimationClient:
             name=name,
             final_action_mask=int(final_action_mask),
             signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
+            start_trigger=_make_vtl_handle(start_trigger) if start_trigger else None,
+            start_edge=int(start_edge),
             flash=body,
         ))
 
@@ -286,8 +242,14 @@ class AnimationClient:
         name: str = "",
         final_action_mask: FinalAction = FinalAction(0),
         signal_event_output: Optional[VtlHandle] = None,
+        start_trigger: Optional[VtlHandle] = None,
+        start_edge: VtlEdge = VtlEdge.RISING,
     ) -> int:
-        """Flicker a stimulus on/off immediately when armed. Omit ``total_*`` to run forever."""
+        """Flicker stimuli on/off. Omit ``total_*`` to run forever.
+
+        If ``start_trigger`` is given, waits for that edge before starting;
+        otherwise starts immediately when armed.
+        """
         body = animations_pb2.AnimFlicker(
             stimuli=_to_stimuli(stimuli),
             on_frames=self._to_frames(on_frames, on_ms, "on"),
@@ -298,63 +260,12 @@ class AnimationClient:
             name=name,
             final_action_mask=int(final_action_mask),
             signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
+            start_trigger=_make_vtl_handle(start_trigger) if start_trigger else None,
+            start_edge=int(start_edge),
             flicker=body,
         ))
 
-    def create_harmonic(
-        self,
-        stimuli: Stimuli,
-        amplitude: float,
-        phase_inc: float,
-        *,
-        direction_deg: float = 0.0,
-        name: str = "",
-        final_action_mask: FinalAction = FinalAction(0),
-        signal_event_output: Optional[VtlHandle] = None,
-    ) -> int:
-        """Sinusoidal position oscillation. ``phase_inc`` is radians per frame."""
-        body = animations_pb2.AnimHarmonic(
-            stimuli=_to_stimuli(stimuli),
-            amplitude=amplitude,
-            phase_inc=phase_inc,
-            direction_deg=direction_deg,
-        )
-        return self._create(animations_pb2.CreateAnimationRequest(
-            name=name,
-            final_action_mask=int(final_action_mask),
-            signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
-            harmonic=body,
-        ))
-
-    def create_linear_range(
-        self,
-        stimuli: Stimuli,
-        param: AnimatedParam,
-        start: float,
-        end: float,
-        duration_frames: int | None = None,
-        *,
-        duration_ms: float | None = None,
-        name: str = "",
-        final_action_mask: FinalAction = FinalAction(0),
-        signal_event_output: Optional[VtlHandle] = None,
-    ) -> int:
-        """Linearly interpolate a parameter over the given duration."""
-        body = animations_pb2.AnimLinearRange(
-            stimuli=_to_stimuli(stimuli),
-            param=int(param),
-            start=start,
-            end=end,
-            duration_frames=self._to_frames(duration_frames, duration_ms, "duration"),
-        )
-        return self._create(animations_pb2.CreateAnimationRequest(
-            name=name,
-            final_action_mask=int(final_action_mask),
-            signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
-            linear_range=body,
-        ))
-
-    def create_external_position(
+    def create_external_position_2d(
         self,
         stimuli: Stimuli,
         shm_name: str,
@@ -364,9 +275,11 @@ class AnimationClient:
         name: str = "",
         final_action_mask: FinalAction = FinalAction(0),
         signal_event_output: Optional[VtlHandle] = None,
+        start_trigger: Optional[VtlHandle] = None,
+        start_edge: VtlEdge = VtlEdge.RISING,
     ) -> int:
         """Read stimulus position from a POSIX shared memory float array each frame."""
-        body = animations_pb2.AnimExternalPosition(
+        body = animations_pb2.AnimExternalPosition2D(
             stimuli=_to_stimuli(stimuli),
             shm_name=shm_name,
             x_offset=x_offset,
@@ -376,52 +289,9 @@ class AnimationClient:
             name=name,
             final_action_mask=int(final_action_mask),
             signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
-            external_position=body,
-        ))
-
-    # ── Output-driving animations ─────────────────────────────────────────────
-
-    def create_frame_onset_output(
-        self,
-        output: VtlHandle,
-        pulse_frames: int | None = None,
-        *,
-        pulse_ms: float | None = None,
-        name: str = "",
-        final_action_mask: FinalAction = FinalAction(0),
-        signal_event_output: Optional[VtlHandle] = None,
-    ) -> int:
-        """Drive an output line HIGH for the given duration each frame."""
-        body = animations_pb2.AnimFrameOnsetOutput(
-            output=_make_vtl_handle(output),
-            pulse_frames=self._to_frames(pulse_frames, pulse_ms, "pulse"),
-        )
-        return self._create(animations_pb2.CreateAnimationRequest(
-            name=name,
-            final_action_mask=int(final_action_mask),
-            signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
-            frame_onset_output=body,
-        ))
-
-    def create_stimulus_visible_out(
-        self,
-        output: VtlHandle,
-        stimuli: Stimuli,
-        *,
-        name: str = "",
-        final_action_mask: FinalAction = FinalAction(0),
-        signal_event_output: Optional[VtlHandle] = None,
-    ) -> int:
-        """Mirror stimulus visibility to an output line."""
-        body = animations_pb2.AnimStimulusVisibleOut(
-            output=_make_vtl_handle(output),
-            stimuli=_to_stimuli(stimuli),
-        )
-        return self._create(animations_pb2.CreateAnimationRequest(
-            name=name,
-            final_action_mask=int(final_action_mask),
-            signal_event_output=_make_vtl_handle(signal_event_output) if signal_event_output else None,
-            stimulus_visible_out=body,
+            start_trigger=_make_vtl_handle(start_trigger) if start_trigger else None,
+            start_edge=int(start_edge),
+            external_position_2d=body,
         ))
 
     # ── Internal ──────────────────────────────────────────────────────────────
