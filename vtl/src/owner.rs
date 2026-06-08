@@ -19,7 +19,9 @@ pub struct VtlOwner {
 impl VtlOwner {
     /// Create a new VTL segment at `shm_name` (e.g. `"/vstimd_vtl"`).
     ///
-    /// `num_input_banks` and `num_output_banks` should both be 1 for v1.
+    /// `num_input_banks` and `num_output_banks` must each be in the range
+    /// `1..=MAX_BANKS` (currently 4).  Use `1` for a minimal single-bank
+    /// segment, or a higher value when multiple banks are needed.
     pub fn create(shm_name: &str, num_input_banks: u32, num_output_banks: u32) -> io::Result<Self> {
         if num_input_banks as usize > MAX_BANKS || num_output_banks as usize > MAX_BANKS {
             return Err(io::Error::new(
@@ -71,6 +73,7 @@ impl VtlOwner {
         let mmap_err = if ptr == libc::MAP_FAILED { Some(io::Error::last_os_error()) } else { None };
         unsafe { libc::close(fd) };
         if let Some(e) = mmap_err {
+            unsafe { libc::shm_unlink(name.as_ptr()) };
             return Err(e);
         }
 

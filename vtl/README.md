@@ -199,7 +199,7 @@ let falling = owner.drain_input_fall(0, u64::MAX);
 ```rust
 use vtl::VtlClient;
 
-let client = VtlClient::attach("/vstimd_vtl")?;
+let client = VtlClient::open("/vstimd_vtl")?;
 
 // Read current output state and drive hardware accordingly:
 let out = client.output_state(0);

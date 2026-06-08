@@ -121,9 +121,8 @@
 /// submit), typically a fraction of a frame period.
 ///
 /// > **Status:** [`VtlState::poll`] and [`VtlState::write_outputs`] are
-/// > implemented but not yet wired into the render loop.  See the `// TODO: VTL`
-/// > comments in `render/drm/mod.rs` and `render/winit_vk/mod.rs`.
-/// > Currently, both directions are only accessible via ZMQ commands.
+/// > wired into both the DRM and winit render loops.  ZMQ SetInput*/SetOutput*
+/// > commands provide an additional software-only path for testing and override.
 use vtl::{Direction, VtlOwner, MAX_BANKS};
 
 /// A resolved (bank, bit) address into the VTL shared memory.

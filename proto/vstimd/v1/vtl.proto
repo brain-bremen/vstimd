@@ -19,8 +19,8 @@ package vstimd.v1;
 //                     (frame-sync, stimulus-onset markers).
 //
 // NOTE: frame-gated polling (VtlState::poll) and frame-gated output writing
-// (VtlState::write_outputs) are defined but not yet wired into the render loop.
-// Currently, both directions are only accessible via ZMQ commands.
+// (VtlState::write_outputs) are wired into both the DRM and winit render loops.
+// ZMQ SetInput*/SetOutput* commands provide an additional software-only path.
 
 enum VirtualTriggerLineDirection {
   VIRTUAL_TRIGGER_LINE_DIRECTION_INPUT  = 0;
