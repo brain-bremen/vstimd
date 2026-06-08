@@ -268,7 +268,7 @@ fn advance_one(
 
                 if captures_state {
                     let captured: Vec<bool> = stim_handles.iter()
-                        .map(|&sh| scene.stimuli.get(&sh).map_or(false, |e| e.stimulus.flags().enabled))
+                        .map(|&sh| scene.stimuli.get(&sh).is_some_and(|e| e.stimulus.flags().enabled))
                         .collect();
                     scene.animations.get_mut(&handle).unwrap().captured_user_enabled = Some(captured);
                 }
@@ -320,11 +320,10 @@ fn advance_one(
                 let level = (input_edges.current[trigger.bank] >> trigger.bit) & 1 != 0;
                 let anim_en = level == *polarity;
                 for &sh in &stim_handles {
-                    if let Some(e) = scene.stimuli.get_mut(&sh) {
-                        if e.stimulus.flags().anim_enabled != anim_en {
-                            e.stimulus.flags_mut().anim_enabled = anim_en;
-                            e.stimulus.flags_mut().mark_dirty();
-                        }
+                    if let Some(e) = scene.stimuli.get_mut(&sh)
+                        && e.stimulus.flags().anim_enabled != anim_en {
+                        e.stimulus.flags_mut().anim_enabled = anim_en;
+                        e.stimulus.flags_mut().mark_dirty();
                     }
                 }
                 false
@@ -344,6 +343,7 @@ fn advance_one(
                 fired
             }
 
+
             Animation::FlashForNFrames { duration_frames } => {
                 frame_counter + 1 >= *duration_frames
             }
@@ -357,14 +357,13 @@ fn advance_one(
                     phase_frame >= *off_frames
                 };
                 for &sh in &stim_handles {
-                    if let Some(e) = scene.stimuli.get_mut(&sh) {
-                        if e.stimulus.flags().anim_enabled != is_on {
-                            e.stimulus.flags_mut().anim_enabled = is_on;
-                            e.stimulus.flags_mut().mark_dirty();
-                        }
+                    if let Some(e) = scene.stimuli.get_mut(&sh)
+                        && e.stimulus.flags().anim_enabled != is_on {
+                        e.stimulus.flags_mut().anim_enabled = is_on;
+                        e.stimulus.flags_mut().mark_dirty();
                     }
                 }
-                total_frames.map_or(false, |tf| frame_counter + 1 >= tf)
+                total_frames.is_some_and(|tf| frame_counter + 1 >= tf)
             }
 
             // Motion and external animations — execution deferred to later steps.
@@ -431,11 +430,10 @@ fn finalize(
         );
         if anim_held {
             for &sh in stim_handles {
-                if let Some(e) = scene.stimuli.get_mut(&sh) {
-                    if !e.stimulus.flags().anim_enabled {
-                        e.stimulus.flags_mut().anim_enabled = true;
-                        e.stimulus.flags_mut().mark_dirty();
-                    }
+                if let Some(e) = scene.stimuli.get_mut(&sh)
+                    && !e.stimulus.flags().anim_enabled {
+                    e.stimulus.flags_mut().anim_enabled = true;
+                    e.stimulus.flags_mut().mark_dirty();
                 }
             }
         }
@@ -445,10 +443,9 @@ fn finalize(
         scene.photodiode.lit = !scene.photodiode.lit;
     }
 
-    if final_action.contains(FinalAction::FINAL_ACTION_TRIGGER_LINE) {
-        if let Some(bit) = trigger_line {
-            output_pending[bit.bank] |= 1u64 << bit.bit;
-        }
+    if final_action.contains(FinalAction::FINAL_ACTION_TRIGGER_LINE)
+        && let Some(bit) = trigger_line {
+        output_pending[bit.bank] |= 1u64 << bit.bit;
     }
 
     if final_action.contains(FinalAction::END_DEFERRED) {

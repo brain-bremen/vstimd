@@ -124,7 +124,6 @@
 /// > implemented but not yet wired into the render loop.  See the `// TODO: VTL`
 /// > comments in `render/drm/mod.rs` and `render/winit_vk/mod.rs`.
 /// > Currently, both directions are only accessible via ZMQ commands.
-
 use vtl::{Direction, VtlOwner, MAX_BANKS};
 
 /// A resolved (bank, bit) address into the VTL shared memory.
@@ -197,9 +196,9 @@ impl VtlState {
     pub fn output_snapshot(&mut self) -> [u64; MAX_BANKS] {
         let n = self.owner.num_output_banks() as usize;
         let mut snapshot = [0u64; MAX_BANKS];
-        for bank in 0..n.min(MAX_BANKS) {
-            snapshot[bank] = self.owner.output_state(bank);
-            self.prev_output[bank] = snapshot[bank];
+        for (bank, slot) in snapshot.iter_mut().enumerate().take(n.min(MAX_BANKS)) {
+            *slot = self.owner.output_state(bank);
+            self.prev_output[bank] = *slot;
         }
         snapshot
     }
@@ -213,8 +212,8 @@ impl VtlState {
     /// compute time for the frame.
     pub fn write_outputs(&self, state: &[u64; MAX_BANKS]) {
         let n = self.owner.num_output_banks() as usize;
-        for bank in 0..n.min(MAX_BANKS) {
-            self.owner.set_output_state(bank, state[bank]);
+        for (bank, &val) in state.iter().enumerate().take(n.min(MAX_BANKS)) {
+            self.owner.set_output_state(bank, val);
         }
     }
 
