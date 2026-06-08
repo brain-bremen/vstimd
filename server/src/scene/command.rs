@@ -1291,6 +1291,7 @@ impl SceneState {
             final_action,
             final_action_trigger_line,
             start_trigger,
+            captured_user_enabled: None,
             animation,
         });
         ok_handle(handle)
@@ -1410,11 +1411,23 @@ fn animation_to_proto_body(anim: &Animation) -> proto::create_animation_request:
             }),
         Animation::FlashForNFrames { duration_frames } =>
             PBody::FlashForNFrames(proto::FlashForNFrames { duration_frames: *duration_frames }),
-        Animation::FlickerForNFrames { on_frames, off_frames, total_frames } =>
+        Animation::FlickerForNFrames { on_frames, off_frames, total_frames, start_on_phase } =>
             PBody::FlickerForNFrames(proto::FlickerForNFrames {
-                on_frames:    *on_frames,
-                off_frames:   *off_frames,
-                total_frames: total_frames.unwrap_or(0),
+                on_frames:      *on_frames,
+                off_frames:     *off_frames,
+                total_frames:   *total_frames,
+                start_on_phase: *start_on_phase,
+            }),
+        Animation::MoveAlongPath2D { coords } =>
+            PBody::MoveAlongPath2d(proto::MoveAlongPath2D {
+                x: coords.iter().map(|c| c[0]).collect(),
+                y: coords.iter().map(|c| c[1]).collect(),
+            }),
+        Animation::MoveAlongSegments2D { waypoints, speed_px_per_sec } =>
+            PBody::MoveAlongSegments2d(proto::MoveAlongSegments2D {
+                x:                waypoints.iter().map(|w| w[0]).collect(),
+                y:                waypoints.iter().map(|w| w[1]).collect(),
+                speed_px_per_sec: *speed_px_per_sec,
             }),
         Animation::ExternalPosition2D { shm_name, x_offset, y_offset } =>
             PBody::ExternalPosition2d(proto::ExternalPosition2D {
@@ -1461,10 +1474,31 @@ fn proto_to_animation(
             duration_frames: c.duration_frames,
         }),
         Some(PBody::FlickerForNFrames(c)) => Ok(Animation::FlickerForNFrames {
-            on_frames:    c.on_frames,
-            off_frames:   c.off_frames,
-            total_frames: if c.total_frames == 0 { None } else { Some(c.total_frames) },
+            on_frames:      c.on_frames,
+            off_frames:     c.off_frames,
+            total_frames:   c.total_frames,
+            start_on_phase: c.start_on_phase,
         }),
+        Some(PBody::MoveAlongPath2d(c)) => {
+            if c.x.len() != c.y.len() {
+                return Err(Box::new(err(proto::ErrorCode::InvalidArgument, "MoveAlongPath2D: x and y must have equal length")));
+            }
+            Ok(Animation::MoveAlongPath2D {
+                coords: c.x.iter().zip(c.y.iter()).map(|(&x, &y)| [x, y]).collect(),
+            })
+        },
+        Some(PBody::MoveAlongSegments2d(c)) => {
+            if c.x.len() != c.y.len() {
+                return Err(Box::new(err(proto::ErrorCode::InvalidArgument, "MoveAlongSegments2D: x and y must have equal length")));
+            }
+            if c.x.len() < 2 {
+                return Err(Box::new(err(proto::ErrorCode::InvalidArgument, "MoveAlongSegments2D: at least 2 waypoints required")));
+            }
+            Ok(Animation::MoveAlongSegments2D {
+                waypoints:        c.x.iter().zip(c.y.iter()).map(|(&x, &y)| [x, y]).collect(),
+                speed_px_per_sec: c.speed_px_per_sec,
+            })
+        },
         Some(PBody::ExternalPosition2d(c)) => Ok(Animation::ExternalPosition2D {
             shm_name: c.shm_name.clone(),
             x_offset: c.x_offset,

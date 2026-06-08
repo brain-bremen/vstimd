@@ -77,15 +77,6 @@ class AnimationClient:
             return max(1, math.ceil(ms / 1000.0 * self.fps))
         raise ValueError(f"one of {param}_frames or {param}_ms must be specified")
 
-    def _to_optional_frames(self, frames: int | None, ms: float | None, param: str) -> int:
-        if frames is not None and ms is not None:
-            raise ValueError(f"specify either {param}_frames or {param}_ms, not both")
-        if frames is not None:
-            return frames
-        if ms is not None:
-            return max(1, math.ceil(ms / 1000.0 * self.fps))
-        return 0  # 0 = run forever
-
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def arm(self, handle: int) -> None:
@@ -262,6 +253,7 @@ class AnimationClient:
         off_ms: float | None = None,
         total_frames: int | None = None,
         total_ms: float | None = None,
+        start_on_phase: bool = True,
         name: str = "",
         final_action_mask: FinalAction = FinalAction(0),
         final_action_trigger_line: Optional[VtlHandle] = None,
@@ -270,15 +262,80 @@ class AnimationClient:
     ) -> int:
         """Flicker stimuli on/off. Omit ``total_*`` to run forever.
 
-        If ``start_trigger`` is given, waits for that edge before starting;
-        otherwise starts immediately when armed.
+        ``start_on_phase=False`` starts in the off-phase instead of the on-phase.
+        If ``start_trigger`` is given, waits for that edge before starting.
         """
+        msg = animations_pb2.FlickerForNFrames(
+            on_frames=self._to_frames(on_frames, on_ms, "on"),
+            off_frames=self._to_frames(off_frames, off_ms, "off"),
+            start_on_phase=start_on_phase,
+        )
+        if total_frames is not None or total_ms is not None:
+            msg.total_frames = self._to_frames(total_frames, total_ms, "total")
+        req = self._make_req(
+            stimuli, {"flicker_for_n_frames": msg},
+            name=name, final_action_mask=final_action_mask,
+            final_action_trigger_line=final_action_trigger_line,
+            start_trigger=start_trigger, start_edge=start_edge,
+        )
+        return self._create(req)
+
+    def create_move_along_path_2d(
+        self,
+        stimuli: Stimuli,
+        x: list[float],
+        y: list[float],
+        *,
+        name: str = "",
+        final_action_mask: FinalAction = FinalAction(0),
+        final_action_trigger_line: Optional[VtlHandle] = None,
+        start_trigger: Optional[VtlHandle] = None,
+        start_edge: VtlEdge = VtlEdge.RISING,
+    ) -> int:
+        """Move stimulus through a sequence of 2-D positions, one per frame.
+
+        ``x`` and ``y`` must have the same length. The animation completes after
+        all positions have been played. Coordinates are in screen units.
+        """
+        if len(x) != len(y):
+            raise ValueError("x and y must have equal length")
         req = self._make_req(
             stimuli, {
-                "flicker_for_n_frames": animations_pb2.FlickerForNFrames(
-                    on_frames=self._to_frames(on_frames, on_ms, "on"),
-                    off_frames=self._to_frames(off_frames, off_ms, "off"),
-                    total_frames=self._to_optional_frames(total_frames, total_ms, "total"),
+                "move_along_path_2d": animations_pb2.MoveAlongPath2D(x=x, y=y),
+            },
+            name=name, final_action_mask=final_action_mask,
+            final_action_trigger_line=final_action_trigger_line,
+            start_trigger=start_trigger, start_edge=start_edge,
+        )
+        return self._create(req)
+
+    def create_move_along_segments_2d(
+        self,
+        stimuli: Stimuli,
+        x: list[float],
+        y: list[float],
+        speed_px_per_sec: float,
+        *,
+        name: str = "",
+        final_action_mask: FinalAction = FinalAction(0),
+        final_action_trigger_line: Optional[VtlHandle] = None,
+        start_trigger: Optional[VtlHandle] = None,
+        start_edge: VtlEdge = VtlEdge.RISING,
+    ) -> int:
+        """Move stimulus along piecewise-linear waypoints at a constant speed.
+
+        ``x`` and ``y`` must have the same length and at least 2 entries.
+        ``speed_px_per_sec`` is in screen units per second; the server converts
+        to frame steps using the measured display frame rate.
+        """
+        if len(x) != len(y):
+            raise ValueError("x and y must have equal length")
+        if len(x) < 2:
+            raise ValueError("at least 2 waypoints required")
+        req = self._make_req(
+            stimuli, {
+                "move_along_segments_2d": animations_pb2.MoveAlongSegments2D(
+                    x=x, y=y, speed_px_per_sec=speed_px_per_sec,
                 ),
             },
             name=name, final_action_mask=final_action_mask,

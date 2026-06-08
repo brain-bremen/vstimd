@@ -1,12 +1,13 @@
 bitflags::bitflags! {
     #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
     pub struct FinalAction: u8 {
-        const DISABLE           = 0x01;
-        const TOGGLE_PHOTODIODE = 0x04;
+        const DISABLE                 = 0x01;
+        const TOGGLE_PHOTODIODE       = 0x04;
         const FINAL_ACTION_TRIGGER_LINE = 0x08;
-        const RESTART           = 0x10;
-        const REVERSE           = 0x20;
-        const END_DEFERRED      = 0x80;
+        const RESTART                 = 0x10;
+        const REVERSE                 = 0x20;
+        const RESTORE_STATE           = 0x40;
+        const END_DEFERRED            = 0x80;
     }
 }
 
@@ -36,7 +37,17 @@ pub enum Animation {
     FlickerForNFrames {
         on_frames: u32,
         off_frames: u32,
+        /// None = run forever.
         total_frames: Option<u32>,
+        /// If false, start in the off-phase instead of the on-phase.
+        start_on_phase: bool,
+    },
+    /// Move stimulus through a preloaded sequence of positions, one per frame.
+    MoveAlongPath2D { coords: Vec<[f32; 2]> },
+    /// Move stimulus along piecewise-linear waypoints at a constant speed.
+    MoveAlongSegments2D {
+        waypoints: Vec<[f32; 2]>,
+        speed_px_per_sec: f32,
     },
     /// Read 2-D position from a POSIX shm float array each frame.
     ExternalPosition2D {
@@ -53,6 +64,8 @@ impl Animation {
             Self::EnableOnTriggerEdge { .. } => "EnableOnTriggerEdge",
             Self::FlashForNFrames { .. } => "FlashForNFrames",
             Self::FlickerForNFrames { .. } => "FlickerForNFrames",
+            Self::MoveAlongPath2D { .. } => "MoveAlongPath2D",
+            Self::MoveAlongSegments2D { .. } => "MoveAlongSegments2D",
             Self::ExternalPosition2D { .. } => "ExternalPosition2D",
         }
     }
@@ -68,5 +81,8 @@ pub struct AnimationEntry {
     pub final_action_trigger_line: Option<VtlBit>,
     /// If `Some`, the animation waits for this edge before starting.
     pub start_trigger: Option<(VtlBit, Edge)>,
+    /// Snapshot of each stimulus's `user_enabled` taken when the animation first
+    /// transitions to Running. Used by `RESTORE_STATE` to undo visibility changes.
+    pub captured_user_enabled: Option<Vec<bool>>,
     pub animation: Animation,
 }

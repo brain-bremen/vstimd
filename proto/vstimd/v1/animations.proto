@@ -37,9 +37,10 @@ message FlashForNFrames {
 
 // Flicker stimuli on/off.
 message FlickerForNFrames {
-  uint32 on_frames    = 1;
-  uint32 off_frames   = 2;
-  uint32 total_frames = 3; // 0 = run forever
+  uint32          on_frames     = 1;
+  uint32          off_frames    = 2;
+  optional uint32 total_frames  = 3; // absent = run forever
+  bool            start_on_phase = 4; // true (default) = start in the on-phase
 }
 
 // Read stimulus position from a POSIX shared memory float array each frame.
@@ -47,6 +48,24 @@ message ExternalPosition2D {
   string shm_name = 1; // e.g. "/vstimd_pos_myobj"
   float  x_offset = 2;
   float  y_offset = 3;
+}
+
+// Move stimulus along a preloaded sequence of 2-D positions, one per frame.
+// x and y must have the same length; the animation completes when all positions
+// have been played. Each coordinate is in screen units (same as SetPosition).
+message MoveAlongPath2D {
+  repeated float x = 1;
+  repeated float y = 2;
+}
+
+// Move stimulus along piecewise-linear waypoints at a constant speed.
+// x and y must have the same length and at least 2 entries. Speed is in
+// screen units per second; the server converts to frame steps using the
+// measured display frame rate.
+message MoveAlongSegments2D {
+  repeated float x              = 1;
+  repeated float y              = 2;
+  float          speed_px_per_sec = 3;
 }
 
 // ── Animation management ──────────────────────────────────────────────────────
@@ -57,6 +76,7 @@ message ExternalPosition2D {
 //   0x08  FINAL_ACTION_TRIGGER_LINE — pulse final_action_trigger_line for one frame on completion
 //   0x10  RESTART                   — re-arm and restart the animation on completion
 //   0x20  REVERSE                   — reserved
+//   0x40  RESTORE_STATE             — restore user_enabled to its value at animation start
 //   0x80  END_DEFERRED              — call end_deferred_mode on completion
 message CreateAnimationRequest {
   string name              = 1;
@@ -72,9 +92,11 @@ message CreateAnimationRequest {
   oneof body {
     CoupleVisibilityToInputTriggerLine couple_visibility_to_input_trigger_line = 10;
     EnableOnTriggerEdge enable_on_trigger_edge = 11;
-    FlashForNFrames    flash_for_n_frames   = 12;
-    FlickerForNFrames  flicker_for_n_frames = 13;
-    ExternalPosition2D external_position_2d = 18;
+    FlashForNFrames    flash_for_n_frames    = 12;
+    FlickerForNFrames  flicker_for_n_frames  = 13;
+    MoveAlongPath2D    move_along_path_2d    = 14;
+    MoveAlongSegments2D move_along_segments_2d = 15;
+    ExternalPosition2D external_position_2d  = 18;
   }
 }
 

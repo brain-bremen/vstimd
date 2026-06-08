@@ -20,9 +20,10 @@ class FinalAction(IntFlag):
     DISABLE           = 0x01
     TOGGLE_PHOTODIODE = 0x04
     FINAL_ACTION_TRIGGER_LINE = 0x08
-    RESTART           = 0x10
-    REVERSE           = 0x20
-    END_DEFERRED      = 0x80
+    RESTART                   = 0x10
+    REVERSE                   = 0x20
+    RESTORE_STATE             = 0x40
+    END_DEFERRED              = 0x80
 
 
 @dataclass(frozen=True)
