@@ -91,8 +91,13 @@ message SetInputVirtualTriggerLineBankRequest {
 
 // ── Output line control ───────────────────────────────────────────────────────
 // Writes output_state in the vtl shm segment.
-// Use these to manually drive output lines (testing / override).
-// In normal operation, output lines are set by the vstimd render loop after each frame.
+// USE FOR DEBUGGING AND MANUAL OVERRIDE ONLY.
+// In normal operation output lines are driven exclusively by the vstimd render
+// loop: animations accumulate changes in output_pending[] and the render loop
+// commits them in a single write after all animations have advanced.  Writing
+// output lines via ZMQ bypasses this ordering guarantee and may conflict with
+// animation-generated outputs in the same frame.  Use only when no animations
+// are writing the same bits (e.g. manual bench testing, factory calibration).
 
 message SetOutputVirtualTriggerLineRequest {
   VirtualTriggerLineHandle handle = 1;

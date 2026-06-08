@@ -25,6 +25,42 @@ Goals:
 
 ---
 
+## Design decisions
+
+These questions are resolved.  See `TODO.md` for the full rationale.
+
+**Input / output ownership**
+
+daqd is a facade: its hardware inputs map to vstimd inputs; vstimd outputs map to
+daqd hardware outputs.
+
+- Input lines are written by nidaqd (hardware) or ZMQ `SetInput*` (testing).
+  **vstimd never writes input lines** — not in animations, not in the render loop.
+- Output lines are written by the render loop only.
+  ZMQ `SetOutput*` commands exist for **debug / manual override only** and should
+  not be used while animations are writing the same bits.
+
+**Animation trigger sources**
+
+Animations may watch **both input and output lines** as trigger sources.  An output
+line set by animation A in frame N is visible to animation B at the output-snapshot
+step [S] in frame N+1, enabling output-to-output chaining with one frame of latency.
+
+**Animation output commit ordering**
+
+All animations advance in a single pass; none of their outputs are written to shm
+until the entire pass is complete.  This prevents animation A from triggering
+animation B in the same frame.  The ordering of animations in the `animations` map
+is therefore irrelevant for correctness.
+
+**Vblank trigger (special output)**
+
+The "vblank" output line is not driven by an animation.  It is written directly by
+the render loop at step [A'] (immediately after input poll, before animations), so
+its write latency is minimal.  It is not accumulated via `output_pending`.
+
+---
+
 ## New crate: `vtl/`
 
 A small workspace crate (`vtl/`) defining the **POSIX shared memory** layout
@@ -108,16 +144,24 @@ pub struct VtlEdges {
 }
 
 pub struct VtlState {
-    owner:      VtlOwner,
-    prev_input: [u64; MAX_BANKS],   // render-thread only, for level tracking
+    owner:       VtlOwner,
+    prev_input:  [u64; MAX_BANKS],  // render-thread only, input level tracking
+    prev_output: [u64; MAX_BANKS],  // render-thread only, output level tracking for edge detection
 }
 
 impl VtlState {
-    /// Called once per frame from render thread (write lock held on SceneState).
-    /// Drains the latches and returns edges seen since the last frame.
+    /// Called once per frame from render thread at [A].
+    /// Drains the input latches and returns edges seen since the last frame.
     pub fn poll(&mut self) -> VtlEdges { ... }
 
-    /// Write output_state. Called after advance_animations, before releasing write lock.
+    /// Called at [S] — returns a snapshot of current output_state for animation
+    /// trigger detection.  Animations use this to detect edges on output lines
+    /// (comparing against prev_output, which is updated here).
+    pub fn output_snapshot(&mut self) -> [u64; MAX_BANKS] { ... }
+
+    /// Write output_state to shm.  Called twice per frame:
+    ///   [A'] vblank trigger (one bit, before animations)
+    ///   [C]  animation output commit (output_pending, after all animations)
     pub fn write_outputs(&self, state: &[u64; MAX_BANKS]) { ... }
 
     /// Software trigger from ZMQ thread — writes input_rise_latch or input_fall_latch.
@@ -155,6 +199,21 @@ bitflags! {
 - `SIGNAL_EVENT` → set a configured output VTL bit (1-frame pulse)
 - `RESTART` → reset animation to start, stay `Running`
 - `END_DEFERRED` → call `scene.end_deferred()` (clears pending_flip)
+
+> **One-frame gap with Python-mediated handoff.**
+> If a Python script watches a `SIGNAL_EVENT` output bit and responds by enabling
+> a second stimulus (via ZMQ), there will always be a one-frame gap: the bit is
+> committed at [C] (after present), the Python ZMQ round-trip takes some ms, and
+> even in the best case the `SetEnabled` command arrives during frame N+1
+> tessellation.  Stimulus B therefore appears no earlier than vblank N+2 while
+> stimulus A disappeared at vblank N+1.
+>
+> **Possible future workaround — pre-final trigger:** fire a separate output bit
+> at frame N-1 (one frame before completion) so Python has time to enable B
+> before the final frame.  B then appears from frame N onward (overlap with A's
+> last frame) rather than after a gap.  A dedicated animation parameter — e.g.
+> `pre_final_output: Option<VtlBit>` on `TriggerFlash` / `Flash` — would make
+> this explicit.  Not yet implemented.
 
 ### Animation variants
 
@@ -240,28 +299,43 @@ change. They are the source of truth; the shm table is a copy for bridge process
 
 ## `SceneState::advance_animations`
 
-Called from render thread while write lock is held (right after `apply_flip`):
+Called from render thread while write lock is held (right after `apply_flip`).
 
 ```rust
 pub fn advance_animations(
     &mut self,
-    edges: &VtlEdges,
-    output_state: &mut [u64; MAX_BANKS],
+    input_edges: &VtlEdges,          // from VtlState::poll() at [A]
+    output_snapshot: &[u64; MAX_BANKS], // snapshot of output_state read at [S]
+    output_pending: &mut [u64; MAX_BANKS], // accumulated; written to shm at [C]
 )
 ```
 
+`output_snapshot` is a frozen copy of the output shm read **before** any animation
+runs.  It serves two purposes:
+1. Edge detection on output lines (for animation-to-animation chaining).
+2. Level/polarity tests for `CoupleVisibility`-style output-watching animations.
+
+Trigger animations may watch either `input_edges` (input lines) or derive edges
+from `output_snapshot` vs the previous frame's output (output lines).  For input
+lines the latch-based edges from `poll()` are authoritative (sub-frame pulses not
+missed).  For output lines a simple level comparison against `prev_output` in
+`VtlState` is sufficient because output changes are always frame-aligned.
+
 Per-animation logic:
-- `CoupleVisibility`: `stim.enabled = (edges.current[bank] >> bit) & 1 == polarity`
-- `EdgeSetEnabled`: on matching latch bit → set enabled
+- `CoupleVisibility`: `stim.enabled = (snapshot[bank] >> bit) & 1 == polarity`
+  (if watching an output line; else uses `input_edges.current`)
+- `EdgeSetEnabled`: on matching edge in input latch or output level change → set enabled
 - `TriggerFlash`: on edge → `Running{frame_counter: duration_frames}`, enable stim;
   decrement each frame; on 0 → `Finalize`
 - `TriggerFlicker`: on edge → start on/off counter cycling; `Finalize` after total_frames
-- `Flash`, `Flicker`, `Harmonic`, `LinearRange`: identical but fire on `Armed` immediately
-- `FrameOnsetOutput`: always `Running`; set output bit for `pulse_frames` each frame
-- `StimulusVisibleOut`: mirror `stim.enabled` into `output_state`
+- `Flash`, `Flicker`, `Harmonic`, `LinearRange`: fire on `Armed` immediately (no trigger)
+- `FrameOnsetOutput`: always `Running`; set output bit in `output_pending` each frame
+- `StimulusVisibleOut`: mirror `stim.enabled` into `output_pending`
 
-Output bits are accumulated into the local `output_state` array and written to
-shm via `vtl_state.write_outputs` after the loop.
+All output bits are accumulated into `output_pending` — **nothing is written to shm
+during the loop**.  The render loop calls `vtl_state.write_outputs(output_pending)`
+once at [C], after all animations have advanced.  This single-commit step is what
+prevents same-frame ordering effects.
 
 ---
 
@@ -294,21 +368,69 @@ Added to `Request.command` oneof and dispatched in `scene/command.rs`.
 
 ## Frame loop integration (`render/vk/frame.rs`)
 
-After `apply_flip()` and before stimulus tessellation (~line 99):
+`pending_outputs: [u64; MAX_BANKS]` is stored in the backend struct and carried
+across frame boundaries.  At the very start of the frame loop iteration (in DRM
+mode: immediately after `wait_vblank()` returns; in winit mode: after
+`vkWaitForPresentKHR` confirms the previous present) the outputs from the
+PREVIOUS frame's animation pass are committed.  This aligns the hardware outputs
+with actual display scan-out rather than with GPU submission time.
 
 ```rust
-// Poll VTL edges and advance animations
-let mut output_state = [0u64; MAX_BANKS];
+// ── Top of frame loop, immediately after vblank wait ────────────────────────
+
+let vblank_mask = vblank_trigger_bit.map_or([0u64; MAX_BANKS], |(bank, bit)| {
+    let mut m = [0u64; MAX_BANKS];
+    m[bank] |= 1u64 << bit;
+    m
+});
+
 if let Some(vtl) = vtl_state.as_ref() {
-    let edges = vtl.lock().unwrap().poll();
-    sc.advance_animations(&edges, &mut output_state);
-    vtl.lock().unwrap().write_outputs(&output_state);
+    let mut vtl = vtl.lock().unwrap();
+
+    // [A] Commit previous frame's animation outputs + raise vblank trigger.
+    //     In DRM mode this fires within microseconds of the hardware scan-out
+    //     flip, aligning animation outputs with actual display visibility.
+    //     The vblank trigger bit is ORed in here and cleared at [C].
+    let commit: [u64; MAX_BANKS] = std::array::from_fn(|i| pending_outputs[i] | vblank_mask[i]);
+    vtl.write_outputs(&commit);
+
+    // [A] Poll input edges (drains rise/fall latches).
+    let input_edges = vtl.poll();
+
+    // [S] Snapshot output_state (includes animation outputs + vblank HIGH).
+    let output_snapshot = vtl.output_snapshot();
+
+    // Animation pass — all animations advance; none of their outputs reach shm
+    // until the next [A].  pending_outputs is reset to accumulate this frame.
+    pending_outputs = [0u64; MAX_BANKS];
+    sc.advance_animations(&input_edges, &output_snapshot, &mut pending_outputs);
 }
+
+// ... tessellate / record / submit / present ...
+
+// [C] Clear vblank trigger.  Animation outputs (pending_outputs_prev) remain.
+//     Pulse width [A]→[C] = vstimd's active compute time for this frame.
+if let Some(vtl) = vtl_state.as_ref() {
+    // pending_outputs_prev is the animation output state committed at [A].
+    // Re-write it without the vblank bit to pull the trigger LOW.
+    vtl.lock().unwrap().write_outputs(&pending_outputs_prev);
+}
+pending_outputs_prev = pending_outputs;  // save for next iteration's [A]
 ```
 
 `vtl_state: Option<Arc<Mutex<VtlState>>>` is threaded through from the backend
 entry points (`render/drm/mod.rs`, `render/winit_vk/mod.rs`), which create it
 at startup when a VTL shm path is available (always on Linux, configurable path).
+
+Note on winit mode: `vkWaitForPresentKHR` confirms GPU completion of the previous
+present, not the hardware scan-out flip.  The [A] write therefore lands slightly
+before the actual vblank in winit mode.  DRM mode (`wait_vblank()`) gets true
+hardware vblank accuracy for both the rising and falling edges of the vblank trigger.
+
+The render state needs two persistent fields across frames:
+- `pending_outputs: [u64; MAX_BANKS]` — animation outputs accumulating this frame
+- `pending_outputs_prev: [u64; MAX_BANKS]` — committed at [A], cleared at [C]
+- `vblank_trigger_bit: Option<(usize, u8)>` — configured bank/bit, or `None`
 
 ---
 
@@ -488,3 +610,9 @@ log output at startup. Pass a real nidaqd stub; confirm it receives the shm path
 3. **Final action test**: animation with `TOGGLE_PHOTODIODE | RESTART` — confirm photodiode toggles each time flash completes and animation re-arms.
 4. **Overlay**: run desktop mode, open VTL panel, use "Fire rising" button, confirm level indicator updates.
 5. **External client**: run `vtl-test-client` while vstimd runs; toggle bits and verify overlay reflects the changes.
+6. **Output ordering test** (integration): create two animations: A (`TriggerFlash` triggered by input line, `SIGNAL_EVENT` final action → output bit X) and B (`TriggerFlash` triggered by output bit X).  Fire the input trigger in frame N.  Assert:
+   - Animation A becomes `Running` in frame N.
+   - Animation B does NOT become `Running` until frame N+1 (output bit X not visible until next snapshot).
+   - This confirms the single-commit rule prevents same-frame cascades.
+7. **Input immutability test** (unit): call `advance_animations` with any animation configuration; verify that no input shm bits (`input_state`, `input_rise_latch`, `input_fall_latch`) are modified.
+8. **Vblank trigger timing test** (integration): with a vblank output bit configured, assert the bit is present in `output_snapshot` at [S] in the frame following the vblank write (i.e., animations in that frame can detect the rising edge on the vblank line).
