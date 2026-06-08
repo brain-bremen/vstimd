@@ -123,6 +123,7 @@ fn command_summary(req: &proto::Request) -> String {
         Some(request::Body::DisarmAnimation(c)) => format!("DisarmAnimation({})", c.handle),
         Some(request::Body::DeleteAnimation(c)) => format!("DeleteAnimation({})", c.handle),
         Some(request::Body::ListAnimations(_)) => "ListAnimations".into(),
+        Some(request::Body::QueryAnimation(c)) => format!("QueryAnimation({})", c.handle),
         None => "?".into(),
     }
 }
@@ -215,6 +216,7 @@ impl SceneState {
             request::Body::DisarmAnimation(cmd) => self.cmd_disarm_animation(cmd),
             request::Body::DeleteAnimation(cmd) => self.cmd_delete_animation(cmd),
             request::Body::ListAnimations(_) => self.cmd_list_animations(),
+            request::Body::QueryAnimation(cmd) => self.cmd_query_animation(cmd),
             _ => err(
                 proto::ErrorCode::WrongTarget,
                 "command requires a stimulus handle (target.stimulus > 0)",
@@ -252,7 +254,8 @@ impl SceneState {
             | request::Body::ArmAnimation(_)
             | request::Body::DisarmAnimation(_)
             | request::Body::DeleteAnimation(_)
-            | request::Body::ListAnimations(_) => err(
+            | request::Body::ListAnimations(_)
+            | request::Body::QueryAnimation(_) => err(
                 proto::ErrorCode::WrongTarget,
                 "system command must use target.system (not a stimulus handle)",
             ),
@@ -1257,8 +1260,8 @@ impl SceneState {
         let vtl_names: &[VtlNameEntry] = vtl.map_or(&[], |v| v.names.as_slice());
         let final_action = FinalAction::from_bits_truncate(cmd.final_action_mask as u8);
 
-        let signal_event = if final_action.contains(FinalAction::SIGNAL_EVENT) {
-            match resolve_vtl_handle(cmd.signal_event_output.as_ref(), vtl_names) {
+        let final_action_trigger_line = if final_action.contains(FinalAction::FINAL_ACTION_TRIGGER_LINE) {
+            match resolve_vtl_handle(cmd.final_action_trigger_line.as_ref(), vtl_names) {
                 Ok((bank, bit)) => Some(VtlBit { bank, bit }),
                 Err(e) => return *e,
             }
@@ -1284,8 +1287,9 @@ impl SceneState {
         self.animations.insert(handle, AnimationEntry {
             name: cmd.name,
             state: AnimState::Idle,
+            stimuli: cmd.stimuli,
             final_action,
-            signal_event,
+            final_action_trigger_line,
             start_trigger,
             animation,
         });
@@ -1335,6 +1339,90 @@ impl SceneState {
             proto::ListAnimationsResponse { animations },
         ))
     }
+
+    fn cmd_query_animation(&self, cmd: proto::QueryAnimationRequest) -> proto::Response {
+        let entry = match self.animations.get(&cmd.handle) {
+            Some(e) => e,
+            None => return err(proto::ErrorCode::HandleNotFound,
+                format!("animation handle {} not found", cmd.handle)),
+        };
+
+        let state = match entry.state {
+            AnimState::Idle           => proto::AnimationState::Idle    as i32,
+            AnimState::Armed          => proto::AnimationState::Armed   as i32,
+            AnimState::Running { .. } => proto::AnimationState::Running as i32,
+            AnimState::Done           => proto::AnimationState::Done    as i32,
+        };
+
+        let (start_trigger, start_edge) = match entry.start_trigger {
+            Some((bit, edge)) => (Some(vtl_bit_to_proto(bit)), edge_to_proto(edge)),
+            None              => (None, 0),
+        };
+
+        let params = proto::CreateAnimationRequest {
+            name:                entry.name.clone(),
+            final_action_mask:   entry.final_action.bits() as u32,
+            final_action_trigger_line: entry.final_action_trigger_line.map(vtl_bit_to_proto),
+            start_trigger,
+            start_edge,
+            stimuli:             entry.stimuli.clone(),
+            body:                Some(animation_to_proto_body(&entry.animation)),
+        };
+
+        ok_body(proto::response::Body::QueryAnimationResponse(proto::QueryAnimationResponse {
+            handle: cmd.handle,
+            state,
+            params: Some(params),
+        }))
+    }
+}
+
+fn vtl_bit_to_proto(bit: VtlBit) -> proto::VirtualTriggerLineHandle {
+    use proto::virtual_trigger_line_handle::Handle;
+    proto::VirtualTriggerLineHandle {
+        handle: Some(Handle::BankBit(proto::VirtualTriggerLineBankBit {
+            bank: bit.bank as u32,
+            bit:  bit.bit  as u32,
+        }))
+    }
+}
+
+fn edge_to_proto(e: Edge) -> i32 {
+    match e {
+        Edge::Rising  => proto::VtlEdge::Rising  as i32,
+        Edge::Falling => proto::VtlEdge::Falling as i32,
+    }
+}
+
+fn animation_to_proto_body(anim: &Animation) -> proto::create_animation_request::Body {
+    use proto::create_animation_request::Body as PBody;
+    match anim {
+        Animation::CoupleVisibilityToInputTriggerLine { trigger, polarity } =>
+            PBody::CoupleVisibilityToInputTriggerLine(proto::CoupleVisibilityToInputTriggerLine {
+                trigger:  Some(vtl_bit_to_proto(*trigger)),
+                polarity: *polarity,
+            }),
+        Animation::EnableOnTriggerEdge { trigger, edge, enabled } =>
+            PBody::EnableOnTriggerEdge(proto::EnableOnTriggerEdge {
+                trigger: Some(vtl_bit_to_proto(*trigger)),
+                edge:    edge_to_proto(*edge),
+                enabled: *enabled,
+            }),
+        Animation::FlashForNFrames { duration_frames } =>
+            PBody::FlashForNFrames(proto::FlashForNFrames { duration_frames: *duration_frames }),
+        Animation::FlickerForNFrames { on_frames, off_frames, total_frames } =>
+            PBody::FlickerForNFrames(proto::FlickerForNFrames {
+                on_frames:    *on_frames,
+                off_frames:   *off_frames,
+                total_frames: total_frames.unwrap_or(0),
+            }),
+        Animation::ExternalPosition2D { shm_name, x_offset, y_offset } =>
+            PBody::ExternalPosition2d(proto::ExternalPosition2D {
+                shm_name: shm_name.clone(),
+                x_offset: *x_offset,
+                y_offset: *y_offset,
+            }),
+    }
 }
 
 fn proto_vtl_edge(e: i32) -> Edge {
@@ -1363,26 +1451,21 @@ fn proto_to_animation(
         Some(PBody::CoupleVisibilityToInputTriggerLine(c)) => Ok(Animation::CoupleVisibilityToInputTriggerLine {
             trigger:  vtl_bit(c.trigger.as_ref())?,
             polarity: c.polarity,
-            stimuli:  c.stimuli.clone(),
         }),
-        Some(PBody::EdgeSetEnabled(c)) => Ok(Animation::EdgeSetEnabled {
-            trigger:  vtl_bit(c.trigger.as_ref())?,
-            edge:     proto_edge(c.edge),
-            stimuli:  c.stimuli.clone(),
-            enabled:  c.enabled,
+        Some(PBody::EnableOnTriggerEdge(c)) => Ok(Animation::EnableOnTriggerEdge {
+            trigger: vtl_bit(c.trigger.as_ref())?,
+            edge:    proto_edge(c.edge),
+            enabled: c.enabled,
         }),
-        Some(PBody::Flash(c)) => Ok(Animation::Flash {
-            stimuli:         c.stimuli.clone(),
+        Some(PBody::FlashForNFrames(c)) => Ok(Animation::FlashForNFrames {
             duration_frames: c.duration_frames,
         }),
-        Some(PBody::Flicker(c)) => Ok(Animation::Flicker {
-            stimuli:      c.stimuli.clone(),
+        Some(PBody::FlickerForNFrames(c)) => Ok(Animation::FlickerForNFrames {
             on_frames:    c.on_frames,
             off_frames:   c.off_frames,
             total_frames: if c.total_frames == 0 { None } else { Some(c.total_frames) },
         }),
         Some(PBody::ExternalPosition2d(c)) => Ok(Animation::ExternalPosition2D {
-            stimuli: c.stimuli.clone(),
             shm_name: c.shm_name.clone(),
             x_offset: c.x_offset,
             y_offset: c.y_offset,

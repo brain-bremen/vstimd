@@ -1,5 +1,6 @@
 from ._client import AnimationClient, Stimuli, VtlHandle
 from ._models import (
+    AnimationDetails,
     AnimationInfo,
     AnimationState,
     FinalAction,
@@ -8,10 +9,11 @@ from ._models import (
 
 __all__ = [
     "AnimationClient",
-    "Stimuli",
+    "AnimationDetails",
     "AnimationInfo",
     "AnimationState",
     "FinalAction",
+    "Stimuli",
     "VtlEdge",
     "VtlHandle",
 ]

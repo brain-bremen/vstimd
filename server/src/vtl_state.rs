@@ -62,7 +62,7 @@
 ///     read VtlEdges (input edges) + output snapshot (output-line levels/edges)
 ///     update stimuli
 ///     accumulate output changes in output_pending[]
-///     (completing animations execute final actions: DISABLE, SIGNAL_EVENT, etc.)
+///     (completing animations execute final actions: DISABLE, FINAL_ACTION_TRIGGER_LINE, etc.)
 ///
 ///   tessellate scene / record Vulkan command buffer
 ///   vkQueueSubmit
@@ -95,7 +95,7 @@
 ///
 /// **Python-mediated handoff — one-frame gap warning:**
 /// A common pattern is: animation A runs for N frames; on its final frame
-/// `SIGNAL_EVENT` fires an output bit; a Python script polls the VTL and, on
+/// `FINAL_ACTION_TRIGGER_LINE` fires an output bit; a Python script polls the VTL and, on
 /// seeing the bit, sends a ZMQ command to enable stimulus B.
 ///
 /// This always produces a **one-frame gap**: the output bit is committed at [C]
@@ -132,6 +132,13 @@ use vtl::{Direction, VtlOwner, MAX_BANKS};
 pub struct VtlBit {
     pub bank: usize,
     pub bit:  u8,
+}
+
+/// A signal edge direction on a VTL line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edge {
+    Rising,
+    Falling,
 }
 
 pub struct VtlNameEntry {

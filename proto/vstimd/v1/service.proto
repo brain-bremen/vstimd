@@ -130,6 +130,7 @@ message Request {
     DisarmAnimationRequest  disarm_animation  = 102;
     DeleteAnimationRequest  delete_animation  = 103;
     ListAnimationsRequest   list_animations   = 104;
+    QueryAnimationRequest   query_animation   = 105;
   }
 }
 
@@ -160,6 +161,7 @@ message Response {
     ListVirtualTriggerLinesResponse      virtual_trigger_line_list  = 13;
     VirtualTriggerLineStateResponse      virtual_trigger_line_state = 14;
     ListAnimationsResponse               animation_list             = 15;
+    QueryAnimationResponse               query_animation_response   = 16;
   }
 }
 

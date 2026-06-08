@@ -26,6 +26,7 @@ from .system import ServerInfo, ServerVersion
 from .vtl import VtlClient, VtlDirection, VtlLineInfo
 from .animations import (
     AnimationClient,
+    AnimationDetails,
     AnimationInfo,
     AnimationState,
     FinalAction,
@@ -61,6 +62,7 @@ __all__ = [
     "VtlDirection",
     "VtlLineInfo",
     "AnimationClient",
+    "AnimationDetails",
     "AnimationInfo",
     "AnimationState",
     "FinalAction",

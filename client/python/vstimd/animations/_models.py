@@ -19,7 +19,7 @@ class VtlEdge(IntEnum):
 class FinalAction(IntFlag):
     DISABLE           = 0x01
     TOGGLE_PHOTODIODE = 0x04
-    SIGNAL_EVENT      = 0x08
+    FINAL_ACTION_TRIGGER_LINE = 0x08
     RESTART           = 0x10
     REVERSE           = 0x20
     END_DEFERRED      = 0x80
@@ -31,3 +31,13 @@ class AnimationInfo:
     name: str
     state: AnimationState
     type_name: str
+
+
+@dataclass(frozen=True)
+class AnimationDetails:
+    handle: int
+    name: str
+    state: AnimationState
+    type_name: str
+    stimuli: tuple[int, ...]
+    final_action: FinalAction
