@@ -120,3 +120,11 @@ message SetOutputVirtualTriggerLineBankRequest {
 message VirtualTriggerLineStateResponse {
   bool high = 1;
 }
+
+// ── Edge polarity (used by animations) ───────────────────────────────────────
+
+// Rising/falling edge of a VTL trigger line; referenced by animations.proto.
+enum VtlEdge {
+  VTL_EDGE_RISING  = 0;
+  VTL_EDGE_FALLING = 1;
+}

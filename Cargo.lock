@@ -3576,6 +3576,7 @@ version = "0.1.0"
 dependencies = [
  "ash",
  "ash-window",
+ "bitflags 2.11.1",
  "bytemuck",
  "cosmic-text",
  "criterion",

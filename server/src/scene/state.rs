@@ -1,8 +1,10 @@
 use indexmap::IndexMap;
 
+use super::animation::AnimationEntry;
 use super::deferred::Deferred;
 use super::photodiode::PhotoDiodeState;
 use super::stimulus::StimulusEntry;
+extern crate vtl;
 
 // ── Command log (overlay feature only) ────────────────────────────────────────
 
@@ -42,6 +44,10 @@ pub struct SceneState {
     pub stimuli: IndexMap<u32, StimulusEntry>,
     /// Next handle to allocate for a new stimulus (starts at 1).
     pub next_stim_handle: u32,
+    /// Animation objects in insertion order.
+    pub animations: IndexMap<u32, AnimationEntry>,
+    /// Next handle to allocate for a new animation (starts at 1).
+    pub next_anim_handle: u32,
     /// Background clear colour with deferred-copy support.
     pub background: Deferred<[f32; 4]>,
     /// True while commands should write into copy fields instead of live fields.
@@ -74,6 +80,8 @@ impl SceneState {
         Self {
             stimuli: IndexMap::new(),
             next_stim_handle: 1,
+            animations: IndexMap::new(),
+            next_anim_handle: 1,
             background: Deferred::new([0.0, 0.0, 0.0, 1.0]),
             deferred_mode: false,
             pending_flip: false,
@@ -98,6 +106,27 @@ impl SceneState {
         let h = self.next_stim_handle;
         self.next_stim_handle += 1;
         h
+    }
+
+    pub fn alloc_anim_handle(&mut self) -> u32 {
+        let h = self.next_anim_handle;
+        self.next_anim_handle += 1;
+        h
+    }
+
+    /// Advance all animations by one frame.  Called once per frame by the render
+    /// thread at [S] (after output commit and input poll).
+    ///
+    /// `input_edges`     — rising/falling/current input lines from `VtlState::poll()`
+    /// `output_snapshot` — frozen output_state read at [S] for trigger detection
+    /// `output_pending`  — accumulator for this frame's output changes (committed at [A] next frame)
+    pub fn advance_animations(
+        &mut self,
+        _input_edges: &crate::vtl_state::VtlEdges,
+        _output_snapshot: &[u64; vtl::MAX_BANKS],
+        _output_pending: &mut [u64; vtl::MAX_BANKS],
+    ) {
+        // Step 4+ will fill this in per animation variant.
     }
 
     // ── Deferred mode ─────────────────────────────────────────────────────────

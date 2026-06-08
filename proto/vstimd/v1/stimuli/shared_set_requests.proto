@@ -54,3 +54,18 @@ message SetOutlineColorRequest {
 message SetOutlineWidthRequest {
   float line_width = 1;
 }
+
+// Stimulus command: move this stimulus to the top of the draw order (drawn last = on top).
+// The handle is unchanged; only the draw position within the scene changes.
+message BringToFrontRequest {}
+
+// Stimulus command: move this stimulus to the bottom of the draw order (drawn first = behind all others).
+// The handle is unchanged.
+message SendToBackRequest {}
+
+// System command: swap the draw order of two stimuli.
+// Both handles remain unchanged.
+message SwapDrawOrderRequest {
+  uint32 handle_a = 1;
+  uint32 handle_b = 2;
+}

@@ -127,6 +127,13 @@
 
 use vtl::{Direction, VtlOwner, MAX_BANKS};
 
+/// A resolved (bank, bit) address into the VTL shared memory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VtlBit {
+    pub bank: usize,
+    pub bit:  u8,
+}
+
 pub struct VtlNameEntry {
     pub name:      String,
     pub bank:      u8,

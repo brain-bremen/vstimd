@@ -11,6 +11,7 @@ import "vstimd/v1/stimuli/text.proto";
 import "vstimd/v1/stimuli/polygon.proto";
 import "vstimd/v1/system.proto";
 import "vstimd/v1/vtl.proto";
+import "vstimd/v1/animations.proto";
 
 // ── Error codes ───────────────────────────────────────────────────────────────
 
@@ -77,6 +78,8 @@ message Request {
     SetDrawModeRequest    set_draw_mode    = 39;
     SetOutlineColorRequest set_outline_color = 40;
     SetOutlineWidthRequest set_outline_width = 41;
+    BringToFrontRequest    bring_to_front    = 43;
+    SendToBackRequest      send_to_back      = 44;
 
     // ── Grating-specific mutations (stimulus target only) ───────────────────
     SetGratingPhaseRequest          set_grating_phase           = 50;
@@ -99,6 +102,7 @@ message Request {
     SetPolygonVerticesRequest    set_polygon_vertices     = 63;
 
     // ── System mutations (system target only) ───────────────────────────────
+    SwapDrawOrderRequest   swap_draw_order   = 74;
     SetBackgroundRequest   set_background    = 70;
     SetDeferredModeRequest set_deferred_mode = 71;
     DeleteAllRequest       delete_all        = 72;
@@ -119,6 +123,13 @@ message Request {
     SetOutputVirtualTriggerLineRequest         set_output_virtual_trigger_line          = 96;
     ToggleOutputVirtualTriggerLineRequest      toggle_output_virtual_trigger_line       = 97;
     SetOutputVirtualTriggerLineBankRequest     set_output_virtual_trigger_line_bank     = 98;
+
+    // ── Animations (system target only) ─────────────────────────────────────
+    CreateAnimationRequest  create_animation  = 100;
+    ArmAnimationRequest     arm_animation     = 101;
+    DisarmAnimationRequest  disarm_animation  = 102;
+    DeleteAnimationRequest  delete_animation  = 103;
+    ListAnimationsRequest   list_animations   = 104;
   }
 }
 
@@ -148,6 +159,7 @@ message Response {
     ListStimuliResponse     stimulus_list = 12;
     ListVirtualTriggerLinesResponse      virtual_trigger_line_list  = 13;
     VirtualTriggerLineStateResponse      virtual_trigger_line_state = 14;
+    ListAnimationsResponse               animation_list             = 15;
   }
 }
 

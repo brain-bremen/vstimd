@@ -6,6 +6,7 @@ from vstimd._proto import service_pb2
 from vstimd.stimuli import StimuliClient
 from vstimd.system import SystemClient
 from vstimd.vtl import VtlClient
+from vstimd.animations import AnimationClient
 from vstimd.exceptions import (
     VstimdError,
     HandleNotFoundError,
@@ -47,6 +48,10 @@ class Connection:
         self.stimuli = StimuliClient(self._send)
         self.system = SystemClient(self._send)
         self.vtl = VtlClient(self._send)
+        self.animations = AnimationClient(
+            self._send,
+            fps_getter=lambda: self.system.query_server_info().frame_rate,
+        )
 
     def _send(self, req: service_pb2.Request) -> service_pb2.Response:
         self._sock.send(req.SerializeToString())

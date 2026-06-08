@@ -86,6 +86,10 @@ pub(crate) fn err_not_found(handle: u32) -> proto::Response {
     }
 }
 
+pub(crate) fn ok_handle(h: u32) -> proto::Response {
+    proto::Response { handle: h as i32, code: proto::ErrorCode::Ok as i32, ..Default::default() }
+}
+
 pub(crate) fn err_wrong_type(stim: &Stimulus, cmd: &str, expected: &str) -> proto::Response {
     proto::Response {
         code: proto::ErrorCode::WrongStimulusType as i32,

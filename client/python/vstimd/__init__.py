@@ -24,6 +24,14 @@ __path__ = list(__path__) + [_os.path.join(_os.path.dirname(__file__), "_proto",
 from ._connection import Connection
 from .system import ServerInfo, ServerVersion
 from .vtl import VtlClient, VtlDirection, VtlLineInfo
+from .animations import (
+    AnimationClient,
+    AnimationInfo,
+    AnimationState,
+    AnimatedParam,
+    FinalAction,
+    VtlEdge,
+)
 from .exceptions import (
     VstimdError,
     HandleNotFoundError,
@@ -53,5 +61,11 @@ __all__ = [
     "VtlClient",
     "VtlDirection",
     "VtlLineInfo",
+    "AnimationClient",
+    "AnimationInfo",
+    "AnimationState",
+    "AnimatedParam",
+    "FinalAction",
+    "VtlEdge",
     "psychopy",
 ]

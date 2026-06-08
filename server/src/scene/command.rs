@@ -12,7 +12,8 @@ use super::stimulus::text::{
     TextStimulus, anchor_from_str, proto_to_language_style, text_query_params,
     text_render_params_from_proto,
 };
-use crate::ipc::{err, err_not_found, err_wrong_type, ok_ack, ok_body, ok_handle_with_id};
+use crate::ipc::{err, err_not_found, err_wrong_type, ok_ack, ok_body, ok_handle, ok_handle_with_id};
+use super::animation::{AnimParam, AnimState, Animation, AnimationEntry, Edge, FinalAction, VtlBit};
 use crate::proto;
 use crate::proto::request;
 use crate::vtl_state::{VtlNameEntry, VtlState};
@@ -114,6 +115,14 @@ fn command_summary(req: &proto::Request) -> String {
         Some(request::Body::SetOutputVirtualTriggerLine(c)) => format!("SetOutputVirtualTriggerLine(val={})", c.value),
         Some(request::Body::ToggleOutputVirtualTriggerLine(_)) => "ToggleOutputVirtualTriggerLine".into(),
         Some(request::Body::SetOutputVirtualTriggerLineBank(c)) => format!("SetOutputVirtualTriggerLineBank(bank={} val={:#018x})", c.bank, c.value),
+        Some(request::Body::BringToFront(_)) => "BringToFront".into(),
+        Some(request::Body::SendToBack(_)) => "SendToBack".into(),
+        Some(request::Body::SwapDrawOrder(c)) => format!("SwapDrawOrder({}, {})", c.handle_a, c.handle_b),
+        Some(request::Body::CreateAnimation(c)) => format!("CreateAnimation({:?})", c.name),
+        Some(request::Body::ArmAnimation(c)) => format!("ArmAnimation({})", c.handle),
+        Some(request::Body::DisarmAnimation(c)) => format!("DisarmAnimation({})", c.handle),
+        Some(request::Body::DeleteAnimation(c)) => format!("DeleteAnimation({})", c.handle),
+        Some(request::Body::ListAnimations(_)) => "ListAnimations".into(),
         None => "?".into(),
     }
 }
@@ -200,6 +209,12 @@ impl SceneState {
             request::Body::SetOutputVirtualTriggerLine(cmd) => self.cmd_set_output_virtual_trigger_line(cmd, vtl.as_deref()),
             request::Body::ToggleOutputVirtualTriggerLine(cmd) => self.cmd_toggle_output_virtual_trigger_line(cmd, vtl.as_deref()),
             request::Body::SetOutputVirtualTriggerLineBank(cmd) => self.cmd_set_output_virtual_trigger_line_bank(cmd, vtl.as_deref()),
+            request::Body::SwapDrawOrder(_) => err(proto::ErrorCode::NotSupported, "SwapDrawOrder not yet implemented"),
+            request::Body::CreateAnimation(cmd) => self.cmd_create_animation(cmd, vtl.as_deref()),
+            request::Body::ArmAnimation(cmd) => self.cmd_arm_animation(cmd),
+            request::Body::DisarmAnimation(cmd) => self.cmd_disarm_animation(cmd),
+            request::Body::DeleteAnimation(cmd) => self.cmd_delete_animation(cmd),
+            request::Body::ListAnimations(_) => self.cmd_list_animations(),
             _ => err(
                 proto::ErrorCode::WrongTarget,
                 "command requires a stimulus handle (target.stimulus > 0)",
@@ -231,7 +246,13 @@ impl SceneState {
             | request::Body::SetInputVirtualTriggerLineBank(_)
             | request::Body::SetOutputVirtualTriggerLine(_)
             | request::Body::ToggleOutputVirtualTriggerLine(_)
-            | request::Body::SetOutputVirtualTriggerLineBank(_) => err(
+            | request::Body::SetOutputVirtualTriggerLineBank(_)
+            | request::Body::SwapDrawOrder(_)
+            | request::Body::CreateAnimation(_)
+            | request::Body::ArmAnimation(_)
+            | request::Body::DisarmAnimation(_)
+            | request::Body::DeleteAnimation(_)
+            | request::Body::ListAnimations(_) => err(
                 proto::ErrorCode::WrongTarget,
                 "system command must use target.system (not a stimulus handle)",
             ),
@@ -276,6 +297,14 @@ impl SceneState {
             request::Body::SetPolygonVertices(_) => err(
                 proto::ErrorCode::NotSupported,
                 "SetPolygonVertices is not yet implemented",
+            ),
+            request::Body::BringToFront(_) => err(
+                proto::ErrorCode::NotSupported,
+                "BringToFront not yet implemented",
+            ),
+            request::Body::SendToBack(_) => err(
+                proto::ErrorCode::NotSupported,
+                "SendToBack not yet implemented",
             ),
             request::Body::QueryStimulus(_) => self.cmd_query_stimulus(handle),
         }
@@ -1216,6 +1245,183 @@ impl SceneState {
             })
             .collect();
         ok_body(proto::response::Body::StimulusList(proto::ListStimuliResponse { entries }))
+    }
+
+    // ── Animation commands ────────────────────────────────────────────────────
+
+    fn cmd_create_animation(
+        &mut self,
+        cmd: proto::CreateAnimationRequest,
+        vtl: Option<&VtlState>,
+    ) -> proto::Response {
+        let vtl_names: &[VtlNameEntry] = vtl.map_or(&[], |v| v.names.as_slice());
+        let final_action = FinalAction::from_bits_truncate(cmd.final_action_mask as u8);
+
+        let signal_event = if final_action.contains(FinalAction::SIGNAL_EVENT) {
+            match resolve_vtl_handle(cmd.signal_event_output.as_ref(), vtl_names) {
+                Ok((bank, bit)) => Some(VtlBit { bank, bit }),
+                Err(e) => return *e,
+            }
+        } else {
+            None
+        };
+
+        let animation = match proto_to_animation(&cmd, vtl_names) {
+            Ok(a) => a,
+            Err(e) => return *e,
+        };
+
+        let handle = self.alloc_anim_handle();
+        self.animations.insert(handle, AnimationEntry {
+            name: cmd.name,
+            state: AnimState::Idle,
+            final_action,
+            signal_event,
+            animation,
+        });
+        ok_handle(handle)
+    }
+
+    fn cmd_arm_animation(&mut self, cmd: proto::ArmAnimationRequest) -> proto::Response {
+        match self.animations.get_mut(&cmd.handle) {
+            Some(entry) => { entry.state = AnimState::Armed; ok_ack() }
+            None => err(proto::ErrorCode::HandleNotFound,
+                format!("animation handle {} not found", cmd.handle)),
+        }
+    }
+
+    fn cmd_disarm_animation(&mut self, cmd: proto::DisarmAnimationRequest) -> proto::Response {
+        match self.animations.get_mut(&cmd.handle) {
+            Some(entry) => { entry.state = AnimState::Idle; ok_ack() }
+            None => err(proto::ErrorCode::HandleNotFound,
+                format!("animation handle {} not found", cmd.handle)),
+        }
+    }
+
+    fn cmd_delete_animation(&mut self, cmd: proto::DeleteAnimationRequest) -> proto::Response {
+        match self.animations.shift_remove(&cmd.handle) {
+            Some(_) => ok_ack(),
+            None => err(proto::ErrorCode::HandleNotFound,
+                format!("animation handle {} not found", cmd.handle)),
+        }
+    }
+
+    fn cmd_list_animations(&self) -> proto::Response {
+        let animations: Vec<proto::AnimationInfo> = self.animations.iter().map(|(&handle, entry)| {
+            let state = match entry.state {
+                AnimState::Idle             => proto::AnimationState::Idle    as i32,
+                AnimState::Armed            => proto::AnimationState::Armed   as i32,
+                AnimState::Running { .. }   => proto::AnimationState::Running as i32,
+                AnimState::Done             => proto::AnimationState::Done    as i32,
+            };
+            proto::AnimationInfo {
+                handle,
+                name:      entry.name.clone(),
+                state,
+                type_name: entry.animation.type_name().to_string(),
+            }
+        }).collect();
+        ok_body(proto::response::Body::AnimationList(
+            proto::ListAnimationsResponse { animations },
+        ))
+    }
+}
+
+// ── Animation proto → Rust mapping ───────────────────────────────────────────
+
+fn proto_to_animation(
+    cmd: &proto::CreateAnimationRequest,
+    vtl_names: &[VtlNameEntry],
+) -> Result<Animation, Box<proto::Response>> {
+    use proto::create_animation_request::Body as PBody;
+
+    let vtl_bit = |h: Option<&proto::VirtualTriggerLineHandle>| -> Result<VtlBit, Box<proto::Response>> {
+        let (bank, bit) = resolve_vtl_handle(h, vtl_names)?;
+        Ok(VtlBit { bank, bit })
+    };
+
+    let proto_edge = |e: i32| -> Edge {
+        match proto::VtlEdge::try_from(e).unwrap_or(proto::VtlEdge::Rising) {
+            proto::VtlEdge::Rising  => Edge::Rising,
+            proto::VtlEdge::Falling => Edge::Falling,
+        }
+    };
+
+    let proto_param = |p: i32| -> AnimParam {
+        match proto::AnimatedParam::try_from(p).unwrap_or(proto::AnimatedParam::PositionX) {
+            proto::AnimatedParam::PositionX       => AnimParam::PositionX,
+            proto::AnimatedParam::PositionY       => AnimParam::PositionY,
+            proto::AnimatedParam::Alpha           => AnimParam::Alpha,
+            proto::AnimatedParam::GratingPhase    => AnimParam::GratingPhase,
+            proto::AnimatedParam::GratingContrast => AnimParam::GratingContrast,
+            proto::AnimatedParam::GratingSf       => AnimParam::GratingSf,
+        }
+    };
+
+    match cmd.body.as_ref() {
+        Some(PBody::CoupleVisibility(c)) => Ok(Animation::CoupleVisibility {
+            trigger:  vtl_bit(c.trigger.as_ref())?,
+            polarity: c.polarity,
+            stimuli: c.stimuli.clone(),
+        }),
+        Some(PBody::EdgeSetEnabled(c)) => Ok(Animation::EdgeSetEnabled {
+            trigger:  vtl_bit(c.trigger.as_ref())?,
+            edge:     proto_edge(c.edge),
+            stimuli: c.stimuli.clone(),
+            enabled:  c.enabled,
+        }),
+        Some(PBody::TriggerFlash(c)) => Ok(Animation::TriggerFlash {
+            trigger:         vtl_bit(c.trigger.as_ref())?,
+            edge:            proto_edge(c.edge),
+            stimuli: c.stimuli.clone(),
+            duration_frames: c.duration_frames,
+        }),
+        Some(PBody::TriggerFlicker(c)) => Ok(Animation::TriggerFlicker {
+            trigger:      vtl_bit(c.trigger.as_ref())?,
+            edge:         proto_edge(c.edge),
+            stimuli: c.stimuli.clone(),
+            on_frames:    c.on_frames,
+            off_frames:   c.off_frames,
+            total_frames: if c.total_frames == 0 { None } else { Some(c.total_frames) },
+        }),
+        Some(PBody::Flash(c)) => Ok(Animation::Flash {
+            stimuli: c.stimuli.clone(),
+            duration_frames: c.duration_frames,
+        }),
+        Some(PBody::Flicker(c)) => Ok(Animation::Flicker {
+            stimuli: c.stimuli.clone(),
+            on_frames:    c.on_frames,
+            off_frames:   c.off_frames,
+            total_frames: if c.total_frames == 0 { None } else { Some(c.total_frames) },
+        }),
+        Some(PBody::Harmonic(c)) => Ok(Animation::Harmonic {
+            stimuli: c.stimuli.clone(),
+            amplitude:     c.amplitude,
+            phase_inc:     c.phase_inc,
+            direction_deg: c.direction_deg,
+        }),
+        Some(PBody::LinearRange(c)) => Ok(Animation::LinearRange {
+            stimuli: c.stimuli.clone(),
+            param:           proto_param(c.param),
+            start:           c.start,
+            end:             c.end,
+            duration_frames: c.duration_frames,
+        }),
+        Some(PBody::ExternalPosition(c)) => Ok(Animation::ExternalPosition {
+            stimuli: c.stimuli.clone(),
+            shm_name: c.shm_name.clone(),
+            x_offset: c.x_offset,
+            y_offset: c.y_offset,
+        }),
+        Some(PBody::FrameOnsetOutput(c)) => Ok(Animation::FrameOnsetOutput {
+            output:       vtl_bit(c.output.as_ref())?,
+            pulse_frames: c.pulse_frames,
+        }),
+        Some(PBody::StimulusVisibleOut(c)) => Ok(Animation::StimulusVisibleOut {
+            output:   vtl_bit(c.output.as_ref())?,
+            stimuli: c.stimuli.clone(),
+        }),
+        None => Err(Box::new(err(proto::ErrorCode::InvalidArgument, "animation body must be set"))),
     }
 }
 
