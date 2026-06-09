@@ -1307,17 +1307,13 @@ impl SceneState {
                 format!("animation handle {} not found", cmd.handle)),
         };
 
-        // Animations that hold anim_enabled while running must release it on disarm so the
-        // stimuli are left in a consistent state (anim_enabled=true = "no animation hold").
-        let holds_anim_enabled = matches!(
-            entry.animation,
-            Animation::FlickerForNFrames { .. } | Animation::CoupleVisibilityToInputTriggerLine { .. }
-        );
         let was_running = matches!(entry.state, AnimState::Running { .. });
         let stim_handles = entry.stimuli.clone();
         entry.state = AnimState::Idle;
 
-        if holds_anim_enabled && was_running {
+        // Release any anim_enabled hold. Safe to do unconditionally: setting true when
+        // already true is a no-op, and we don't need to track which animation types hold it.
+        if was_running {
             for sh in stim_handles {
                 if let Some(se) = self.stimuli.get_mut(&sh) {
                     se.stimulus.flags_mut().anim_enabled = true;
@@ -1329,11 +1325,20 @@ impl SceneState {
     }
 
     fn cmd_delete_animation(&mut self, cmd: proto::DeleteAnimationRequest) -> proto::Response {
-        match self.animations.shift_remove(&cmd.handle) {
-            Some(_) => ok_ack(),
-            None => err(proto::ErrorCode::HandleNotFound,
+        let entry = match self.animations.shift_remove(&cmd.handle) {
+            Some(e) => e,
+            None => return err(proto::ErrorCode::HandleNotFound,
                 format!("animation handle {} not found", cmd.handle)),
+        };
+        if matches!(entry.state, AnimState::Running { .. }) {
+            for sh in entry.stimuli {
+                if let Some(se) = self.stimuli.get_mut(&sh) {
+                    se.stimulus.flags_mut().anim_enabled = true;
+                    se.stimulus.flags_mut().mark_dirty();
+                }
+            }
         }
+        ok_ack()
     }
 
     fn cmd_list_animations(&self) -> proto::Response {

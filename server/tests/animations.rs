@@ -887,6 +887,55 @@ fn done_animation_not_re_advanced() {
     assert!(is_enabled(&scene, s), "Done animation does not re-fire");
 }
 
+// ── Delete running animation restores anim_enabled ───────────────────────────
+
+#[test]
+fn couple_visibility_anim_enabled_restored_on_delete() {
+    use vstimd::proto;
+    use vstimd::proto::request;
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, true);
+
+    let a = scene.add_animation(AnimationEntry::armed(
+        Animation::CoupleVisibilityToInputTriggerLine { trigger: bit(0, 0), polarity: true },
+        vec![s],
+    ));
+
+    advance_with(&mut scene, &no_edges()); // Running, input LOW → anim_enabled=false
+    assert!(!is_anim_enabled(&scene, s));
+
+    scene.handle_request(proto::Request {
+        target: Some(request::Target::System(proto::SystemTarget {})),
+        body: Some(request::Body::DeleteAnimation(proto::DeleteAnimationRequest { handle: a })),
+    }, None);
+    assert!(!scene.animations.contains_key(&a), "animation removed");
+    assert!(is_anim_enabled(&scene, s), "anim_enabled restored to true on delete");
+}
+
+#[test]
+fn flicker_anim_enabled_restored_on_delete() {
+    use vstimd::proto;
+    use vstimd::proto::request;
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, true);
+
+    let a = scene.add_animation(AnimationEntry::armed(flicker(2, 2, None, true), vec![s]));
+
+    advance(&mut scene); // frame 0: on
+    advance(&mut scene); // frame 1: on
+    advance(&mut scene); // frame 2: off (phase_frame=2 >= 2)
+    assert!(!is_anim_enabled(&scene, s), "in off-phase before delete");
+
+    scene.handle_request(proto::Request {
+        target: Some(request::Target::System(proto::SystemTarget {})),
+        body: Some(request::Body::DeleteAnimation(proto::DeleteAnimationRequest { handle: a })),
+    }, None);
+    assert!(!scene.animations.contains_key(&a), "animation removed");
+    assert!(is_anim_enabled(&scene, s), "anim_enabled restored on delete from off-phase");
+}
+
 // ── Multiple animations on the same stimulus ──────────────────────────────────
 
 #[test]
