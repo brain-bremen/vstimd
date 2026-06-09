@@ -45,7 +45,7 @@ test-e2e: proto
 test-e2e-null: proto
 	uv run --group dev pytest tests/e2e/test_e2e_null.py tests/e2e/test_psychopy_visual_null.py -v
 
-typecheck:
+typecheck: proto
 	uv run --group dev ty check
 
 clean:
