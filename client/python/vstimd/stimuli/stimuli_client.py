@@ -9,8 +9,14 @@ from vstimd._proto.vstimd.v1.stimuli import (
     rect_pb2, circle_pb2, ellipse_pb2, grating_pb2, text_pb2, polygon_pb2,
     shared_set_requests_pb2, query_pb2, shapes_pb2,
 )
-from .stimuli_models import Color, DrawMode, StimulusInfo, Vec2
+from .stimuli_models import Color, DrawMode, LanguageStyle, StimulusInfo, Vec2
 from .grating_models import GratingMask, GratingTexture, _MASK_TO_PROTO, _WAVEFORM_TO_PROTO
+
+_LANGUAGE_STYLE_TO_PROTO: dict[LanguageStyle, text_pb2.LanguageStyle] = {
+    LanguageStyle.LTR:    text_pb2.LANGUAGE_STYLE_LTR,
+    LanguageStyle.RTL:    text_pb2.LANGUAGE_STYLE_RTL,
+    LanguageStyle.ARABIC: text_pb2.LANGUAGE_STYLE_ARABIC,
+}
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
@@ -27,14 +33,10 @@ class StimuliClient:
     def create_rect(
         self,
         *,
-        x: float = 0.0,
-        y: float = 0.0,
+        pos: Vec2 = Vec2(0.0, 0.0),
         width: float = 100.0,
         height: float = 100.0,
-        r: float = 1.0,
-        g: float = 1.0,
-        b: float = 1.0,
-        a: float = 1.0,
+        color: Color = Color(1.0, 1.0, 1.0),
         name: str = "",
         id: str = "",
     ) -> StimulusHandle:
@@ -42,10 +44,10 @@ class StimuliClient:
         req = service_pb2.Request(
             system=service_pb2.SystemTarget(),
             create_rect=rect_pb2.CreateRectRequest(
-                center=vec2_pb2.Vec2(x=x, y=y),
+                center=vec2_pb2.Vec2(x=pos.x, y=pos.y),
                 width=width,
                 height=height,
-                fill_color=color_pb2.Color(r=r, g=g, b=b, a=a),
+                fill_color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
                 name=name,
                 id=id,
             ),
@@ -55,13 +57,9 @@ class StimuliClient:
     def create_circle(
         self,
         *,
-        x: float = 0.0,
-        y: float = 0.0,
+        pos: Vec2 = Vec2(0.0, 0.0),
         radius: float = 50.0,
-        r: float = 1.0,
-        g: float = 1.0,
-        b: float = 1.0,
-        a: float = 1.0,
+        color: Color = Color(1.0, 1.0, 1.0),
         name: str = "",
         id: str = "",
     ) -> StimulusHandle:
@@ -69,9 +67,9 @@ class StimuliClient:
         req = service_pb2.Request(
             system=service_pb2.SystemTarget(),
             create_circle=circle_pb2.CreateCircleRequest(
-                center=vec2_pb2.Vec2(x=x, y=y),
+                center=vec2_pb2.Vec2(x=pos.x, y=pos.y),
                 radius=radius,
-                fill_color=color_pb2.Color(r=r, g=g, b=b, a=a),
+                fill_color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
                 name=name,
                 id=id,
             ),
@@ -81,15 +79,11 @@ class StimuliClient:
     def create_ellipse(
         self,
         *,
-        x: float = 0.0,
-        y: float = 0.0,
+        pos: Vec2 = Vec2(0.0, 0.0),
         width: float = 100.0,
         height: float = 50.0,
         angle: float = 0.0,
-        r: float = 1.0,
-        g: float = 1.0,
-        b: float = 1.0,
-        a: float = 1.0,
+        color: Color = Color(1.0, 1.0, 1.0),
         name: str = "",
         id: str = "",
     ) -> StimulusHandle:
@@ -97,11 +91,11 @@ class StimuliClient:
         req = service_pb2.Request(
             system=service_pb2.SystemTarget(),
             create_ellipse=ellipse_pb2.CreateEllipseRequest(
-                center=vec2_pb2.Vec2(x=x, y=y),
+                center=vec2_pb2.Vec2(x=pos.x, y=pos.y),
                 width=width,
                 height=height,
                 angle=angle,
-                fill_color=color_pb2.Color(r=r, g=g, b=b, a=a),
+                fill_color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
                 name=name,
                 id=id,
             ),
@@ -168,22 +162,15 @@ class StimuliClient:
         self,
         *,
         text: str = "",
-        x: float = 0.0,
-        y: float = 0.0,
+        pos: Vec2 = Vec2(0.0, 0.0),
         box_width: float = 400.0,
         box_height: float = 100.0,
         letter_height: float = 32.0,
         font: str = "",
         anchor: str = "center",
-        r: float = 1.0,
-        g: float = 1.0,
-        b: float = 1.0,
-        a: float = 1.0,
-        fill_r: float = 0.0,
-        fill_g: float = 0.0,
-        fill_b: float = 0.0,
-        fill_a: float = 0.0,
-        language_style: int = 0,
+        color: Color = Color(1.0, 1.0, 1.0),
+        fill_color: Color = Color(0.0, 0.0, 0.0, 0.0),
+        language_style: LanguageStyle = LanguageStyle.LTR,
         name: str = "",
         id: str = "",
     ) -> StimulusHandle:
@@ -195,11 +182,11 @@ class StimuliClient:
                 font=font,
                 letter_height=letter_height,
                 size=vec2_pb2.Vec2(x=box_width, y=box_height),
-                pos=vec2_pb2.Vec2(x=x, y=y),
+                pos=vec2_pb2.Vec2(x=pos.x, y=pos.y),
                 anchor=anchor,
-                color=color_pb2.Color(r=r, g=g, b=b, a=a),
-                fill_color=color_pb2.Color(r=fill_r, g=fill_g, b=fill_b, a=fill_a),
-                language_style=language_style,  # ty: ignore[invalid-argument-type]
+                color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
+                fill_color=color_pb2.Color(r=fill_color.r, g=fill_color.g, b=fill_color.b, a=fill_color.a),
+                language_style=_LANGUAGE_STYLE_TO_PROTO[language_style],
                 name=name,
                 id=id,
             ),
@@ -215,11 +202,11 @@ class StimuliClient:
         )
         self._send(req)
 
-    def set_text_color(self, handle: StimulusHandle, r: float, g: float, b: float, a: float = 1.0) -> None:
+    def set_text_color(self, handle: StimulusHandle, color: Color) -> None:
         req = service_pb2.Request(
             stimulus=handle,
             set_text_color=text_pb2.SetTextColorRequest(
-                color=color_pb2.Color(r=r, g=g, b=b, a=a),
+                color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
             ),
         )
         self._send(req)
@@ -247,10 +234,10 @@ class StimuliClient:
 
     # ── Transform ─────────────────────────────────────────────────────────────
 
-    def set_position(self, handle: StimulusHandle, x: float, y: float) -> None:
+    def set_position(self, handle: StimulusHandle, pos: Vec2) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_position=shared_set_requests_pb2.SetPositionRequest(x=x, y=y),
+            set_position=shared_set_requests_pb2.SetPositionRequest(x=pos.x, y=pos.y),
         )
         self._send(req)
 
@@ -263,10 +250,12 @@ class StimuliClient:
 
     # ── Appearance ────────────────────────────────────────────────────────────
 
-    def set_fill_color(self, handle: StimulusHandle, r: float, g: float, b: float, a: float = 1.0) -> None:
+    def set_fill_color(self, handle: StimulusHandle, color: Color) -> None:
         req = service_pb2.Request(
             stimulus=handle,
-            set_fill_color=shared_set_requests_pb2.SetFillColorRequest(color=color_pb2.Color(r=r, g=g, b=b, a=a)),
+            set_fill_color=shared_set_requests_pb2.SetFillColorRequest(
+                color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a)
+            ),
         )
         self._send(req)
 
@@ -289,11 +278,11 @@ class StimuliClient:
         )
         self._send(req)
 
-    def set_outline_color(self, handle: StimulusHandle, r: float, g: float, b: float, a: float = 1.0) -> None:
+    def set_outline_color(self, handle: StimulusHandle, color: Color) -> None:
         req = service_pb2.Request(
             stimulus=handle,
             set_outline_color=shared_set_requests_pb2.SetOutlineColorRequest(
-                color=color_pb2.Color(r=r, g=g, b=b, a=a)
+                color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a)
             ),
         )
         self._send(req)
@@ -386,20 +375,20 @@ class StimuliClient:
         )
         self._send(req)
 
-    def set_grating_fore_color(self, handle: StimulusHandle, r: float, g: float, b: float, a: float = 1.0) -> None:
+    def set_grating_fore_color(self, handle: StimulusHandle, color: Color) -> None:
         req = service_pb2.Request(
             stimulus=handle,
             set_grating_fore_color=grating_pb2.SetGratingForeColorRequest(
-                fore_color=color_pb2.Color(r=r, g=g, b=b, a=a),
+                fore_color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
             ),
         )
         self._send(req)
 
-    def set_grating_back_color(self, handle: StimulusHandle, r: float, g: float, b: float, a: float = 1.0) -> None:
+    def set_grating_back_color(self, handle: StimulusHandle, color: Color) -> None:
         req = service_pb2.Request(
             stimulus=handle,
             set_grating_back_color=grating_pb2.SetGratingBackColorRequest(
-                back_color=color_pb2.Color(r=r, g=g, b=b, a=a),
+                back_color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
             ),
         )
         self._send(req)

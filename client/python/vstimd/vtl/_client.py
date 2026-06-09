@@ -12,6 +12,11 @@ _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
 # A VTL line can be addressed by (bank, bit) or by registered name.
 VtlHandle = Union[tuple[int, int], str]
 
+_DIRECTION_TO_PROTO: dict[VtlDirection, vtl_pb2.VirtualTriggerLineDirection] = {
+    VtlDirection.INPUT:  vtl_pb2.VIRTUAL_TRIGGER_LINE_DIRECTION_INPUT,
+    VtlDirection.OUTPUT: vtl_pb2.VIRTUAL_TRIGGER_LINE_DIRECTION_OUTPUT,
+}
+
 
 def _make_handle(handle: VtlHandle) -> vtl_pb2.VirtualTriggerLineHandle:
     if isinstance(handle, str):
@@ -63,7 +68,7 @@ class VtlClient:
             set_virtual_trigger_line_name=vtl_pb2.SetVirtualTriggerLineNameRequest(
                 bank=bank,
                 bit=bit,
-                direction=int(direction),  # ty: ignore[invalid-argument-type]
+                direction=_DIRECTION_TO_PROTO[direction],
                 name=name,
             ),
         )

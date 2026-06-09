@@ -18,6 +18,7 @@ import sys
 import time
 
 from vstimd import Connection
+from vstimd.stimuli.stimuli_models import Color, Vec2
 
 
 def main() -> None:
@@ -50,20 +51,20 @@ def main() -> None:
     with Connection(args.address) as conn:
         # ── Create ────────────────────────────────────────────────────────────
         # Left rect: red, starts disabled.
-        left = conn.create_rect(
-            x=-200, y=0,
+        left = conn.stimuli.create_rect(
+            pos=Vec2(-200, 0),
             width=300, height=200,
-            r=0.9, g=0.15, b=0.15,
+            color=Color(0.9, 0.15, 0.15),
         )
-        conn.set_enabled(left, False)
+        conn.stimuli.set_enabled(left, False)
 
         # Right rect: blue, starts disabled.
-        right = conn.create_rect(
-            x=200, y=0,
+        right = conn.stimuli.create_rect(
+            pos=Vec2(200, 0),
             width=300, height=200,
-            r=0.15, g=0.4, b=0.9,
+            color=Color(0.15, 0.4, 0.9),
         )
-        conn.set_enabled(right, False)
+        conn.stimuli.set_enabled(right, False)
 
         print(f"Created rects — handles: left={left}, right={right}")
         print(f"Flashing {args.flashes}× at {args.hz} Hz "
@@ -72,25 +73,25 @@ def main() -> None:
         # ── Flash ─────────────────────────────────────────────────────────────
         for flash in range(args.flashes):
             # Left on, right off
-            conn.set_enabled(left, True)
-            conn.set_enabled(right, False)
+            conn.stimuli.set_enabled(left, True)
+            conn.stimuli.set_enabled(right, False)
             print(f"  flash {flash + 1}/{args.flashes}  [LEFT  ON ]", end="\r")
             time.sleep(half_period)
 
             # Left off, right on
-            conn.set_enabled(left, False)
-            conn.set_enabled(right, True)
+            conn.stimuli.set_enabled(left, False)
+            conn.stimuli.set_enabled(right, True)
             print(f"  flash {flash + 1}/{args.flashes}  [RIGHT ON ]", end="\r")
             time.sleep(half_period)
 
         # Both off at the end of the last cycle.
-        conn.set_enabled(left, False)
-        conn.set_enabled(right, False)
+        conn.stimuli.set_enabled(left, False)
+        conn.stimuli.set_enabled(right, False)
         print()  # newline after the \r progress line
 
         # ── Delete ────────────────────────────────────────────────────────────
-        conn.delete(left)
-        conn.delete(right)
+        conn.stimuli.delete(left)
+        conn.stimuli.delete(right)
         print("Done — both rects deleted.")
 
 

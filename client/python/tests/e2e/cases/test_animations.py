@@ -10,7 +10,7 @@ import pytest
 
 from vstimd import Connection
 from vstimd.animations import AnimationState, FinalAction, VtlEdge
-from vstimd.stimuli.stimuli_models import Vec2
+from vstimd.stimuli.stimuli_models import Color, Vec2
 from vstimd.vtl import VtlDirection
 from ._helpers import (
     label as _label,
@@ -362,7 +362,7 @@ def test_anim_move_along_path_2d(conn: Connection, request: pytest.FixtureReques
     """MoveAlongPath2D moves a stimulus through a sequence of positions."""
     tid = request.node.name
     lbl = _label(conn, tid, "rect swept left-to-right via path")
-    s = conn.stimuli.create_rect(x=-200, y=0, width=60, height=60, r=0.2, g=0.8, b=0.2)
+    s = conn.stimuli.create_rect(pos=Vec2(-200, 0), width=60, height=60, color=Color(0.2, 0.8, 0.2))
 
     xs = [x * 10.0 - 200.0 for x in range(41)]  # -200 → 200 in 41 steps
     ys = [0.0] * 41
@@ -384,7 +384,7 @@ def test_anim_move_along_segments_2d(conn: Connection, request: pytest.FixtureRe
     """MoveAlongSegments2D moves at constant pixel-per-second speed along waypoints."""
     tid = request.node.name
     lbl = _label(conn, tid, "rect moving along triangle at 400 px/s")
-    s = conn.stimuli.create_rect(x=-200, y=-100, width=50, height=50, r=0.2, g=0.4, b=1.0)
+    s = conn.stimuli.create_rect(pos=Vec2(-200, -100), width=50, height=50, color=Color(0.2, 0.4, 1.0))
 
     xs = [-200.0, 200.0, 0.0, -200.0]
     ys = [-100.0, -100.0, 100.0, -100.0]

@@ -15,7 +15,7 @@ from ._helpers import label as _label, update_label as _update_label
 def test_create_rect(conn: Connection, request: pytest.FixtureRequest) -> None:
     tid = request.node.name
     lbl = _label(conn, tid, "red 100×100 rect")
-    handle = conn.stimuli.create_rect(x=0, y=0, width=100, height=100, r=1.0, g=0.0, b=0.0)
+    handle = conn.stimuli.create_rect(pos=Vec2(0, 0), width=100, height=100, color=Color(1.0, 0.0, 0.0))
     assert handle > 0
 
     info = conn.stimuli.query(handle)
@@ -245,7 +245,7 @@ def test_grating_two_color_create(conn: Connection) -> None:
 
 def test_grating_mutate_fore_color(conn: Connection) -> None:
     handle = conn.stimuli.create_grating()
-    conn.stimuli.set_grating_fore_color(handle, 0.5, 0.25, 0.0, 0.7)
+    conn.stimuli.set_grating_fore_color(handle, Color(0.5, 0.25, 0.0, 0.7))
     info = conn.stimuli.query(handle)
     assert isinstance(info.params, GratingParams)
     assert info.params.fore_color[0] == pytest.approx(0.5, abs=0.01)
@@ -257,7 +257,7 @@ def test_grating_mutate_fore_color(conn: Connection) -> None:
 
 def test_grating_mutate_back_color(conn: Connection) -> None:
     handle = conn.stimuli.create_grating()
-    conn.stimuli.set_grating_back_color(handle, 0.1, 0.2, 0.3, 0.4)
+    conn.stimuli.set_grating_back_color(handle, Color(0.1, 0.2, 0.3, 0.4))
     info = conn.stimuli.query(handle)
     assert isinstance(info.params, GratingParams)
     assert info.params.back_color[0] == pytest.approx(0.1, abs=0.01)
@@ -281,13 +281,13 @@ def test_grating_fore_back_color_independent(conn: Connection) -> None:
     handle = conn.stimuli.create_grating(
         fore_color=Color(1.0, 0.0, 0.0), back_color=Color(0.0, 1.0, 0.0)
     )
-    conn.stimuli.set_grating_fore_color(handle, 0.0, 0.0, 1.0)
+    conn.stimuli.set_grating_fore_color(handle, Color(0.0, 0.0, 1.0))
     info = conn.stimuli.query(handle)
     assert isinstance(info.params, GratingParams)
     assert info.params.fore_color[2] == pytest.approx(1.0, abs=0.01)
     assert info.params.back_color[1] == pytest.approx(1.0, abs=0.01)
 
-    conn.stimuli.set_grating_back_color(handle, 1.0, 1.0, 0.0)
+    conn.stimuli.set_grating_back_color(handle, Color(1.0, 1.0, 0.0))
     info = conn.stimuli.query(handle)
     assert isinstance(info.params, GratingParams)
     assert info.params.fore_color[2] == pytest.approx(1.0, abs=0.01)

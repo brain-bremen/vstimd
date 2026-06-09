@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..._handles import StimulusHandle
+from ...stimuli.stimuli_models import Color as StimulusColor, Vec2 as StimulusVec2
 from ._colors import normalize_color
 from ._types import ColorInput, Vec2
 from ._units import to_pixels
@@ -63,8 +64,8 @@ class Rect:
         ph = self._scalar_px(self._height)
         rgba = normalize_color(fillColor, colorSpace, opacity) or (0.0, 0.0, 0.0, 0.0)
         self._handle: StimulusHandle = win._conn.stimuli.create_rect(
-            x=px, y=py, width=pw, height=ph,
-            r=rgba[0], g=rgba[1], b=rgba[2], a=rgba[3],
+            pos=StimulusVec2(px, py), width=pw, height=ph,
+            color=StimulusColor(rgba[0], rgba[1], rgba[2], rgba[3]),
         )
 
         if autoDraw:
@@ -106,7 +107,7 @@ class Rect:
     def pos(self, value: Vec2) -> None:
         self._pos = (float(value[0]), float(value[1]))
         px, py = self._to_px(self._pos)
-        self._win._dispatch(self._win._conn.stimuli.set_position, self._handle, px, py)
+        self._win._dispatch(self._win._conn.stimuli.set_position, self._handle, StimulusVec2(px, py))
 
     def setPos(self, value: Vec2, operation: str = "", log: bool | None = None) -> None:
         if operation == "+":
@@ -193,5 +194,5 @@ class Rect:
         rgba = normalize_color(self._fill_color, self._color_space, self._opacity) or (0.0, 0.0, 0.0, 0.0)
         self._win._dispatch(
             self._win._conn.stimuli.set_fill_color,
-            self._handle, rgba[0], rgba[1], rgba[2], rgba[3],
+            self._handle, StimulusColor(rgba[0], rgba[1], rgba[2], rgba[3]),
         )

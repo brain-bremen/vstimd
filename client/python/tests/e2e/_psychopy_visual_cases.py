@@ -11,6 +11,7 @@ import pytest
 
 import vstimd.psychopy.visual as visual
 from vstimd.stimuli import CircleParams, GratingMask, GratingParams, GratingTexture, RectParams, StimulusType
+from vstimd.stimuli.stimuli_models import Color, Vec2
 
 
 # ── Label helpers ─────────────────────────────────────────────────────────────
@@ -22,10 +23,10 @@ def _label(win: visual.Window, test_id: str, description: str = "") -> int:
     """
     text = f"[{test_id}] {description}".rstrip()
     return win._conn.stimuli.create_text(
-        text=text, x=0, y=260,
+        text=text, pos=Vec2(0, 260),
         box_width=900, box_height=50,
         letter_height=28,
-        r=1.0, g=1.0, b=0.0, a=1.0,
+        color=Color(1.0, 1.0, 0.0),
         anchor="center",
         name="_label",
     )

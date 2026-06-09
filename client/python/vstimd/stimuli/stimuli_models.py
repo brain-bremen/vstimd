@@ -28,6 +28,12 @@ class DrawMode(Enum):
     FILLED_AND_OUTLINED = "filled_and_outlined"
 
 
+class LanguageStyle(Enum):
+    LTR    = "LTR"
+    RTL    = "RTL"
+    ARABIC = "Arabic"
+
+
 @dataclass
 class Color:
     r: float

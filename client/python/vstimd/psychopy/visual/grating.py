@@ -234,7 +234,7 @@ class GratingStim:
     def pos(self, value: Vec2) -> None:
         self._pos = (float(value[0]), float(value[1]))
         px, py = self._to_px(self._pos)
-        self._win._dispatch(self._win._conn.stimuli.set_position, self._handle, px, py)
+        self._win._dispatch(self._win._conn.stimuli.set_position, self._handle, StimulusVec2(px, py))
 
     def setPos(self, value: Vec2, operation: str = "", log: bool | None = None) -> None:
         if operation == "+":
@@ -364,7 +364,7 @@ class GratingStim:
         rgba = normalize_color(self._color, self._color_space, 1.0) or (1.0, 1.0, 1.0, 1.0)
         self._win._dispatch(
             self._win._conn.stimuli.set_grating_fore_color,
-            self._handle, rgba[0], rgba[1], rgba[2], rgba[3],
+            self._handle, StimulusColor(rgba[0], rgba[1], rgba[2], rgba[3]),
         )
 
     # ── Colour (background / trough) ─────────────────────────────────────────
@@ -392,7 +392,7 @@ class GratingStim:
         rgba = normalize_color(self._back_color, self._color_space, 1.0) or (0.0, 0.0, 0.0, 1.0)
         self._win._dispatch(
             self._win._conn.stimuli.set_grating_back_color,
-            self._handle, rgba[0], rgba[1], rgba[2], rgba[3],
+            self._handle, StimulusColor(rgba[0], rgba[1], rgba[2], rgba[3]),
         )
 
     # ── Drift (vstimd extension) ──────────────────────────────────────────────

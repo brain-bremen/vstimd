@@ -7,8 +7,8 @@ Example::
     from vstimd import Connection
 
     with Connection() as conn:
-        h = conn.stimuli.create_rect(x=-200, y=0, width=300, height=200,
-                                     r=1.0, g=0.0, b=0.0)
+        h = conn.stimuli.create_rect(pos=Vec2(-200, 0), width=300, height=200,
+                                     color=Color(1.0, 0.0, 0.0))
         conn.stimuli.set_enabled(h, False)
         conn.stimuli.delete(h)
         info = conn.system.query_server_info()
