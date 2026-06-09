@@ -5,7 +5,7 @@ from vstimd.stimuli.stimuli_models import Color, Vec2
 
 with Connection() as conn:
     # White "Hello vstimd" centred on screen
-    h = conn.stimuli.create_text(
+    h = conn.stimuli.shapes.create_text(
         text="Hello vstimd",
         pos=Vec2(0, 50),
         box_width=600, box_height=120,
@@ -17,14 +17,14 @@ with Connection() as conn:
     time.sleep(2)
 
     # Change text
-    conn.stimuli.set_text(h, "Step 6 works!")
+    conn.stimuli.shapes.set_text(h, "Step 6 works!")
     print("updated text")
     time.sleep(2)
 
     # Change colour to yellow
-    conn.stimuli.set_text_color(h, Color(1.0, 1.0, 0.0))
+    conn.stimuli.shapes.set_text_color(h, Color(1.0, 1.0, 0.0))
     print("changed colour to yellow")
     time.sleep(2)
 
-    conn.stimuli.delete(h)
+    conn.stimuli.shapes.delete(h)
     print("done")

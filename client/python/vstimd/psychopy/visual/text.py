@@ -108,7 +108,7 @@ class TextBox2:
 
         lang = self._LANGUAGE_STYLE_MAP.get(languageStyle.lower(), LanguageStyle.LTR)
 
-        self._handle: StimulusHandle = win._conn.stimuli.create_text(
+        self._handle: StimulusHandle = win._conn.stimuli.shapes.create_text(
             text=text,
             pos=StimulusVec2(px, py),
             box_width=self._box_w,
@@ -139,7 +139,7 @@ class TextBox2:
     @autoDraw.setter
     def autoDraw(self, value: bool) -> None:
         self._auto_draw = bool(value)
-        self._win._dispatch(self._win._conn.stimuli.set_enabled, self._handle, self._auto_draw)
+        self._win._dispatch(self._win._conn.stimuli.shapes.set_enabled, self._handle, self._auto_draw)
 
     def setAutoDraw(self, value: bool, log: bool | None = None) -> None:
         self.autoDraw = value
@@ -156,7 +156,7 @@ class TextBox2:
     @text.setter
     def text(self, value: str) -> None:
         self._text = str(value)
-        self._win._dispatch(self._win._conn.stimuli.set_text, self._handle, self._text)
+        self._win._dispatch(self._win._conn.stimuli.shapes.set_text, self._handle, self._text)
 
     def setText(self, value: str, log: bool | None = None) -> None:
         self.text = value
@@ -179,7 +179,7 @@ class TextBox2:
 
     def _resend_color(self) -> None:
         self._win._dispatch(
-            self._win._conn.stimuli.set_text_color,
+            self._win._conn.stimuli.shapes.set_text_color,
             self._handle, to_color(self._color, self._color_space, self._opacity) or StimulusColor(1.0, 1.0, 1.0, self._opacity),
         )
 
@@ -208,7 +208,7 @@ class TextBox2:
         self._pos = (float(value[0]), float(value[1]))
         px, py = to_pixels(self._pos, self._effective_units(), self._win.size, self._win.monitor)
         assert isinstance(px, float) and isinstance(py, float)
-        self._win._dispatch(self._win._conn.stimuli.set_position, self._handle, StimulusVec2(px, py))
+        self._win._dispatch(self._win._conn.stimuli.shapes.set_position, self._handle, StimulusVec2(px, py))
 
     def setPos(self, value: PsychoPyVec2, operation: str = "", log: bool | None = None) -> None:
         if operation == "+":

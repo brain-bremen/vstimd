@@ -159,7 +159,7 @@ class GratingStim:
         ph = self._scalar_px(self._height)
         # sf is in cycles/unit — convert to cycles/pixel
         psf = self._sf_to_px(self._sf)
-        self._handle: StimulusHandle = win._conn.stimuli.create_grating(
+        self._handle: StimulusHandle = win._conn.stimuli.grating.create_grating(
             pos=StimulusVec2(px, py),
             width=pw, height=ph,
             sf=psf,
@@ -213,7 +213,7 @@ class GratingStim:
     @autoDraw.setter
     def autoDraw(self, value: bool) -> None:
         self._auto_draw = bool(value)
-        self._win._dispatch(self._win._conn.stimuli.set_enabled, self._handle, self._auto_draw)
+        self._win._dispatch(self._win._conn.stimuli.grating.set_enabled, self._handle, self._auto_draw)
 
     def setAutoDraw(self, value: bool, log: bool | None = None) -> None:
         self.autoDraw = value
@@ -231,7 +231,7 @@ class GratingStim:
     def pos(self, value: PsychoPyVec2) -> None:
         self._pos = (float(value[0]), float(value[1]))
         px, py = self._to_px(self._pos)
-        self._win._dispatch(self._win._conn.stimuli.set_position, self._handle, StimulusVec2(px, py))
+        self._win._dispatch(self._win._conn.stimuli.grating.set_position, self._handle, StimulusVec2(px, py))
 
     def setPos(self, value: PsychoPyVec2, operation: str = "", log: bool | None = None) -> None:
         if operation == "+":
@@ -247,7 +247,7 @@ class GratingStim:
     @ori.setter
     def ori(self, value: float) -> None:
         self._ori = float(value)
-        self._win._dispatch(self._win._conn.stimuli.set_orientation, self._handle, self._ori)
+        self._win._dispatch(self._win._conn.stimuli.grating.set_orientation, self._handle, self._ori)
 
     def setOri(self, value: float, operation: str = "", log: bool | None = None) -> None:
         self.ori = value
@@ -266,7 +266,7 @@ class GratingStim:
     def sf(self, value: float) -> None:
         self._sf = float(value)
         psf = self._sf_to_px(self._sf)
-        self._win._dispatch(self._win._conn.stimuli.set_grating_sf, self._handle, psf)
+        self._win._dispatch(self._win._conn.stimuli.grating.set_sf, self._handle, psf)
 
     def setSF(self, value: float, log: bool | None = None) -> None:
         self.sf = value
@@ -278,7 +278,7 @@ class GratingStim:
     @phase.setter
     def phase(self, value: float | tuple[float, float]) -> None:
         self._phase = float(value[0]) if isinstance(value, tuple) else float(value)
-        self._win._dispatch(self._win._conn.stimuli.set_grating_phase, self._handle, self._phase)
+        self._win._dispatch(self._win._conn.stimuli.grating.set_phase, self._handle, self._phase)
 
     def setPhase(self, value: float, operation: str = "", log: bool | None = None) -> None:
         if operation == "+":
@@ -294,7 +294,7 @@ class GratingStim:
     @contrast.setter
     def contrast(self, value: float) -> None:
         self._contrast = float(value)
-        self._win._dispatch(self._win._conn.stimuli.set_grating_contrast, self._handle, self._contrast)
+        self._win._dispatch(self._win._conn.stimuli.grating.set_contrast, self._handle, self._contrast)
 
     def setContrast(self, value: float, log: bool | None = None) -> None:
         self.contrast = value
@@ -306,7 +306,7 @@ class GratingStim:
     @opacity.setter
     def opacity(self, value: float) -> None:
         self._opacity = float(value)
-        self._win._dispatch(self._win._conn.stimuli.set_grating_opacity, self._handle, self._opacity)
+        self._win._dispatch(self._win._conn.stimuli.grating.set_opacity, self._handle, self._opacity)
 
     def setOpacity(self, value: float, log: bool | None = None) -> None:
         self.opacity = value
@@ -359,7 +359,7 @@ class GratingStim:
 
     def _resend_fore_color(self) -> None:
         self._win._dispatch(
-            self._win._conn.stimuli.set_grating_fore_color,
+            self._win._conn.stimuli.grating.set_fore_color,
             self._handle, to_color(self._color, self._color_space, 1.0) or StimulusColor(1.0, 1.0, 1.0),
         )
 
@@ -386,7 +386,7 @@ class GratingStim:
 
     def _resend_back_color(self) -> None:
         self._win._dispatch(
-            self._win._conn.stimuli.set_grating_back_color,
+            self._win._conn.stimuli.grating.set_back_color,
             self._handle, to_color(self._back_color, self._color_space, 1.0) or StimulusColor(0.0, 0.0, 0.0),
         )
 
@@ -400,7 +400,7 @@ class GratingStim:
     def drift_speed(self, value: float) -> None:
         self._drift_speed = float(value)
         self._win._dispatch(
-            self._win._conn.stimuli.set_grating_drift_speed, self._handle, self._drift_speed
+            self._win._conn.stimuli.grating.set_drift_speed, self._handle, self._drift_speed
         )
 
     @property
@@ -411,7 +411,7 @@ class GratingStim:
     def drift_decoupled(self, value: bool) -> None:
         self._drift_decoupled = bool(value)
         self._win._dispatch(
-            self._win._conn.stimuli.set_grating_drift_decoupled, self._handle, self._drift_decoupled
+            self._win._conn.stimuli.grating.set_drift_decoupled, self._handle, self._drift_decoupled
         )
 
     @property
@@ -422,5 +422,5 @@ class GratingStim:
     def drift_angle(self, value: float) -> None:
         self._drift_angle = float(value)
         self._win._dispatch(
-            self._win._conn.stimuli.set_grating_drift_angle, self._handle, self._drift_angle
+            self._win._conn.stimuli.grating.set_drift_angle, self._handle, self._drift_angle
         )

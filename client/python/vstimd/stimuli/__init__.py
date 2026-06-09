@@ -1,4 +1,6 @@
 from .stimuli_client import StimuliClient
+from ._shapes import ShapesClient
+from ._grating import GratingClient
 from .stimuli_models import (
     Color,
     CircleParams,
@@ -16,6 +18,8 @@ from vstimd._handles import StimulusHandle
 
 __all__ = [
     "StimuliClient",
+    "ShapesClient",
+    "GratingClient",
     "Color",
     "CircleParams",
     "DrawMode",

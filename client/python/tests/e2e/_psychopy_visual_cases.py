@@ -22,7 +22,7 @@ def _label(win: visual.Window, test_id: str, description: str = "") -> int:
     Pass request.node.name as test_id so the label is always searchable.
     """
     text = f"[{test_id}] {description}".rstrip()
-    return win._conn.stimuli.create_text(
+    return win._conn.stimuli.shapes.create_text(
         text=text, pos=Vec2(0, 260),
         box_width=900, box_height=50,
         letter_height=28,
@@ -33,7 +33,7 @@ def _label(win: visual.Window, test_id: str, description: str = "") -> int:
 
 
 def _update_label(win: visual.Window, handle: int, test_id: str, description: str) -> None:
-    win._conn.stimuli.set_text(handle, f"[{test_id}] {description}")
+    win._conn.stimuli.shapes.set_text(handle, f"[{test_id}] {description}")
 
 
 # ── Rect tests ────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ def test_create_rect(win: visual.Window, step_delay: float, request: pytest.Fixt
     win.flip()
     time.sleep(step_delay)
     rect.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_rect_position_size(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -79,7 +79,7 @@ def test_rect_position_size(win: visual.Window, step_delay: float, request: pyte
     time.sleep(step_delay)
 
     rect.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_rect_colors(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -97,7 +97,7 @@ def test_rect_colors(win: visual.Window, step_delay: float, request: pytest.Fixt
         time.sleep(step_delay)
 
     rect.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_rect_opacity(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -120,7 +120,7 @@ def test_rect_opacity(win: visual.Window, step_delay: float, request: pytest.Fix
 
     rect1.autoDraw = False
     rect2.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 # ── Circle tests ──────────────────────────────────────────────────────────────
@@ -141,7 +141,7 @@ def test_create_circle(win: visual.Window, step_delay: float, request: pytest.Fi
     win.flip()
     time.sleep(step_delay)
     circle.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_circle_sizes(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -177,7 +177,7 @@ def test_circle_sizes(win: visual.Window, step_delay: float, request: pytest.Fix
     c1.autoDraw = False
     c2.autoDraw = False
     c3.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 # ── Grating tests ─────────────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ def test_create_grating_default(win: visual.Window, step_delay: float, request: 
     win.flip()
     time.sleep(step_delay)
     grat.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_create_grating_sqr_circle_mask(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -221,7 +221,7 @@ def test_create_grating_sqr_circle_mask(win: visual.Window, step_delay: float, r
     win.flip()
     time.sleep(step_delay)
     grat.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_grating_mutate_sf_phase_contrast(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -245,7 +245,7 @@ def test_grating_mutate_sf_phase_contrast(win: visual.Window, step_delay: float,
     assert info.params.contrast == pytest.approx(0.6, abs=0.01)
 
     grat.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_grating_drift_extension(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -271,7 +271,7 @@ def test_grating_drift_extension(win: visual.Window, step_delay: float, request:
     assert info.params.drift_angle == pytest.approx(45.0, abs=0.1)
 
     grat.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_grating_autodraw(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -291,7 +291,7 @@ def test_grating_autodraw(win: visual.Window, step_delay: float, request: pytest
     info = win._conn.stimuli.query(grat._handle)
     assert info.enabled is False
 
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_grating_two_color_create(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -315,7 +315,7 @@ def test_grating_two_color_create(win: visual.Window, step_delay: float, request
     assert info.params.back_color[3] == pytest.approx(1.0, abs=0.01)
 
     grat.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_grating_color_setters(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -358,7 +358,7 @@ def test_grating_color_setters(win: visual.Window, step_delay: float, request: p
     assert info.params.back_color[3] == pytest.approx(1.0, abs=0.01)
 
     grat.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_grating_ori(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -376,7 +376,7 @@ def test_grating_ori(win: visual.Window, step_delay: float, request: pytest.Fixt
     assert grat.ori == pytest.approx(90.0, abs=0.01)
 
     grat.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 # ── TextBox2 tests ─────────────────────────────────────────────────────────────
@@ -392,7 +392,7 @@ def test_create_textbox2(win: visual.Window, step_delay: float, request: pytest.
     win.flip()
     time.sleep(step_delay)
     tb.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_textbox2_text_update(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -410,7 +410,7 @@ def test_textbox2_text_update(win: visual.Window, step_delay: float, request: py
     time.sleep(step_delay)
 
     tb.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)
 
 
 def test_textbox2_colors(win: visual.Window, step_delay: float, request: pytest.FixtureRequest) -> None:
@@ -429,4 +429,4 @@ def test_textbox2_colors(win: visual.Window, step_delay: float, request: pytest.
         time.sleep(step_delay)
 
     tb.autoDraw = False
-    win._conn.stimuli.delete(label)
+    win._conn.stimuli.shapes.delete(label)

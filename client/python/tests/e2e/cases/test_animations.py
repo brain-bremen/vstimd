@@ -41,8 +41,8 @@ def test_anim_flash_state_transitions(conn: Connection, request: pytest.FixtureR
     assert info.enabled is False, "stimulus should be disabled by DISABLE final action"
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_flash_stimulus_visible_during_run(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -71,8 +71,8 @@ def test_anim_flash_stimulus_visible_during_run(conn: Connection, request: pytes
     time.sleep(step_delay)
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_flash_start_trigger(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -105,8 +105,8 @@ def test_anim_flash_start_trigger(conn: Connection, request: pytest.FixtureReque
     assert final == AnimationState.DONE
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_flash_disarm_resets_state(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -131,8 +131,8 @@ def test_anim_flash_disarm_resets_state(conn: Connection, request: pytest.Fixtur
     time.sleep(step_delay * 0.5)
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_flicker_cycles(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -151,8 +151,8 @@ def test_anim_flicker_cycles(conn: Connection, request: pytest.FixtureRequest, s
     assert final == AnimationState.DONE, f"flicker did not complete (got {final!r})"
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_flicker_indefinite_then_disarm(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -182,8 +182,8 @@ def test_anim_flicker_indefinite_then_disarm(conn: Connection, request: pytest.F
     time.sleep(step_delay * 0.5)
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_flicker_off_phase_start(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -215,8 +215,8 @@ def test_anim_flicker_off_phase_start(conn: Connection, request: pytest.FixtureR
     _wait_for_state(conn, a, AnimationState.DONE, timeout=4.0)
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_enable_on_trigger_edge_rising(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -250,8 +250,8 @@ def test_anim_enable_on_trigger_edge_rising(conn: Connection, request: pytest.Fi
     time.sleep(step_delay)
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_enable_on_trigger_edge_falling(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -282,8 +282,8 @@ def test_anim_enable_on_trigger_edge_falling(conn: Connection, request: pytest.F
     time.sleep(step_delay)
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_couple_visibility_to_vtl_line(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -323,8 +323,8 @@ def test_anim_couple_visibility_to_vtl_line(conn: Connection, request: pytest.Fi
     assert conn.stimuli.query(s).anim_enabled is True, "anim_enabled should be True after disarming"
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_couple_visibility_inverted_polarity(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -354,15 +354,15 @@ def test_anim_couple_visibility_inverted_polarity(conn: Connection, request: pyt
 
     conn.animations.disarm(a)
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_move_along_path_2d(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
     """MoveAlongPath2D moves a stimulus through a sequence of positions."""
     tid = request.node.name
     lbl = _label(conn, tid, "rect swept left-to-right via path")
-    s = conn.stimuli.create_rect(pos=Vec2(-200, 0), width=60, height=60, color=Color(0.2, 0.8, 0.2))
+    s = conn.stimuli.shapes.create_rect(pos=Vec2(-200, 0), width=60, height=60, color=Color(0.2, 0.8, 0.2))
 
     xs = [x * 10.0 - 200.0 for x in range(41)]  # -200 → 200 in 41 steps
     ys = [0.0] * 41
@@ -376,15 +376,15 @@ def test_anim_move_along_path_2d(conn: Connection, request: pytest.FixtureReques
     assert final == AnimationState.DONE, f"path animation did not complete (got {final!r})"
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_move_along_segments_2d(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
     """MoveAlongSegments2D moves at constant pixel-per-second speed along waypoints."""
     tid = request.node.name
     lbl = _label(conn, tid, "rect moving along triangle at 400 px/s")
-    s = conn.stimuli.create_rect(pos=Vec2(-200, -100), width=50, height=50, color=Color(0.2, 0.4, 1.0))
+    s = conn.stimuli.shapes.create_rect(pos=Vec2(-200, -100), width=50, height=50, color=Color(0.2, 0.4, 1.0))
 
     xs = [-200.0, 200.0, 0.0, -200.0]
     ys = [-100.0, -100.0, 100.0, -100.0]
@@ -400,8 +400,8 @@ def test_anim_move_along_segments_2d(conn: Connection, request: pytest.FixtureRe
     assert final == AnimationState.DONE, f"segment animation did not complete (got {final!r})"
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_final_action_restore_state(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -428,8 +428,8 @@ def test_anim_final_action_restore_state(conn: Connection, request: pytest.Fixtu
     time.sleep(step_delay)
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_final_action_trigger_line(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -460,9 +460,9 @@ def test_anim_final_action_trigger_line(conn: Connection, request: pytest.Fixtur
     time.sleep(step_delay)
 
     conn.animations.delete(a)
-    conn.stimuli.delete(s)
+    conn.stimuli.shapes.delete(s)
     conn.vtl.set_line_name(bank=0, bit=40, direction=VtlDirection.OUTPUT, name="")
-    conn.stimuli.delete(lbl)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_list_and_query(conn: Connection) -> None:
@@ -492,16 +492,16 @@ def test_anim_list_and_query(conn: Connection) -> None:
 
     conn.animations.delete(a1)
     conn.animations.delete(a2)
-    conn.stimuli.delete(s1)
-    conn.stimuli.delete(s2)
+    conn.stimuli.shapes.delete(s1)
+    conn.stimuli.shapes.delete(s2)
 
 
 def test_anim_flash_with_grating(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
     """Flash works with grating stimuli (not just rects)."""
     tid = request.node.name
     lbl = _label(conn, tid, "grating enabled by flash")
-    g = conn.stimuli.create_grating(pos=Vec2(0, 0), width=200, height=200, sf=0.04, contrast=0.9)
-    conn.stimuli.set_enabled(g, False)
+    g = conn.stimuli.grating.create_grating(pos=Vec2(0, 0), width=200, height=200, sf=0.04, contrast=0.9)
+    conn.stimuli.grating.set_enabled(g, False)
 
     a = conn.animations.create_flash(g, duration_frames=40, final_action_mask=FinalAction.DISABLE)
     conn.animations.arm(a)
@@ -517,8 +517,8 @@ def test_anim_flash_with_grating(conn: Connection, request: pytest.FixtureReques
     assert conn.stimuli.query(g).enabled is False
 
     conn.animations.delete(a)
-    conn.stimuli.delete(g)
-    conn.stimuli.delete(lbl)
+    conn.stimuli.grating.delete(g)
+    conn.stimuli.shapes.delete(lbl)
 
 
 def test_anim_multiple_stimuli(conn: Connection, request: pytest.FixtureRequest, step_delay: float) -> None:
@@ -544,5 +544,5 @@ def test_anim_multiple_stimuli(conn: Connection, request: pytest.FixtureRequest,
 
     conn.animations.delete(a)
     for s in stimuli:
-        conn.stimuli.delete(s)
-    conn.stimuli.delete(lbl)
+        conn.stimuli.shapes.delete(s)
+    conn.stimuli.shapes.delete(lbl)

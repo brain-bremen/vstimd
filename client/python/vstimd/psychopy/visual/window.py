@@ -52,12 +52,12 @@ class Window:
         if not self.deferred:
             return
         for h in self._to_draw_once:
-            self._conn.stimuli.set_enabled(h, True)
+            self._conn.stimuli.shapes.set_enabled(h, True)
         for fn, args in self._queue:
             fn(*args)
         self._queue.clear()
         for h in self._to_draw_once:
-            self._conn.stimuli.set_enabled(h, False)
+            self._conn.stimuli.shapes.set_enabled(h, False)
         self._to_draw_once.clear()
 
     def close(self) -> None:

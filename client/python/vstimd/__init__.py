@@ -7,10 +7,10 @@ Example::
     from vstimd import Connection
 
     with Connection() as conn:
-        h = conn.stimuli.create_rect(pos=Vec2(-200, 0), width=300, height=200,
-                                     color=Color(1.0, 0.0, 0.0))
-        conn.stimuli.set_enabled(h, False)
-        conn.stimuli.delete(h)
+        h = conn.stimuli.shapes.create_rect(pos=Vec2(-200, 0), width=300, height=200,
+                                            color=Color(1.0, 0.0, 0.0))
+        conn.stimuli.shapes.set_enabled(h, False)
+        conn.stimuli.shapes.delete(h)
         info = conn.system.query_server_info()
         print(info.version)
 """
