@@ -26,7 +26,7 @@ class ShapeDrawMode(StrEnum):
     FILLED_AND_OUTLINED = "filled_and_outlined"
 
 
-_DRAW_MODE_MAP: dict[int, ShapeDrawMode] = {
+_PROTO_TO_DRAW_MODE: dict[int, ShapeDrawMode] = {
     shapes_pb2.SHAPE_DRAW_MODE_FILLED: ShapeDrawMode.FILLED,
     shapes_pb2.SHAPE_DRAW_MODE_OUTLINED: ShapeDrawMode.OUTLINED,
     shapes_pb2.SHAPE_DRAW_MODE_FILLED_AND_OUTLINED: ShapeDrawMode.FILLED_AND_OUTLINED,

@@ -7,7 +7,7 @@ from typing import Union
 from vstimd._proto.vstimd.v1.stimuli import query_pb2, stimulus_type_pb2
 
 from ._shapes import (
-    _DRAW_MODE_MAP,
+    _PROTO_TO_DRAW_MODE,
     CircleParams,
     EllipseParams,
     RectParams,
@@ -107,7 +107,7 @@ class StimulusInfo:
             if proto.HasField("outline_color")
             else Color(0.0, 0.0, 0.0),
             outline_width=proto.outline_width,
-            draw_mode=_DRAW_MODE_MAP.get(proto.draw_mode, ShapeDrawMode.FILLED),
+            draw_mode=_PROTO_TO_DRAW_MODE.get(proto.draw_mode, ShapeDrawMode.FILLED),
             params=params,
             id=proto.id,
             name=proto.name,
