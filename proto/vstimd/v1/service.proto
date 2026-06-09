@@ -1,41 +1,42 @@
 syntax = "proto3";
 package vstimd.v1;
 
-import "vstimd/v1/stimuli/shared_set_requests.proto";
-import "vstimd/v1/stimuli/query.proto";
-import "vstimd/v1/stimuli/rect.proto";
+import "vstimd/v1/animations.proto";
 import "vstimd/v1/stimuli/circle.proto";
 import "vstimd/v1/stimuli/ellipse.proto";
 import "vstimd/v1/stimuli/grating.proto";
-import "vstimd/v1/stimuli/text.proto";
 import "vstimd/v1/stimuli/polygon.proto";
+import "vstimd/v1/stimuli/query.proto";
+import "vstimd/v1/stimuli/rect.proto";
+import "vstimd/v1/stimuli/shapes.proto";
+import "vstimd/v1/stimuli/shared_set_requests.proto";
+import "vstimd/v1/stimuli/text.proto";
 import "vstimd/v1/system.proto";
 import "vstimd/v1/vtl.proto";
-import "vstimd/v1/animations.proto";
 
 // ── Error codes ───────────────────────────────────────────────────────────────
 
 enum ErrorCode {
   // Default zero value (buf linter); field was never set / malformed response.
-  ERROR_CODE_UNSPECIFIED         = 0;
+  ERROR_CODE_UNSPECIFIED = 0;
   // Success. Always set on non-error responses.
-  ERROR_CODE_OK                  = 1;
+  ERROR_CODE_OK = 1;
   // Unexpected server-side error.
-  ERROR_CODE_UNKNOWN             = 2;
+  ERROR_CODE_UNKNOWN = 2;
   // The stimulus handle does not exist.
-  ERROR_CODE_HANDLE_NOT_FOUND    = 3;
+  ERROR_CODE_HANDLE_NOT_FOUND = 3;
   // The mutation is not applicable to this stimulus type (e.g. SetCircleRadiusRequest on Rect).
   ERROR_CODE_WRONG_STIMULUS_TYPE = 4;
   // A system command was sent with a stimulus handle, or vice versa.
-  ERROR_CODE_WRONG_TARGET        = 5;
+  ERROR_CODE_WRONG_TARGET = 5;
   // Could not create the stimulus (resource exhaustion, etc.).
-  ERROR_CODE_CREATION_FAILED     = 6;
+  ERROR_CODE_CREATION_FAILED = 6;
   // A field value is out of range or logically invalid.
-  ERROR_CODE_INVALID_ARGUMENT    = 7;
+  ERROR_CODE_INVALID_ARGUMENT = 7;
   // Command exists but is not supported in the current configuration.
-  ERROR_CODE_NOT_SUPPORTED       = 8;
+  ERROR_CODE_NOT_SUPPORTED = 8;
   // Server is still initialising; retry after the first rendered frame.
-  ERROR_CODE_NOT_READY           = 9;
+  ERROR_CODE_NOT_READY = 9;
 }
 
 // ── Request routing ───────────────────────────────────────────────────────────
@@ -51,86 +52,86 @@ message SystemTarget {}
 message Request {
   // Routing: either a scene-wide system command or an addressed stimulus command.
   oneof target {
-    SystemTarget system   = 1;
-    uint32       stimulus = 2;
+    SystemTarget system = 1;
+    uint32 stimulus = 2;
   }
 
   oneof body {
     // ── Stimulus creation (system target only) ──────────────────────────────
-    CreateRectRequest     create_rect     = 10;
-    CreateCircleRequest   create_circle   = 11;
-    CreateEllipseRequest  create_ellipse  = 12;
-    CreateGratingRequest  create_grating  = 13;
-    CreateTextRequest     create_text     = 14;
-    CreatePolygonRequest  create_polygon  = 15;
+    CreateRectRequest create_rect = 10;
+    CreateCircleRequest create_circle = 11;
+    CreateEllipseRequest create_ellipse = 12;
+    CreateGratingRequest create_grating = 13;
+    CreateTextRequest create_text = 14;
+    CreatePolygonRequest create_polygon = 15;
 
     // ── Generic stimulus mutations (stimulus target only) ───────────────────
-    SetEnabledRequest     set_enabled      = 30;
-    SetNameRequest        set_name         = 42;
-    DeleteRequest         delete           = 31;
-    SetPositionRequest    set_position     = 32;
-    SetOrientationRequest set_orientation  = 33;
-    SetFillColorRequest   set_fill_color   = 34;
-    SetAlphaRequest       set_alpha        = 35;
-    SetRectSizeRequest    set_rect_size    = 36;
-    SetCircleRadiusRequest  set_circle_radius  = 37;
+    SetEnabledRequest set_enabled = 30;
+    SetNameRequest set_name = 42;
+    DeleteRequest delete = 31;
+    SetPositionRequest set_position = 32;
+    SetOrientationRequest set_orientation = 33;
+    SetFillColorRequest set_fill_color = 34;
+    SetAlphaRequest set_alpha = 35;
+    SetRectSizeRequest set_rect_size = 36;
+    SetCircleRadiusRequest set_circle_radius = 37;
     SetEllipseSizeRequest set_ellipse_size = 38;
-    SetDrawModeRequest    set_draw_mode    = 39;
+    SetDrawModeRequest set_draw_mode = 39;
     SetOutlineColorRequest set_outline_color = 40;
     SetOutlineWidthRequest set_outline_width = 41;
-    BringToFrontRequest    bring_to_front    = 43;
-    SendToBackRequest      send_to_back      = 44;
+    BringToFrontRequest bring_to_front = 43;
+    SendToBackRequest send_to_back = 44;
 
     // ── Grating-specific mutations (stimulus target only) ───────────────────
-    SetGratingPhaseRequest          set_grating_phase           = 50;
-    SetGratingSfRequest             set_grating_sf              = 51;
-    SetGratingContrastRequest       set_grating_contrast        = 52;
-    SetGratingWaveformRequest       set_grating_waveform        = 53;
-    SetGratingMaskRequest           set_grating_mask            = 54;
-    SetGratingDriftSpeedRequest     set_grating_drift_speed     = 55;
+    SetGratingPhaseRequest set_grating_phase = 50;
+    SetGratingSfRequest set_grating_sf = 51;
+    SetGratingContrastRequest set_grating_contrast = 52;
+    SetGratingWaveformRequest set_grating_waveform = 53;
+    SetGratingMaskRequest set_grating_mask = 54;
+    SetGratingDriftSpeedRequest set_grating_drift_speed = 55;
     SetGratingDriftDecoupledRequest set_grating_drift_decoupled = 56;
-    SetGratingDriftAngleRequest     set_grating_drift_angle     = 57;
-    SetGratingForeColorRequest      set_grating_fore_color      = 58;
-    SetGratingBackColorRequest      set_grating_back_color      = 59;
-    SetGratingOpacityRequest        set_grating_opacity         = 60;
+    SetGratingDriftAngleRequest set_grating_drift_angle = 57;
+    SetGratingForeColorRequest set_grating_fore_color = 58;
+    SetGratingBackColorRequest set_grating_back_color = 59;
+    SetGratingOpacityRequest set_grating_opacity = 60;
 
     // ── Text-specific mutations (stimulus target only) ──────────────────────
-    SetTextRequest               set_text                 = 61;
-    SetTextColorRequest          set_text_color           = 62;
+    SetTextRequest set_text = 61;
+    SetTextColorRequest set_text_color = 62;
 
     // ── Polygon-specific mutations (stimulus target only) ───────────────────
-    SetPolygonVerticesRequest    set_polygon_vertices     = 63;
+    SetPolygonVerticesRequest set_polygon_vertices = 63;
 
     // ── System mutations (system target only) ───────────────────────────────
-    SwapDrawOrderRequest   swap_draw_order   = 74;
-    SetBackgroundRequest   set_background    = 70;
+    SwapDrawOrderRequest swap_draw_order = 74;
+    SetBackgroundRequest set_background = 70;
     SetDeferredModeRequest set_deferred_mode = 71;
-    DeleteAllRequest       delete_all        = 72;
-    SetAllEnabledRequest   set_all_enabled   = 73;
+    DeleteAllRequest delete_all = 72;
+    SetAllEnabledRequest set_all_enabled = 73;
 
     // ── Queries ─────────────────────────────────────────────────────────────
-    QueryServerInfoRequest query_server_info = 80;  // system target
-    QueryStimulusRequest   query_stimulus    = 81;  // stimulus target
-    ListStimuliRequest     list_stimuli      = 82;  // system target
+    QueryServerInfoRequest query_server_info = 80; // system target
+    QueryStimulusRequest query_stimulus = 81; // stimulus target
+    ListStimuliRequest list_stimuli = 82; // system target
 
     // ── VTL (Virtual Trigger Lines) ─────────────────────────────────────────
-    SetVirtualTriggerLineNameRequest           set_virtual_trigger_line_name            = 90;
-    ListVirtualTriggerLinesRequest             list_virtual_trigger_lines               = 91;
-    SetInputVirtualTriggerLineRequest          set_input_virtual_trigger_line           = 92;
-    ToggleInputVirtualTriggerLineRequest       toggle_input_virtual_trigger_line        = 93;
+    SetVirtualTriggerLineNameRequest set_virtual_trigger_line_name = 90;
+    ListVirtualTriggerLinesRequest list_virtual_trigger_lines = 91;
+    SetInputVirtualTriggerLineRequest set_input_virtual_trigger_line = 92;
+    ToggleInputVirtualTriggerLineRequest toggle_input_virtual_trigger_line = 93;
     ClearInputVirtualTriggerLineLatchesRequest clear_input_virtual_trigger_line_latches = 94;
-    SetInputVirtualTriggerLineBankRequest      set_input_virtual_trigger_line_bank      = 95;
-    SetOutputVirtualTriggerLineRequest         set_output_virtual_trigger_line          = 96;
-    ToggleOutputVirtualTriggerLineRequest      toggle_output_virtual_trigger_line       = 97;
-    SetOutputVirtualTriggerLineBankRequest     set_output_virtual_trigger_line_bank     = 98;
+    SetInputVirtualTriggerLineBankRequest set_input_virtual_trigger_line_bank = 95;
+    SetOutputVirtualTriggerLineRequest set_output_virtual_trigger_line = 96;
+    ToggleOutputVirtualTriggerLineRequest toggle_output_virtual_trigger_line = 97;
+    SetOutputVirtualTriggerLineBankRequest set_output_virtual_trigger_line_bank = 98;
 
     // ── Animations (system target only) ─────────────────────────────────────
-    CreateAnimationRequest  create_animation  = 100;
-    ArmAnimationRequest     arm_animation     = 101;
-    DisarmAnimationRequest  disarm_animation  = 102;
-    DeleteAnimationRequest  delete_animation  = 103;
-    ListAnimationsRequest   list_animations   = 104;
-    QueryAnimationRequest   query_animation   = 105;
+    CreateAnimationRequest create_animation = 100;
+    ArmAnimationRequest arm_animation = 101;
+    DisarmAnimationRequest disarm_animation = 102;
+    DeleteAnimationRequest delete_animation = 103;
+    ListAnimationsRequest list_animations = 104;
+    QueryAnimationRequest query_animation = 105;
   }
 }
 
@@ -141,27 +142,27 @@ message Response {
   // For create commands: the newly allocated handle (> 0).
   // For mutations / deletes: -1 (ack).
   // On error: 0.
-  int32     handle = 1;
+  int32 handle = 1;
 
   // Machine-readable result code. Always set; OK (0) on success.
-  ErrorCode code   = 2;
+  ErrorCode code = 2;
 
   // Human-readable error detail. Non-empty only when code != OK.
-  string    error  = 3;
+  string error = 3;
 
   // For create commands: the stable UUID of the newly created stimulus.
   // Empty string on non-create responses.
-  string    id     = 4;
+  string id = 4;
 
   // Query payload — present only on successful query responses.
   oneof body {
-    QueryServerInfoResponse server_info   = 10;
-    QueryStimulusResponse   stimulus_info = 11;
-    ListStimuliResponse     stimulus_list = 12;
-    ListVirtualTriggerLinesResponse      virtual_trigger_line_list  = 13;
-    VirtualTriggerLineStateResponse      virtual_trigger_line_state = 14;
-    ListAnimationsResponse               animation_list             = 15;
-    QueryAnimationResponse               query_animation_response   = 16;
+    QueryServerInfoResponse server_info = 10;
+    QueryStimulusResponse stimulus_info = 11;
+    ListStimuliResponse stimulus_list = 12;
+    ListVirtualTriggerLinesResponse virtual_trigger_line_list = 13;
+    VirtualTriggerLineStateResponse virtual_trigger_line_state = 14;
+    ListAnimationsResponse animation_list = 15;
+    QueryAnimationResponse query_animation_response = 16;
   }
 }
 

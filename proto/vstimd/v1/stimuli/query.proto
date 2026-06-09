@@ -1,16 +1,16 @@
 syntax = "proto3";
 package vstimd.v1;
 
-import "vstimd/v1/vec2.proto";
 import "vstimd/v1/color.proto";
-import "vstimd/v1/stimuli/stimulus_type.proto";
-import "vstimd/v1/stimuli/shapes.proto";
-import "vstimd/v1/stimuli/rect.proto";
 import "vstimd/v1/stimuli/circle.proto";
 import "vstimd/v1/stimuli/ellipse.proto";
 import "vstimd/v1/stimuli/grating.proto";
-import "vstimd/v1/stimuli/text.proto";
 import "vstimd/v1/stimuli/polygon.proto";
+import "vstimd/v1/stimuli/rect.proto";
+import "vstimd/v1/stimuli/shapes.proto";
+import "vstimd/v1/stimuli/stimulus_type.proto";
+import "vstimd/v1/stimuli/text.proto";
+import "vstimd/v1/vec2.proto";
 
 // Stimulus command: query current properties.
 // Returns QueryStimulusResponse in Response.body.
@@ -19,28 +19,28 @@ message QueryStimulusRequest {}
 // Shape-specific parameters included in QueryStimulusResponse.
 message StimulusParams {
   oneof shape {
-    RectParams    rect    = 1;
-    CircleParams  circle  = 2;
+    RectParams rect = 1;
+    CircleParams circle = 2;
     EllipseParams ellipse = 3;
     GratingParams grating = 4;
-    TextParams    text    = 5;
+    TextParams text = 5;
     PolygonParams polygon = 6;
   }
 }
 
 // Response payload for QueryStimulusRequest.
 message QueryStimulusResponse {
-  StimulusType   stimulus_type = 1;
-  bool           enabled       = 2;  // user-level enable (ZMQ SetEnabled)
-  Vec2           pos           = 3;
-  float          orientation   = 4;  // degrees CCW
-  float          opacity       = 5;
-  Color          fill_color    = 6;
-  Color          outline_color = 7;
-  float          outline_width = 8;
-  ShapeDrawMode  draw_mode     = 9;
-  StimulusParams params        = 10;
-  string         id            = 11; // stable UUID assigned at creation
-  string         name          = 12; // human-readable label (empty if not set)
-  bool           anim_enabled  = 13; // animation-level enable (set by animation system)
+  StimulusType stimulus_type = 1;
+  bool enabled = 2; // user-level enable (ZMQ SetEnabled)
+  Vec2 pos = 3;
+  float orientation = 4; // degrees CCW
+  float opacity = 5;
+  Color fill_color = 6;
+  Color outline_color = 7;
+  float outline_width = 8;
+  ShapeDrawMode draw_mode = 9;
+  StimulusParams params = 10;
+  string id = 11; // stable UUID assigned at creation
+  string name = 12; // human-readable label (empty if not set)
+  bool anim_enabled = 13; // animation-level enable (set by animation system)
 }

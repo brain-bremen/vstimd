@@ -1,14 +1,59 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Callable
 
 from vstimd._handles import StimulusHandle
 from vstimd._proto import service_pb2
-from vstimd._proto.vstimd.v1 import vec2_pb2, color_pb2
-from vstimd._proto.vstimd.v1.stimuli import rect_pb2, circle_pb2, ellipse_pb2
-from .stimuli_models import Color, Vec2
+from vstimd._proto.vstimd.v1 import color_pb2, vec2_pb2
+from vstimd._proto.vstimd.v1.stimuli import (
+    circle_pb2,
+    ellipse_pb2,
+    rect_pb2,
+    shapes_pb2,
+)
+
+from .color import Color
+from .vec import Vec2
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
+
+
+class ShapeDrawMode(StrEnum):
+    FILLED = "filled"
+    OUTLINED = "outlined"
+    FILLED_AND_OUTLINED = "filled_and_outlined"
+
+
+_DRAW_MODE_MAP: dict[int, ShapeDrawMode] = {
+    shapes_pb2.SHAPE_DRAW_MODE_FILLED: ShapeDrawMode.FILLED,
+    shapes_pb2.SHAPE_DRAW_MODE_OUTLINED: ShapeDrawMode.OUTLINED,
+    shapes_pb2.SHAPE_DRAW_MODE_FILLED_AND_OUTLINED: ShapeDrawMode.FILLED_AND_OUTLINED,
+}
+
+_SHAPE_DRAW_MODE_TO_PROTO: dict[ShapeDrawMode, shapes_pb2.ShapeDrawMode] = {
+    ShapeDrawMode.FILLED: shapes_pb2.SHAPE_DRAW_MODE_FILLED,
+    ShapeDrawMode.OUTLINED: shapes_pb2.SHAPE_DRAW_MODE_OUTLINED,
+    ShapeDrawMode.FILLED_AND_OUTLINED: shapes_pb2.SHAPE_DRAW_MODE_FILLED_AND_OUTLINED,
+}
+
+
+@dataclass
+class RectParams:
+    width: float
+    height: float
+
+
+@dataclass
+class CircleParams:
+    radius: float
+
+
+@dataclass
+class EllipseParams:
+    width: float
+    height: float
 
 
 class ShapesClient:
@@ -88,22 +133,62 @@ class ShapesClient:
         )
         return StimulusHandle(self._send(req).handle)
 
-    # ── Shape-specific mutations ───────────────────────────────────────────────
-
-    def set_rect_size(self, handle: StimulusHandle, width: float, height: float) -> None:
-        self._send(service_pb2.Request(
-            stimulus=handle,
-            set_rect_size=rect_pb2.SetRectSizeRequest(width=width, height=height),
-        ))
+    def set_rect_size(
+        self, handle: StimulusHandle, width: float, height: float
+    ) -> None:
+        self._send(
+            service_pb2.Request(
+                stimulus=handle,
+                set_rect_size=rect_pb2.SetRectSizeRequest(width=width, height=height),
+            )
+        )
 
     def set_circle_radius(self, handle: StimulusHandle, radius: float) -> None:
-        self._send(service_pb2.Request(
-            stimulus=handle,
-            set_circle_radius=circle_pb2.SetCircleRadiusRequest(radius=radius),
-        ))
+        self._send(
+            service_pb2.Request(
+                stimulus=handle,
+                set_circle_radius=circle_pb2.SetCircleRadiusRequest(radius=radius),
+            )
+        )
 
-    def set_ellipse_size(self, handle: StimulusHandle, width: float, height: float) -> None:
-        self._send(service_pb2.Request(
-            stimulus=handle,
-            set_ellipse_size=ellipse_pb2.SetEllipseSizeRequest(width=width, height=height),
-        ))
+    def set_ellipse_size(
+        self, handle: StimulusHandle, width: float, height: float
+    ) -> None:
+        self._send(
+            service_pb2.Request(
+                stimulus=handle,
+                set_ellipse_size=ellipse_pb2.SetEllipseSizeRequest(
+                    width=width, height=height
+                ),
+            )
+        )
+
+    def set_draw_mode(self, handle: StimulusHandle, mode: ShapeDrawMode) -> None:
+        self._send(
+            service_pb2.Request(
+                stimulus=handle,
+                set_draw_mode=shapes_pb2.SetDrawModeRequest(
+                    mode=_SHAPE_DRAW_MODE_TO_PROTO[mode],
+                ),
+            )
+        )
+
+    def set_outline_color(self, handle: StimulusHandle, color: Color) -> None:
+        self._send(
+            service_pb2.Request(
+                stimulus=handle,
+                set_outline_color=shapes_pb2.SetOutlineColorRequest(
+                    color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
+                ),
+            )
+        )
+
+    def set_outline_width(self, handle: StimulusHandle, line_width: float) -> None:
+        self._send(
+            service_pb2.Request(
+                stimulus=handle,
+                set_outline_width=shapes_pb2.SetOutlineWidthRequest(
+                    line_width=line_width
+                ),
+            )
+        )

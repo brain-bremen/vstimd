@@ -1,10 +1,26 @@
 syntax = "proto3";
 package vstimd.v1;
 
+import "vstimd/v1/color.proto";
+
 // Fill/stroke draw mode for shape stimuli.
 enum ShapeDrawMode {
-  SHAPE_DRAW_MODE_UNSPECIFIED         = 0; // treated as FILLED (default)
-  SHAPE_DRAW_MODE_FILLED              = 1;
-  SHAPE_DRAW_MODE_OUTLINED            = 2;
+  SHAPE_DRAW_MODE_UNSPECIFIED = 0; // treated as FILLED (default)
+  SHAPE_DRAW_MODE_FILLED = 1;
+  SHAPE_DRAW_MODE_OUTLINED = 2;
   SHAPE_DRAW_MODE_FILLED_AND_OUTLINED = 3;
+}
+
+message SetDrawModeRequest {
+  ShapeDrawMode mode = 1;
+}
+
+// Stimulus command: set outline colour.
+message SetOutlineColorRequest {
+  Color color = 1;
+}
+
+// Stimulus command: set outline stroke width in pixels.
+message SetOutlineWidthRequest {
+  float line_width = 1;
 }

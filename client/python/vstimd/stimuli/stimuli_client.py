@@ -5,20 +5,13 @@ from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import color_pb2
 from vstimd._proto.vstimd.v1.stimuli import (
     query_pb2,
-    shapes_pb2,
     shared_set_requests_pb2,
 )
 
 from ._grating import GratingClient
 from ._shapes import ShapesClient, _SendFn
 from ._text import TextClient
-from .stimuli_models import Color, DrawMode, StimulusInfo, Vec2
-
-_DRAW_MODE_TO_PROTO: dict[DrawMode, shapes_pb2.ShapeDrawMode] = {
-    DrawMode.FILLED: shapes_pb2.SHAPE_DRAW_MODE_FILLED,
-    DrawMode.OUTLINED: shapes_pb2.SHAPE_DRAW_MODE_OUTLINED,
-    DrawMode.FILLED_AND_OUTLINED: shapes_pb2.SHAPE_DRAW_MODE_FILLED_AND_OUTLINED,
-}
+from .stimuli_models import Color, StimulusInfo, Vec2
 
 
 class StimuliClient:
@@ -91,36 +84,6 @@ class StimuliClient:
             service_pb2.Request(
                 stimulus=handle,
                 set_alpha=shared_set_requests_pb2.SetAlphaRequest(opacity=opacity),
-            )
-        )
-
-    def set_draw_mode(self, handle: StimulusHandle, mode: DrawMode) -> None:
-        self._send(
-            service_pb2.Request(
-                stimulus=handle,
-                set_draw_mode=shared_set_requests_pb2.SetDrawModeRequest(
-                    mode=_DRAW_MODE_TO_PROTO[mode],
-                ),
-            )
-        )
-
-    def set_outline_color(self, handle: StimulusHandle, color: Color) -> None:
-        self._send(
-            service_pb2.Request(
-                stimulus=handle,
-                set_outline_color=shared_set_requests_pb2.SetOutlineColorRequest(
-                    color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
-                ),
-            )
-        )
-
-    def set_outline_width(self, handle: StimulusHandle, line_width: float) -> None:
-        self._send(
-            service_pb2.Request(
-                stimulus=handle,
-                set_outline_width=shared_set_requests_pb2.SetOutlineWidthRequest(
-                    line_width=line_width
-                ),
             )
         )
 
