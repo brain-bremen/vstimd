@@ -69,6 +69,19 @@ def test_grating_mutate_waveform(conn: Connection) -> None:
     conn.stimuli.delete(handle)
 
 
+def test_grating_set_mask(conn: Connection) -> None:
+    handle = conn.stimuli.grating.create_grating(mask=GratingMask.NONE)
+    info = conn.stimuli.query(handle)
+    assert isinstance(info.params, GratingParams)
+    assert info.params.mask == GratingMask.NONE
+
+    conn.stimuli.grating.set_mask(handle, GratingMask.CIRCLE)
+    info = conn.stimuli.query(handle)
+    assert info.params.mask == GratingMask.CIRCLE
+
+    conn.stimuli.delete(handle)
+
+
 def test_grating_drift_speed(conn: Connection) -> None:
     handle = conn.stimuli.grating.create_grating(sf=0.05, drift_speed=2.0)
     info = conn.stimuli.query(handle)

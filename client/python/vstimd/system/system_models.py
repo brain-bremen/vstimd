@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+from vstimd._handles import StimulusHandle
 from vstimd.stimuli.color import Color
 
 
@@ -48,3 +51,13 @@ class ServerInfo:
             f"ServerInfo(width={self.width}, height={self.height}, "
             f"frame_rate={self.frame_rate:.1f}, version={self.version})"
         )
+
+
+@dataclass
+class StimulusListEntry:
+    """One entry returned by :meth:`SystemClient.list_stimuli`."""
+
+    handle: StimulusHandle
+    enabled: bool
+    id: str
+    name: str

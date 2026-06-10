@@ -812,3 +812,17 @@ def test_anim_moving_bar_rf_mapping(
     conn.animations.delete(a)
     conn.stimuli.delete(bar)
     conn.stimuli.delete(lbl)
+
+
+def test_anim_external_position_2d(conn: Connection) -> None:
+    """create_external_position_2d registers the animation and returns a valid handle."""
+    s = conn.stimuli.shapes.create_rect()
+    a = conn.animations.create_external_position_2d(s, shm_name="/vstimd_test_ext_pos")
+    assert a > 0
+
+    details = conn.animations.query(a)
+    assert details.handle == a
+    assert s in details.stimuli
+
+    conn.animations.delete(a)
+    conn.stimuli.delete(s)

@@ -24,7 +24,7 @@ __path__ = list(__path__) + [_os.path.join(_os.path.dirname(__file__), "_proto",
 from .connection import Connection
 from ._handles import AnimationHandle, StimulusHandle
 from .response import ErrorCode, ServerResponse
-from .system import ServerInfo, ServerVersion
+from .system import ServerInfo, ServerVersion, StimulusListEntry
 from .vtl import VtlClient, VtlDirection, VtlLineInfo
 from .animations import (
     AnimationClient,
@@ -56,6 +56,7 @@ __all__ = [
     "ServerResponse",
     "ServerInfo",
     "ServerVersion",
+    "StimulusListEntry",
     "VstimdError",
     "HandleNotFoundError",
     "WrongStimulusTypeError",

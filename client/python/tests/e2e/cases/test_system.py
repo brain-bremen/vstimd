@@ -26,15 +26,10 @@ def test_set_background(conn: Connection) -> None:
 
 
 def test_list_stimuli(conn: Connection) -> None:
-    from vstimd._proto import service_pb2, system_pb2
     h1 = conn.stimuli.shapes.create_rect(name="stim_a")
     h2 = conn.stimuli.shapes.create_circle(name="stim_b")
 
-    resp = conn._send(service_pb2.Request(
-        system=service_pb2.SystemTarget(),
-        list_stimuli=system_pb2.ListStimuliRequest(),
-    ))
-    entries = {e.handle: e for e in resp.stimulus_list.entries}
+    entries = {e.handle: e for e in conn.system.list_stimuli()}
 
     assert h1 in entries and h2 in entries
     assert entries[h1].name == "stim_a"
@@ -46,16 +41,11 @@ def test_list_stimuli(conn: Connection) -> None:
 
 
 def test_delete_all(conn: Connection) -> None:
-    from vstimd._proto import service_pb2, system_pb2
     h1 = conn.stimuli.shapes.create_rect()
     h2 = conn.stimuli.shapes.create_circle()
     conn.system.delete_all()
 
-    resp = conn._send(service_pb2.Request(
-        system=service_pb2.SystemTarget(),
-        list_stimuli=system_pb2.ListStimuliRequest(),
-    ))
-    handles = {e.handle for e in resp.stimulus_list.entries}
+    handles = {e.handle for e in conn.system.list_stimuli()}
     assert h1 not in handles
     assert h2 not in handles
 
@@ -89,6 +79,12 @@ def test_server_response_fields(conn: Connection) -> None:
     r1 = conn.system.wait_for_frames(1)
     r2 = conn.system.wait_for_frames(1)
     assert r2.frame_count > r1.frame_count
+
+
+def test_wait_until(conn: Connection) -> None:
+    r1 = conn.system.wait_for_frames(1)
+    r2 = conn.system.wait_until(r1.server_time_ns)
+    assert r2.code == ErrorCode.OK
 
 
 def test_wait_until_ready_already_running(server_address: str) -> None:

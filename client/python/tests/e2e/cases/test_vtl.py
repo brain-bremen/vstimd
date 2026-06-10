@@ -97,6 +97,19 @@ def test_vtl_set_bank(conn: Connection) -> None:
     conn.vtl.set_line_name(bank=0, bit=6, direction=VtlDirection.INPUT, name="")
 
 
+def test_vtl_clear_input_latches(conn: Connection) -> None:
+    """clear_input_latches returns OK and drains accumulated edge latches."""
+    conn.vtl.set_line_name(bank=0, bit=7, direction=VtlDirection.INPUT, name="latch_test")
+    conn.vtl.set_input_line((0, 7), True)
+    conn.vtl.set_input_line((0, 7), False)
+
+    resp = conn.vtl.clear_input_latches((0, 7))
+    assert isinstance(resp, ServerResponse)
+    assert resp.code == ErrorCode.OK
+
+    conn.vtl.set_line_name(bank=0, bit=7, direction=VtlDirection.INPUT, name="")
+
+
 def test_vtl_set_output_line(conn: Connection) -> None:
     conn.vtl.set_line_name(bank=0, bit=10, direction=VtlDirection.OUTPUT, name="out_line")
 

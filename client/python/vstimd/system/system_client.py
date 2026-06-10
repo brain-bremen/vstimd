@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import Callable
 
+from vstimd._handles import StimulusHandle
 from vstimd._proto import service_pb2, system_pb2
 from vstimd._proto.vstimd.v1 import color_pb2
 from vstimd.response import ServerResponse
 from vstimd.stimuli.color import Color
-from .system_models import ServerInfo, ServerVersion
+from .system_models import ServerInfo, ServerVersion, StimulusListEntry
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
@@ -37,6 +38,18 @@ class SystemClient:
             version=ServerVersion(v.major, v.minor, v.patch),
             background_color=Color(r=bg.r, g=bg.g, b=bg.b, a=bg.a),
         )
+
+    def list_stimuli(self) -> list[StimulusListEntry]:
+        """Return a list of all currently existing stimuli."""
+        req = service_pb2.Request(
+            system=service_pb2.SystemTarget(),
+            list_stimuli=system_pb2.ListStimuliRequest(),
+        )
+        resp = self._send(req)
+        return [
+            StimulusListEntry(handle=StimulusHandle(e.handle), enabled=e.enabled, id=e.id, name=e.name)
+            for e in resp.stimulus_list.entries
+        ]
 
     # ── Scene mutations ───────────────────────────────────────────────────────
 
