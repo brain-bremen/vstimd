@@ -12,6 +12,8 @@ use crate::layout::{
 /// through `AtomicU64`.
 pub struct VtlSegment {
     pub(crate) ptr:  *mut u8,
+    // Used by the unix Drop (munmap); Windows cleanup (UnmapViewOfFile) doesn't need the size.
+    #[cfg_attr(not(unix), allow(dead_code))]
     pub(crate) size: usize,
 }
 

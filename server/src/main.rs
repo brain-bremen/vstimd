@@ -19,15 +19,15 @@ fn main() {
 
     let scene = Arc::new(RwLock::new(SceneState::new()));
 
-    // Create VTL shared memory on Linux. The Arc<Mutex<>> lets both the ZMQ
+    // Create VTL shared memory on Linux/Windows. The Arc<Mutex<>> lets both the ZMQ
     // thread (software triggers, naming) and the render backend (frame polling)
     // access it safely.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(unix, windows))]
     let vtl: Option<Arc<Mutex<VtlState>>> = vtl::VtlOwner::create("/vstimd_vtl", 4, 1)
         .map(|owner| Arc::new(Mutex::new(VtlState::new(owner))))
         .map_err(|e| log::warn!("vtl: failed to create shm segment: {e}"))
         .ok();
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(unix, windows)))]
     let vtl: Option<Arc<Mutex<VtlState>>> = None;
 
     if vtl.is_some() {
