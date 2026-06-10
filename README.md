@@ -17,7 +17,9 @@ low-latency rendering with few skipped frames.
 
 vstimd combines ideas and concepts from Michael Stephan's
 [StimServer](https://github.com/esi-neuroscience/StimServer) C++ visual
-stimulus server and Andreas Kreiter's **VStim** project.
+stimulus server and Andreas Kreiter's **VStim** project. 
+
+This project is licensed under the GNU AGPLv3. Copyright (c) 2026 Joscha Schmiedt, University of Bremen. 
 
 ## Goals
 
