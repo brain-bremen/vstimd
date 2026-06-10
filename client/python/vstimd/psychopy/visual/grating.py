@@ -5,13 +5,9 @@ from ._colors import to_color
 from ._types import PsychoPyColor, PsychoPyVec2
 from ._units import to_pixels
 from .window import Window
-from vstimd.stimuli.stimuli_models import Color as StimulusColor, Vec2 as StimulusVec2
-from vstimd.stimuli._grating import (
-    GratingMask,
-    GratingTexture,
-    _MASK_TO_PROTO,
-    _WAVEFORM_TO_PROTO,
-)
+from vstimd.stimuli.color import Color as StimulusColor
+from vstimd.stimuli.grating_models import GratingMask, GratingTexture, _MASK_TO_PROTO, _WAVEFORM_TO_PROTO
+from vstimd.stimuli.vec import Vec2 as StimulusVec2
 
 
 def _parse_mask_param(mask: GratingMask | str | None, mask_params: dict | None) -> float:

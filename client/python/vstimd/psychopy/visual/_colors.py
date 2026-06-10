@@ -7,7 +7,7 @@ PsychoPy's default colorSpace='rgb' uses -1..1 rather than 0..1.  The midpoint
 
 from __future__ import annotations
 
-from ...stimuli.stimuli_models import Color
+from ...stimuli.color import Color
 from ._types import PsychoPyColor
 
 _NAMED: dict[str, tuple[float, float, float]] = {

@@ -6,15 +6,12 @@ from vstimd._handles import StimulusHandle
 from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import vec2_pb2, color_pb2
 from vstimd._proto.vstimd.v1.stimuli import text_pb2
-from .stimuli_models import Color, LanguageStyle, Vec2
+
+from .color import Color
+from .text_models import LanguageStyle, _LANGUAGE_STYLE_TO_PROTO
+from .vec import Vec2
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
-
-_LANGUAGE_STYLE_TO_PROTO: dict[LanguageStyle, text_pb2.LanguageStyle] = {
-    LanguageStyle.LTR:    text_pb2.LANGUAGE_STYLE_LTR,
-    LanguageStyle.RTL:    text_pb2.LANGUAGE_STYLE_RTL,
-    LanguageStyle.ARABIC: text_pb2.LANGUAGE_STYLE_ARABIC,
-}
 
 
 class TextClient:

@@ -6,7 +6,8 @@ from vstimd._handles import StimulusHandle
 from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import vec2_pb2, color_pb2
 from vstimd._proto.vstimd.v1.stimuli import grating_pb2
-from .stimuli_models import Color, Vec2
+
+from .color import Color
 from .grating_models import (
     GratingMask,
     GratingParams,
@@ -14,17 +15,9 @@ from .grating_models import (
     _MASK_TO_PROTO,
     _WAVEFORM_TO_PROTO,
 )
+from .vec import Vec2
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
-
-__all__ = [
-    "GratingClient",
-    "GratingMask",
-    "GratingParams",
-    "GratingTexture",
-    "_MASK_TO_PROTO",
-    "_WAVEFORM_TO_PROTO",
-]
 
 
 class GratingClient:

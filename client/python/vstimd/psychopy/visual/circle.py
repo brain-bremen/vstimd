@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from ..._handles import StimulusHandle
-from ...stimuli.stimuli_models import Color as StimulusColor, Vec2 as StimulusVec2
+from ...stimuli.color import Color as StimulusColor
+from ...stimuli.vec import Vec2 as StimulusVec2
 from ._colors import to_color
 from ._types import PsychoPyColor, PsychoPyVec2
 from ._units import to_pixels

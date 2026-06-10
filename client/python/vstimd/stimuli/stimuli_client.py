@@ -8,10 +8,12 @@ from vstimd._proto.vstimd.v1.stimuli import (
     shared_set_requests_pb2,
 )
 
-from ._grating import GratingClient
-from ._shapes import ShapesClient, _SendFn
-from ._text import TextClient
-from .stimuli_models import Color, StimulusInfo, Vec2
+from .grating_client import GratingClient
+from .shapes_client import ShapesClient, _SendFn
+from .text_client import TextClient
+from .color import Color
+from .stimuli_models import StimulusInfo
+from .vec import Vec2
 
 
 class StimuliClient:

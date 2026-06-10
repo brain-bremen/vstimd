@@ -6,15 +6,15 @@ from typing import Union
 
 from vstimd._proto.vstimd.v1.stimuli import query_pb2, stimulus_type_pb2
 
-from ._shapes import (
-    _PROTO_TO_DRAW_MODE,
+from .color import Color
+from .grating_models import GratingParams
+from .shapes_models import (
     CircleParams,
     EllipseParams,
     RectParams,
     ShapeDrawMode,
+    _PROTO_TO_DRAW_MODE,
 )
-from .color import Color
-from .grating_models import GratingParams
 from .vec import Vec2
 
 
@@ -29,12 +29,6 @@ class StimulusType(Enum):
     GRATING = "grating"
     TEXT = "text"
     POLYGON = "polygon"
-
-
-class LanguageStyle(Enum):
-    LTR = "LTR"
-    RTL = "RTL"
-    ARABIC = "Arabic"
 
 
 StimulusParams = Union[RectParams, CircleParams, EllipseParams, GratingParams]
