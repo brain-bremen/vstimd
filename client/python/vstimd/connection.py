@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import zmq  # type: ignore[import]
 
 from vstimd._proto import service_pb2
@@ -40,7 +41,14 @@ class Connection:
         ZMQ endpoint of the server (default ``tcp://localhost:5555``).
     """
 
-    def __init__(self, address: str = "tcp://localhost:5555") -> None:
+    def __init__(
+        self,
+        address: str = "tcp://localhost:5555",
+        *,
+        wait_ready: bool = False,
+        ready_timeout_s: float = 30.0,
+    ) -> None:
+        self._address = address
         self._ctx = zmq.Context.instance()
         self._sock = self._ctx.socket(zmq.REQ)
         self._sock.setsockopt(zmq.LINGER, 0)
@@ -52,6 +60,8 @@ class Connection:
             self._send,
             fps_getter=lambda: self.system.query_server_info().frame_rate,
         )
+        if wait_ready:
+            self.wait_until_ready(timeout_s=ready_timeout_s)
 
     def _send(self, req: service_pb2.Request) -> service_pb2.Response:
         self._sock.send(req.SerializeToString())
@@ -68,6 +78,35 @@ class Connection:
 
     def __exit__(self, *_: object) -> None:
         self.close()
+
+    def wait_until_ready(
+        self,
+        timeout_s: float = 30.0,
+        *,
+        retry_interval_s: float = 0.5,
+    ) -> None:
+        """Block until the server is up and has rendered at least one frame.
+
+        Retries the ZMQ connection if the server is not yet running.
+        Raises ``TimeoutError`` if the server is not ready within *timeout_s*.
+        """
+        deadline = time.monotonic() + timeout_s
+        attempt_ms = max(1, int(retry_interval_s * 1000))
+
+        while True:
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"vstimd server not ready after {timeout_s}s")
+            self._sock.setsockopt(zmq.RCVTIMEO, attempt_ms)
+            try:
+                self.system.wait_for_frames(1)
+                return
+            except zmq.Again:
+                self._sock.close()
+                self._sock = self._ctx.socket(zmq.REQ)
+                self._sock.setsockopt(zmq.LINGER, 0)
+                self._sock.connect(self._address)
+            finally:
+                self._sock.setsockopt(zmq.RCVTIMEO, -1)
 
     def close(self) -> None:
         """Close the ZMQ socket."""

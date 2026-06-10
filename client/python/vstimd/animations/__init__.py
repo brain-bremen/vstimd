@@ -1,5 +1,5 @@
-from ._client import AnimationClient, Stimuli, VtlHandle
-from ._models import (
+from .animations_client import AnimationClient, Stimuli, VtlHandle
+from .animations_models import (
     AnimationDetails,
     AnimationInfo,
     AnimationState,

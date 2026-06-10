@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from ..._handles import StimulusHandle
-from ..._connection import Connection
+from ...connection import Connection
 from ._types import PsychoPyColor, MonitorProtocol
 
 

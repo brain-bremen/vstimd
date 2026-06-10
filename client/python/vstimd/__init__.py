@@ -21,7 +21,7 @@ Example::
 import os as _os
 __path__ = list(__path__) + [_os.path.join(_os.path.dirname(__file__), "_proto", "vstimd")]
 
-from ._connection import Connection
+from .connection import Connection
 from ._handles import AnimationHandle, StimulusHandle
 from .response import ErrorCode, ServerResponse
 from .system import ServerInfo, ServerVersion

@@ -6,7 +6,7 @@ from vstimd._proto import service_pb2, system_pb2
 from vstimd._proto.vstimd.v1 import color_pb2
 from vstimd.response import ServerResponse
 from vstimd.stimuli.color import Color
-from ._models import ServerInfo, ServerVersion
+from .system_models import ServerInfo, ServerVersion
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]

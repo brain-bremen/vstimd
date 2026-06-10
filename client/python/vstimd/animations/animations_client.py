@@ -7,7 +7,7 @@ from vstimd._handles import AnimationHandle, StimulusHandle
 from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import animations_pb2, vtl_pb2
 from vstimd.response import ServerResponse
-from ._models import AnimationDetails, AnimationInfo, AnimationState, FinalAction, StartAction, VtlEdge
+from .animations_models import AnimationDetails, AnimationInfo, AnimationState, FinalAction, StartAction, VtlEdge
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]

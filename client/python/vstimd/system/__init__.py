@@ -1,4 +1,4 @@
-from ._client import SystemClient
-from ._models import ServerInfo, ServerVersion
+from .system_client import SystemClient
+from .system_models import ServerInfo, ServerVersion
 
 __all__ = ["SystemClient", "ServerInfo", "ServerVersion"]

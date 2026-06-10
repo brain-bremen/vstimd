@@ -91,6 +91,26 @@ def test_server_response_fields(conn: Connection) -> None:
     assert r2.frame_count > r1.frame_count
 
 
+def test_wait_until_ready_already_running(server_address: str) -> None:
+    """wait_until_ready returns immediately when the server is already up."""
+    with Connection(server_address) as c:
+        c.wait_until_ready(timeout_s=5.0)
+
+
+def test_wait_ready_constructor_flag(server_address: str) -> None:
+    """Connection(wait_ready=True) connects and becomes ready without extra calls."""
+    with Connection(server_address, wait_ready=True, ready_timeout_s=5.0) as c:
+        info = c.system.query_server_info()
+        assert info.frame_rate > 0.0
+
+
+def test_wait_until_ready_timeout() -> None:
+    """wait_until_ready raises TimeoutError when nothing is listening."""
+    with Connection("tcp://localhost:19876") as c:
+        with pytest.raises(TimeoutError):
+            c.wait_until_ready(timeout_s=1.0, retry_interval_s=0.2)
+
+
 def test_set_deferred_mode(conn: Connection) -> None:
     h = conn.stimuli.shapes.create_rect(pos=Vec2(0, 0))
     conn.system.set_deferred_mode(True)

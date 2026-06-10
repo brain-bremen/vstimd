@@ -5,7 +5,7 @@ from typing import Callable, Union
 from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import vtl_pb2
 from vstimd.response import ServerResponse
-from ._models import VtlDirection, VtlLineInfo
+from .vtl_models import VtlDirection, VtlLineInfo
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
