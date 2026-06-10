@@ -8,6 +8,7 @@ from vstimd._proto.vstimd.v1 import color_pb2, vec2_pb2
 from vstimd._proto.vstimd.v1.stimuli import (
     circle_pb2,
     ellipse_pb2,
+    polygon_pb2,
     rect_pb2,
     shapes_pb2,
 )
@@ -122,6 +123,39 @@ class ShapesClient:
                 stimulus=handle,
                 set_ellipse_size=ellipse_pb2.SetEllipseSizeRequest(
                     width=width, height=height
+                ),
+            )
+        )
+
+    def create_polygon(
+        self,
+        *,
+        vertices: list[Vec2],
+        close_shape: bool = True,
+        color: Color = Color(1.0, 1.0, 1.0),
+        name: str = "",
+        id: str = "",
+    ) -> StimulusHandle:
+        req = service_pb2.Request(
+            system=service_pb2.SystemTarget(),
+            create_polygon=polygon_pb2.CreatePolygonRequest(
+                vertices=[vec2_pb2.Vec2(x=v.x, y=v.y) for v in vertices],
+                close_shape=close_shape,
+                fill_color=color_pb2.Color(r=color.r, g=color.g, b=color.b, a=color.a),
+                name=name,
+                id=id,
+            ),
+        )
+        return StimulusHandle(self._send(req).handle)
+
+    def set_polygon_vertices(
+        self, handle: StimulusHandle, vertices: list[Vec2]
+    ) -> None:
+        self._send(
+            service_pb2.Request(
+                stimulus=handle,
+                set_polygon_vertices=polygon_pb2.SetPolygonVerticesRequest(
+                    vertices=[vec2_pb2.Vec2(x=v.x, y=v.y) for v in vertices],
                 ),
             )
         )

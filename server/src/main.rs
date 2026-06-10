@@ -34,17 +34,19 @@ fn main() {
         log::info!("vtl: shared memory segment created at /vstimd_vtl");
     }
 
-    let _zmq = vstimd::ipc::spawn_zmq_thread(scene.clone(), vtl.clone(), "tcp://0.0.0.0:5555");
-
     match args.render_target {
         #[cfg(target_os = "linux")]
-        RenderTarget::Drm => DrmRenderState::new(scene, vtl, log_buffer).run_loop(),
+        RenderTarget::Drm => {
+            let _zmq = vstimd::ipc::spawn_zmq_thread(scene.clone(), vtl.clone(), "tcp://0.0.0.0:5555");
+            DrmRenderState::new(scene, vtl, log_buffer).run_loop();
+        }
         #[cfg(not(target_os = "linux"))]
         RenderTarget::Drm => {
             log::error!("DRM/console mode is only available on Linux");
             std::process::exit(1);
         }
         RenderTarget::Desktop(window_mode) => {
+            let _zmq = vstimd::ipc::spawn_zmq_thread(scene.clone(), vtl.clone(), "tcp://0.0.0.0:5555");
             let event_loop = winit::event_loop::EventLoop::new().unwrap_or_else(|e| {
                 log::error!("vstimd: failed to create event loop: {e}");
                 std::process::exit(1);
@@ -55,6 +57,9 @@ fn main() {
         }
         RenderTarget::Null => {
             log::info!("vstimd: null renderer — ZMQ server + animation loop running, no display");
+            // Use the null-specific ZMQ thread that applies pending deferred flips
+            // synchronously after each command (no render thread drives frame boundaries).
+            let _zmq = vstimd::ipc::spawn_null_zmq_thread(scene.clone(), vtl.clone(), "tcp://0.0.0.0:5555");
             let frame_period = {
                 let s = scene.read().unwrap();
                 std::time::Duration::from_secs_f32(1.0 / s.frame_rate)

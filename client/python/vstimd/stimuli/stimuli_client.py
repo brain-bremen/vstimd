@@ -89,6 +89,32 @@ class StimuliClient:
             )
         )
 
+    def bring_to_front(self, handle: StimulusHandle) -> None:
+        self._send(
+            service_pb2.Request(
+                stimulus=handle,
+                bring_to_front=shared_set_requests_pb2.BringToFrontRequest(),
+            )
+        )
+
+    def send_to_back(self, handle: StimulusHandle) -> None:
+        self._send(
+            service_pb2.Request(
+                stimulus=handle,
+                send_to_back=shared_set_requests_pb2.SendToBackRequest(),
+            )
+        )
+
+    def swap_draw_order(self, handle_a: StimulusHandle, handle_b: StimulusHandle) -> None:
+        self._send(
+            service_pb2.Request(
+                system=service_pb2.SystemTarget(),
+                swap_draw_order=shared_set_requests_pb2.SwapDrawOrderRequest(
+                    handle_a=handle_a, handle_b=handle_b,
+                ),
+            )
+        )
+
     # ── Query ──────────────────────────────────────────────────────────────────
 
     def query(self, handle: StimulusHandle) -> StimulusInfo:

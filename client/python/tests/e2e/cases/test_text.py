@@ -6,6 +6,7 @@ import time
 import pytest
 
 from vstimd import Connection
+from vstimd.stimuli import TextParams
 from vstimd.stimuli.stimuli_models import Color, Vec2
 from ._helpers import label as _label, update_label as _update_label
 
@@ -26,6 +27,9 @@ def test_set_text(conn: Connection) -> None:
     handle = conn.stimuli.text.create_text(text="before", pos=Vec2(0, 0),
                                              box_width=400, box_height=80, letter_height=40)
     conn.stimuli.text.set_text(handle, "after")
+    info = conn.stimuli.query(handle)
+    assert isinstance(info.params, TextParams)
+    assert info.params.text == "after"
     conn.stimuli.delete(handle)
 
 
@@ -34,6 +38,11 @@ def test_set_text_color(conn: Connection) -> None:
                                              box_width=400, box_height=80, letter_height=40,
                                              color=Color(1.0, 1.0, 1.0))
     conn.stimuli.text.set_text_color(handle, Color(1.0, 0.0, 0.0))
+    info = conn.stimuli.query(handle)
+    assert isinstance(info.params, TextParams)
+    assert info.params.text_color.r == pytest.approx(1.0, abs=0.01)
+    assert info.params.text_color.g == pytest.approx(0.0, abs=0.01)
+    assert info.params.text_color.b == pytest.approx(0.0, abs=0.01)
     conn.stimuli.delete(handle)
 
 
