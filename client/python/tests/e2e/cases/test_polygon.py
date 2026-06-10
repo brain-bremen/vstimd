@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import pytest
 
-import pytest
-
 from vstimd import Connection
 from vstimd.exceptions import NotSupportedError
 from vstimd.stimuli import PolygonParams, StimulusType

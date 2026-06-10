@@ -321,10 +321,10 @@ fn advance_one(
                 if start_action.contains(StartAction::TOGGLE_PHOTODIODE) {
                     scene.photodiode.lit = !scene.photodiode.lit;
                 }
-                if start_action.contains(StartAction::START_ACTION_TRIGGER_LINE) {
-                    if let Some(bit) = start_action_trigger_line {
-                        output_pending[bit.bank] |= 1u64 << bit.bit;
-                    }
+                if start_action.contains(StartAction::START_ACTION_TRIGGER_LINE)
+                    && let Some(bit) = start_action_trigger_line
+                {
+                    output_pending[bit.bank] |= 1u64 << bit.bit;
                 }
 
                 scene.animations.get_mut(&handle).unwrap().state =
@@ -411,7 +411,7 @@ fn advance_one(
                 frame_counter + 1 >= coords.len() as u32
             }
             Animation::MoveAlongSegments2D { waypoints, speed_px_per_sec } => {
-                if waypoints.len() < 2 {
+                if waypoints.len() < 2 || *speed_px_per_sec <= 0.0 {
                     true
                 } else {
                     // Compute cumulative lengths along each segment.

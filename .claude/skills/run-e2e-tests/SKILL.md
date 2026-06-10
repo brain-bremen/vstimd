@@ -17,6 +17,6 @@ make test-e2e
 
 ## Gotchas
 
-- `QueryServerInfo` returns `NotReadyError` while the server is initialising — the fixture polls with a low-level ZMQ ping (`conftest.reachable()`), not via the Python client, to avoid this.
+- `QueryServerInfo` returns OK with `(width, height) = (0, 0)` while the server is initialising (before the display is ready) — the fixture polls with a low-level ZMQ ping (`conftest.reachable()`), not via the Python client, to avoid acting on a zeroed response.
 - Port 5555 must be free. If a previous server process leaked, find and kill it: `ss -tlnp | grep 5555`.
 - `make test-e2e-null` runs `make proto` first — proto stubs are always up to date when tests run.
