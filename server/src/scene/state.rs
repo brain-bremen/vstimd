@@ -366,19 +366,57 @@ fn advance_one(
                 total_frames.is_some_and(|tf| frame_counter + 1 >= tf)
             }
 
-            // Path animations complete when all positions have been played.
-            // Position updates are deferred to the render backend (not yet wired).
             Animation::MoveAlongPath2D { coords } => {
+                let idx = frame_counter as usize;
+                if idx < coords.len() {
+                    let [x, y] = coords[idx];
+                    for &sh in &stim_handles {
+                        if let Some(e) = scene.stimuli.get_mut(&sh) {
+                            e.stimulus.move_to(false, x, y);
+                        }
+                    }
+                }
                 frame_counter + 1 >= coords.len() as u32
             }
             Animation::MoveAlongSegments2D { waypoints, speed_px_per_sec } => {
-                let total_len: f32 = waypoints.windows(2).map(|w| {
-                    let dx = w[1][0] - w[0][0];
-                    let dy = w[1][1] - w[0][1];
-                    (dx * dx + dy * dy).sqrt()
-                }).sum();
-                let total_frames = (total_len / speed_px_per_sec * scene.frame_rate).ceil() as u32;
-                frame_counter + 1 >= total_frames.max(1)
+                if waypoints.len() < 2 {
+                    true
+                } else {
+                    // Compute cumulative lengths along each segment.
+                    let seg_lens: Vec<f32> = waypoints.windows(2).map(|w| {
+                        let dx = w[1][0] - w[0][0];
+                        let dy = w[1][1] - w[0][1];
+                        (dx * dx + dy * dy).sqrt()
+                    }).collect();
+                    let total_len: f32 = seg_lens.iter().sum();
+                    let total_frames = (total_len / speed_px_per_sec * scene.frame_rate).ceil() as u32;
+                    let total_frames = total_frames.max(1);
+
+                    // How far along the path are we at this frame?
+                    let t = frame_counter as f32 / (total_frames - 1).max(1) as f32;
+                    let dist = t * total_len;
+
+                    // Walk segments to find the current interpolated position.
+                    let mut accum = 0.0f32;
+                    let mut pos = waypoints[0];
+                    for (i, &seg_len) in seg_lens.iter().enumerate() {
+                        if accum + seg_len >= dist || i + 1 == seg_lens.len() {
+                            let local_t = if seg_len > 0.0 { (dist - accum) / seg_len } else { 0.0 };
+                            let local_t = local_t.clamp(0.0, 1.0);
+                            let a = waypoints[i];
+                            let b = waypoints[i + 1];
+                            pos = [a[0] + (b[0] - a[0]) * local_t, a[1] + (b[1] - a[1]) * local_t];
+                            break;
+                        }
+                        accum += seg_len;
+                    }
+                    for &sh in &stim_handles {
+                        if let Some(e) = scene.stimuli.get_mut(&sh) {
+                            e.stimulus.move_to(false, pos[0], pos[1]);
+                        }
+                    }
+                    frame_counter + 1 >= total_frames
+                }
             }
             // External position is driven by an external process; never self-terminates.
             Animation::ExternalPosition2D { .. } => false,

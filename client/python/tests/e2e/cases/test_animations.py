@@ -370,10 +370,20 @@ def test_anim_move_along_path_2d(conn: Connection, request: pytest.FixtureReques
     conn.animations.arm(a)
 
     _update_label(conn, lbl, tid, "moving left→right")
+    # Wait for a few frames then confirm position has moved from the start.
+    time.sleep(0.1)
+    mid_info = conn.stimuli.query(s)
+    assert mid_info.pos.x > -200.0, f"position should have advanced from start, got x={mid_info.pos.x}"
+
     time.sleep(step_delay * 2)
 
     final = _wait_for_state(conn, a, AnimationState.DONE, timeout=5.0)
     assert final == AnimationState.DONE, f"path animation did not complete (got {final!r})"
+
+    # After completion the final position should be the last waypoint.
+    end_info = conn.stimuli.query(s)
+    assert abs(end_info.pos.x - 200.0) < 1.0, f"expected final x≈200, got {end_info.pos.x}"
+    assert abs(end_info.pos.y) < 1.0, f"expected final y≈0, got {end_info.pos.y}"
 
     conn.animations.delete(a)
     conn.stimuli.delete(s)
@@ -394,10 +404,20 @@ def test_anim_move_along_segments_2d(conn: Connection, request: pytest.FixtureRe
     conn.animations.arm(a)
 
     _update_label(conn, lbl, tid, "moving along triangle")
+    # Wait a short time and confirm the stimulus has left the starting position.
+    time.sleep(0.15)
+    mid_info = conn.stimuli.query(s)
+    assert mid_info.pos.x > -200.0, f"position should have moved from start, got x={mid_info.pos.x}"
+
     time.sleep(step_delay * 3)
 
     final = _wait_for_state(conn, a, AnimationState.DONE, timeout=10.0)
     assert final == AnimationState.DONE, f"segment animation did not complete (got {final!r})"
+
+    # After completion the final position should be the last waypoint.
+    end_info = conn.stimuli.query(s)
+    assert abs(end_info.pos.x - (-200.0)) < 2.0, f"expected final x≈-200, got {end_info.pos.x}"
+    assert abs(end_info.pos.y - (-100.0)) < 2.0, f"expected final y≈-100, got {end_info.pos.y}"
 
     conn.animations.delete(a)
     conn.stimuli.delete(s)
