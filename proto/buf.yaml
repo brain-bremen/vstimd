@@ -1,3 +1,6 @@
 version: v2
 modules:
   - path: .
+lint:
+  except:
+    - PACKAGE_DIRECTORY_MATCH
