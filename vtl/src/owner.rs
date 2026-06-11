@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::io;
 use std::ops::Deref;
 
-use crate::layout::MAX_BANKS;
+use crate::layout::{MAGIC, MAX_BANKS, SHM_SIZE, VERSION};
 use crate::segment::VtlSegment;
 
 /// Creates and owns a VTL shared memory segment.
@@ -12,7 +12,7 @@ use crate::segment::VtlSegment;
 ///
 /// Use [`VtlClient`](crate::VtlClient) to attach to an existing segment.
 pub struct VtlOwner {
-    seg:  VtlSegment,
+    seg: VtlSegment,
     name: CString,
 }
 
@@ -41,54 +41,61 @@ impl VtlOwner {
 
         #[cfg(unix)]
         {
-        let name = CString::new(shm_name).expect("shm_name must not contain nul");
-        let fd = unsafe {
-            libc::shm_open(
-                name.as_ptr(),
-                libc::O_CREAT | libc::O_RDWR | libc::O_TRUNC,
-                0o600,
-            )
-        };
-        if fd < 0 {
-            return Err(io::Error::last_os_error());
-        }
+            let name = CString::new(shm_name).expect("shm_name must not contain nul");
+            let fd = unsafe {
+                libc::shm_open(
+                    name.as_ptr(),
+                    libc::O_CREAT | libc::O_RDWR | libc::O_TRUNC,
+                    0o600,
+                )
+            };
+            if fd < 0 {
+                return Err(io::Error::last_os_error());
+            }
 
-        if unsafe { libc::ftruncate(fd, SHM_SIZE as libc::off_t) } < 0 {
-            let err = io::Error::last_os_error();
+            if unsafe { libc::ftruncate(fd, SHM_SIZE as libc::off_t) } < 0 {
+                let err = io::Error::last_os_error();
+                unsafe { libc::close(fd) };
+                return Err(err);
+            }
+
+            let ptr = unsafe {
+                libc::mmap(
+                    std::ptr::null_mut(),
+                    SHM_SIZE,
+                    libc::PROT_READ | libc::PROT_WRITE,
+                    libc::MAP_SHARED,
+                    fd,
+                    0,
+                )
+            };
+            // Capture the mmap error before close() can overwrite errno.
+            let mmap_err = if ptr == libc::MAP_FAILED {
+                Some(io::Error::last_os_error())
+            } else {
+                None
+            };
             unsafe { libc::close(fd) };
-            return Err(err);
-        }
+            if let Some(e) = mmap_err {
+                unsafe { libc::shm_unlink(name.as_ptr()) };
+                return Err(e);
+            }
 
-        let ptr = unsafe {
-            libc::mmap(
-                std::ptr::null_mut(),
-                SHM_SIZE,
-                libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_SHARED,
-                fd,
-                0,
-            )
-        };
-        // Capture the mmap error before close() can overwrite errno.
-        let mmap_err = if ptr == libc::MAP_FAILED { Some(io::Error::last_os_error()) } else { None };
-        unsafe { libc::close(fd) };
-        if let Some(e) = mmap_err {
-            unsafe { libc::shm_unlink(name.as_ptr()) };
-            return Err(e);
-        }
+            let seg = VtlSegment {
+                ptr: ptr as *mut u8,
+                size: SHM_SIZE,
+            };
 
-        let seg = VtlSegment { ptr: ptr as *mut u8, size: SHM_SIZE };
+            // Write header (OS zero-initialises the shm, so just fill in non-zero fields).
+            unsafe {
+                let h = seg.ptr as *mut crate::layout::VtlHeader;
+                std::ptr::write_volatile(&mut (*h).magic, MAGIC);
+                std::ptr::write_volatile(&mut (*h).version, VERSION);
+                std::ptr::write_volatile(&mut (*h).num_input_banks, num_input_banks);
+                std::ptr::write_volatile(&mut (*h).num_output_banks, num_output_banks);
+            }
 
-        // Write header (OS zero-initialises the shm, so just fill in non-zero fields).
-        unsafe {
-            let h = seg.ptr as *mut crate::layout::VtlHeader;
-            std::ptr::write_volatile(&mut (*h).magic,            MAGIC);
-            std::ptr::write_volatile(&mut (*h).version,          VERSION);
-            std::ptr::write_volatile(&mut (*h).num_input_banks,  num_input_banks);
-            std::ptr::write_volatile(&mut (*h).num_output_banks, num_output_banks);
-        }
-
-        Ok(Self { seg, name })
+            Ok(Self { seg, name })
         }
     }
 }
