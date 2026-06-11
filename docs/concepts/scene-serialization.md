@@ -403,8 +403,11 @@ indexmap   = { version = "2", features = ["serde"] }
 
 **New files:**
 - `server/src/scene/config.rs` — `SceneConfig`, `SceneRuntimeState`
-- `server/src/io_config.rs` — `VtlConfig`, `IoConfigRef`, `IoConfigFile`, `CONFIG_VERSION`, `save_config`, `load_config`
+- `server/src/io_config.rs` — `VtlConfig`, `IoConfigRef`, `IoConfigFile`, `CONFIG_VERSION`, `save_config`, `load_config`, `parse_config_json`, `retrieve_config_json`
 - `server/src/render/file_browser.rs` — egui file browser widget
+- `server/tests/config_roundtrip.rs` — round-trip unit tests for all stimulus/animation/IO types
+- `server/tests/config_compat.rs` — backwards-compatibility tests against reference files
+- `server/tests/configs/vstimd_reference_v1.config.json` — committed once v1 format is finalised
 
 **Modified files (main changes):**
 - `server/Cargo.toml` — add serde, serde_json, anyhow; add features to uuid + indexmap
@@ -599,6 +602,84 @@ When stimuli reference external assets, a future archive will bundle:
 - All referenced asset files under `assets/` inside the ZIP
 
 Asset paths stored as relative `Option<PathBuf>` on future stimulus types. JSON format unchanged.
+
+---
+
+## Tests
+
+### Round-trip unit tests (`server/tests/config_roundtrip.rs`)
+
+Integration tests (no GPU, no ZMQ) that call `SceneState` directly via the library crate:
+
+```rust
+#[test]
+fn roundtrip_rect_stimulus() {
+    let mut scene = SceneState::new();
+    // build a known scene: rect with specific position, color, name
+    scene.add_stimulus(StimulusEntry { ... });
+
+    let vtl_cfg = VtlConfig::default();
+    let json = retrieve_config_json(&scene.config, &vtl_cfg).unwrap();
+    let (loaded_scene, _io) = parse_config_json(&json).unwrap();
+
+    assert_eq!(loaded_scene.stimuli.len(), 1);
+    let entry = loaded_scene.stimuli.values().next().unwrap();
+    // check position, appearance, name survive the round-trip
+    assert_eq!(entry.name, Some("my_rect".into()));
+    // ...
+}
+
+#[test]
+fn roundtrip_vtl_names() {
+    let vtl_cfg = VtlConfig {
+        vtl_names: vec![VtlNameEntry { name: "stim_onset".into(), bank: 0, bit: 0, direction: Direction::Out }],
+    };
+    let json = retrieve_config_json(&SceneConfig::default(), &vtl_cfg).unwrap();
+    let (_scene, io) = parse_config_json(&json).unwrap();
+    assert_eq!(io.vtl.vtl_names[0].name, "stim_onset");
+}
+
+#[test]
+fn roundtrip_animation() { ... }   // animation + stimulus handle references survive
+
+#[test]
+fn additive_load_remaps_handles() {
+    // load a scene, then additive-load a second one and verify no handle collision
+}
+```
+
+### Backwards compatibility tests (`server/tests/config_compat.rs`)
+
+One test per reference file that loads it and checks a fixed set of known values:
+
+```rust
+#[test]
+fn load_v1_reference() {
+    let (scene, io) = load_config(Path::new("tests/configs/vstimd_reference_v1.config.json")).unwrap();
+    assert_eq!(scene.stimuli.len(), 3);
+    // spot-check known values from the reference file
+    assert_eq!(scene.background.live, [0.0, 0.0, 0.0, 1.0]);
+    assert_eq!(io.vtl.vtl_names[0].name, "stim_onset");
+    // ...
+}
+```
+
+If a future refactor breaks deserialisation of a reference file, this test fails — making format
+changes an explicit, visible decision rather than a silent regression.
+
+### Reference files (`server/tests/configs/`)
+
+Once the v1 format is finalised, commit one hand-verified reference file:
+
+```
+server/tests/configs/vstimd_reference_v1.config.json
+```
+
+It should exercise all stimulus types (rect, circle, ellipse, grating, text), all animation types,
+at least one VTL name, and non-default background/photodiode state. Keep it human-readable and
+commented where JSON allows (it doesn't — use a companion `vstimd_reference_v1.notes.md` if
+needed). When a new version is introduced, add a new reference file alongside the old one; never
+delete old reference files.
 
 ---
 
