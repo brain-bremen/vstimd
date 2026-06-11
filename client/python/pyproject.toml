@@ -10,7 +10,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.12"
 authors = [
-    { name = "Joscha Schmiedt", email = "joscha.schmiedt@gmail.com" },
+    { name = "Joscha Schmiedt", email = "joscha@schmiedt.dev" },
 ]
 keywords = [
     "psychopy",
@@ -29,6 +29,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
     "Topic :: Multimedia :: Graphics",
     "Typing :: Typed",
@@ -39,9 +40,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/brain-daemons/vstimd"
-Repository = "https://github.com/brain-daemons/vstimd"
-"Bug Tracker" = "https://github.com/brain-daemons/vstimd/issues"
+Homepage = "https://github.com/braemons/vstimd"
+Repository = "https://github.com/braemons/vstimd"
+"Bug Tracker" = "https://github.com/braemons/vstimd/issues"
 
 [dependency-groups]
 # grpcio-tools bundles protoc and is required for `make proto`
