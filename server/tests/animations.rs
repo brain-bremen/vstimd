@@ -853,7 +853,7 @@ fn end_deferred_sets_pending_flip() {
     let s = create_rect(&mut scene);
 
     scene.begin_deferred();
-    assert!(scene.deferred_mode);
+    assert!(scene.runtime.deferred_mode);
 
     let a = scene.add_animation({
         let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
@@ -863,8 +863,8 @@ fn end_deferred_sets_pending_flip() {
 
     advance(&mut scene);
     assert_eq!(anim_state(&scene, a), &AnimState::Done);
-    assert!(scene.pending_flip, "END_DEFERRED sets pending_flip");
-    assert!(!scene.deferred_mode, "deferred_mode cleared");
+    assert!(scene.runtime.pending_flip, "END_DEFERRED sets pending_flip");
+    assert!(!scene.runtime.deferred_mode, "deferred_mode cleared");
 }
 
 // ── Idle and Done animations are not re-advanced ──────────────────────────────

@@ -38,7 +38,7 @@ pub fn spawn_zmq_thread(
     bind_addr: &str,
 ) -> std::thread::JoinHandle<()> {
     let addr = bind_addr.to_owned();
-    let frame_rx = scene.read().expect("scene lock poisoned").frame_notifier.subscribe();
+    let frame_rx = scene.read().expect("scene lock poisoned").runtime.frame_notifier.subscribe();
     std::thread::Builder::new()
         .name("zmq-server".into())
         .spawn(move || {
@@ -132,14 +132,14 @@ async fn zmq_loop(
                 match &req.body {
                     Some(proto::request::Body::WaitForFrames(cmd)) => {
                         let target = scene.read().expect("scene lock poisoned")
-                            .frame_count.saturating_add(cmd.count as u64);
+                            .runtime.frame_count.saturating_add(cmd.count as u64);
                         let _ = frame_rx.wait_for(|&c| c >= target).await;
                         let s = scene.read().expect("scene lock poisoned");
                         proto::Response {
                             code: proto::ErrorCode::Ok as i32,
                             handle: -1,
-                            frame_count: s.frame_count,
-                            server_time_ns: s.server_start.elapsed().as_nanos() as u64,
+                            frame_count: s.runtime.frame_count,
+                            server_time_ns: s.runtime.server_start.elapsed().as_nanos() as u64,
                             ..Default::default()
                         }
                     }
@@ -147,7 +147,7 @@ async fn zmq_loop(
                         let target_ns = cmd.server_time_ns;
                         loop {
                             let elapsed = scene.read().expect("scene lock poisoned")
-                                .server_start.elapsed().as_nanos() as u64;
+                                .runtime.server_start.elapsed().as_nanos() as u64;
                             if elapsed >= target_ns { break; }
                             let remaining = target_ns - elapsed;
                             if remaining > 500_000 {
@@ -162,8 +162,8 @@ async fn zmq_loop(
                         proto::Response {
                             code: proto::ErrorCode::Ok as i32,
                             handle: -1,
-                            frame_count: s.frame_count,
-                            server_time_ns: s.server_start.elapsed().as_nanos() as u64,
+                            frame_count: s.runtime.frame_count,
+                            server_time_ns: s.runtime.server_start.elapsed().as_nanos() as u64,
                             ..Default::default()
                         }
                     }
@@ -172,8 +172,8 @@ async fn zmq_loop(
                         let mut vtl_guard = vtl.as_ref().and_then(|v| v.lock().ok());
                         let vtl_ref = vtl_guard.as_deref_mut();
                         let mut resp = scene.handle_request(req, vtl_ref);
-                        resp.frame_count = scene.frame_count;
-                        resp.server_time_ns = scene.server_start.elapsed().as_nanos() as u64;
+                        resp.frame_count = scene.runtime.frame_count;
+                        resp.server_time_ns = scene.runtime.server_start.elapsed().as_nanos() as u64;
                         resp
                     }
                 }

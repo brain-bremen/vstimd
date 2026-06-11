@@ -7,7 +7,7 @@ use super::grating_pipeline::GratingPushConstants;
 // ── Grating stimulus ──────────────────────────────────────────────────────────
 
 /// Serializable grating configuration (all Deferred fields serialize as their live value).
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct GratingConfig {
     pub flags:     StimulusFlags,
     pub transform: Deferred<Transform2D>,
@@ -17,6 +17,7 @@ pub struct GratingConfig {
 
 /// Full grating stimulus: serializable config + render-thread runtime state.
 /// Deref/DerefMut give transparent access to the config fields.
+#[derive(Clone)]
 pub struct GratingStimulus {
     pub config:      GratingConfig,
     /// Phase accumulated by the render thread each frame from `drift_speed`.
@@ -156,6 +157,10 @@ impl GratingStimulus {
         if !deferred {
             self.flags.mark_dirty();
         }
+    }
+
+    pub fn reset_phase_accum(&mut self) {
+        self.phase_accum = 0.0;
     }
 
     pub fn make_copy(&mut self) {

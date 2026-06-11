@@ -13,6 +13,7 @@ impl Default for StimulusFlagsConfig {
 }
 
 /// Full stimulus flag state: serializable config + render-thread runtime fields.
+#[derive(Clone)]
 pub struct StimulusFlags {
     pub config: StimulusFlagsConfig,
     pub enabled_copy: bool,

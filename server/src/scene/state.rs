@@ -1,8 +1,5 @@
-use indexmap::IndexMap;
-
 use super::animation::{AnimState, Animation, AnimationEntry, FinalAction, StartAction};
-use super::deferred::Deferred;
-use super::photodiode::PhotoDiodeState;
+use super::scene_config::SceneConfig;
 use super::stimulus::StimulusEntry;
 use crate::vtl_state::{Edge, VtlEdges};
 extern crate vtl;
@@ -21,6 +18,56 @@ pub struct CommandEntry {
     pub ok: bool,
     pub response: i32,
 }
+
+// ── Non-serializable runtime state ────────────────────────────────────────────
+
+pub struct SceneRuntimeState {
+    /// True while commands should write into copy fields instead of live fields.
+    pub deferred_mode: bool,
+    /// Set by `DeferredMode{start:false}`; cleared by the render thread after flip.
+    pub pending_flip: bool,
+    /// Measured frame rate, updated by the render thread each frame.
+    pub frame_rate: f32,
+    /// Set by the render thread on each frame. `None` until the first frame completes.
+    pub screen_size: Option<(u32, u32)>,
+    /// Screen size at which meshes were last tessellated. When this changes all
+    /// stimuli are re-uploaded (NDC coordinates depend on screen dimensions).
+    pub last_uploaded_size: (u32, u32),
+    pub error_mask: u16,
+    pub error_code: i16,
+    /// Command ring buffer — written by ZMQ thread, read by overlay.
+    pub command_log: std::collections::VecDeque<CommandEntry>,
+    pub command_log_total: u64,
+    pub command_log_errors: u64,
+    pub server_start: std::time::Instant,
+    /// Incremented by the render thread (or null loop) once per rendered frame.
+    pub frame_count: u64,
+    /// Notifies the ZMQ thread whenever `frame_count` advances.
+    pub frame_notifier: std::sync::Arc<tokio::sync::watch::Sender<u64>>,
+}
+
+impl SceneRuntimeState {
+    fn new() -> Self {
+        let (tx, _rx) = tokio::sync::watch::channel(0u64);
+        Self {
+            deferred_mode: false,
+            pending_flip: false,
+            frame_rate: 60.0,
+            screen_size: None,
+            last_uploaded_size: (0, 0),
+            error_mask: 0,
+            error_code: 0,
+            command_log: std::collections::VecDeque::new(),
+            command_log_total: 0,
+            command_log_errors: 0,
+            server_start: std::time::Instant::now(),
+            frame_count: 0,
+            frame_notifier: std::sync::Arc::new(tx),
+        }
+    }
+}
+
+// ── SceneState ────────────────────────────────────────────────────────────────
 
 /// All shared scene state. Wrapped in `Arc<RwLock<SceneState>>` and shared
 /// between the render thread (read lock) and the ZMQ server thread (write lock).
@@ -41,74 +88,24 @@ pub struct CommandEntry {
 /// The render thread takes a write lock briefly in `update()` for
 /// `apply_flip()` and scene bookkeeping, then drops it before drawing.
 pub struct SceneState {
-    /// Stimulus objects in insertion order (insertion order = draw order).
-    pub stimuli: IndexMap<u32, StimulusEntry>,
-    /// Next handle to allocate for a new stimulus (starts at 1).
-    pub next_stim_handle: u32,
-    /// Animation objects in insertion order.
-    pub animations: IndexMap<u32, AnimationEntry>,
-    /// Next handle to allocate for a new animation (starts at 1).
-    pub next_anim_handle: u32,
-    /// Background clear colour with deferred-copy support.
-    pub background: Deferred<[f32; 4]>,
-    /// True while commands should write into copy fields instead of live fields.
-    pub deferred_mode: bool,
-    /// Set by `DeferredMode{start:false}`; cleared by the render thread after flip.
-    pub pending_flip: bool,
-    pub photodiode: PhotoDiodeState,
-    pub default_fill: [f32; 4],
-    pub default_outline: [f32; 4],
-    /// Measured frame rate, updated by the render thread each frame.
-    pub frame_rate: f32,
-    /// Set by the render thread on each frame. `None` until the first frame completes.
-    pub screen_size: Option<(u32, u32)>,
-    /// Screen size at which meshes were last tessellated. When this changes all
-    /// stimuli are re-uploaded (NDC coordinates depend on screen dimensions).
-    pub last_uploaded_size: (u32, u32),
-    pub error_mask: u16,
-    pub error_code: i16,
+    pub config: SceneConfig,
+    pub runtime: SceneRuntimeState,
+}
 
-    /// Command ring buffer — written by ZMQ thread, read by overlay.
-    /// Gated behind the overlay feature so production builds carry no overhead.
-    pub command_log: std::collections::VecDeque<CommandEntry>,
-    pub command_log_total: u64,
-    pub command_log_errors: u64,
-    pub server_start: std::time::Instant,
-    /// Incremented by the render thread (or null loop) once per rendered frame.
-    pub frame_count: u64,
-    /// Notifies the ZMQ thread whenever `frame_count` advances.
-    /// Stored here so both the render loop and the null renderer can reach it
-    /// without threading through extra parameters.
-    pub frame_notifier: std::sync::Arc<tokio::sync::watch::Sender<u64>>,
+impl std::ops::Deref for SceneState {
+    type Target = SceneConfig;
+    fn deref(&self) -> &SceneConfig { &self.config }
+}
+
+impl std::ops::DerefMut for SceneState {
+    fn deref_mut(&mut self) -> &mut SceneConfig { &mut self.config }
 }
 
 impl SceneState {
     pub fn new() -> Self {
         Self {
-            stimuli: IndexMap::new(),
-            next_stim_handle: 1,
-            animations: IndexMap::new(),
-            next_anim_handle: 1,
-            background: Deferred::new([0.0, 0.0, 0.0, 1.0]),
-            deferred_mode: false,
-            pending_flip: false,
-            photodiode: PhotoDiodeState::default(),
-            default_fill: [1.0, 1.0, 1.0, 1.0],
-            default_outline: [0.0, 0.0, 0.0, 1.0],
-            frame_rate: 60.0,
-            screen_size: None,
-            last_uploaded_size: (0, 0),
-            error_mask: 0,
-            error_code: 0,
-            command_log: std::collections::VecDeque::new(),
-            command_log_total: 0,
-            command_log_errors: 0,
-            server_start: std::time::Instant::now(),
-            frame_count: 0,
-            frame_notifier: {
-                let (tx, _rx) = tokio::sync::watch::channel(0u64);
-                std::sync::Arc::new(tx)
-            },
+            config: SceneConfig::default(),
+            runtime: SceneRuntimeState::new(),
         }
     }
 
@@ -169,13 +166,13 @@ impl SceneState {
         }
         self.background.make_copy();
         self.photodiode.make_copy();
-        self.deferred_mode = true;
+        self.runtime.deferred_mode = true;
     }
 
     /// End deferred mode: schedule an atomic flip on the next frame boundary.
     pub fn end_deferred(&mut self) {
-        self.pending_flip = true;
-        self.deferred_mode = false;
+        self.runtime.pending_flip = true;
+        self.runtime.deferred_mode = false;
     }
 
     /// Promote all copy fields to live. Called by the render thread when
@@ -186,7 +183,7 @@ impl SceneState {
         }
         self.background.flip();
         self.photodiode.flip();
-        self.pending_flip = false;
+        self.runtime.pending_flip = false;
     }
 
     // ── Scene commands ────────────────────────────────────────────────────────
@@ -219,19 +216,64 @@ impl SceneState {
         const MAX_LOG: usize = 200;
         let ok = response.code == 0;
         if !ok {
-            self.command_log_errors += 1;
+            self.runtime.command_log_errors += 1;
         }
-        self.command_log_total += 1;
-        self.command_log.push_back(CommandEntry {
-            elapsed_ms: self.server_start.elapsed().as_secs_f64() * 1000.0,
+        self.runtime.command_log_total += 1;
+        self.runtime.command_log.push_back(CommandEntry {
+            elapsed_ms: self.runtime.server_start.elapsed().as_secs_f64() * 1000.0,
             handle,
             summary,
             ok,
             response: response.handle,
         });
-        if self.command_log.len() > MAX_LOG {
-            self.command_log.pop_front();
+        if self.runtime.command_log.len() > MAX_LOG {
+            self.runtime.command_log.pop_front();
         }
+    }
+
+    // ── Config persistence ────────────────────────────────────────────────────
+
+    pub fn load_snapshot(&mut self, cfg: SceneConfig, mode: super::scene_config::LoadMode) {
+        match mode {
+            super::scene_config::LoadMode::Replace => {
+                self.config = cfg;
+                self.fixup_after_load();
+            }
+            super::scene_config::LoadMode::Additive => {
+                let stim_offset = self.config.next_stim_handle;
+                let anim_offset = self.config.next_anim_handle;
+                let additive_next_stim = cfg.next_stim_handle;
+                let additive_next_anim = cfg.next_anim_handle;
+                for (handle, entry) in cfg.stimuli {
+                    let new_handle = handle + stim_offset;
+                    self.config.stimuli.insert(new_handle, make_entry_dirty(entry));
+                }
+                for (handle, mut anim) in cfg.animations {
+                    for sh in &mut anim.config.stimuli {
+                        *sh += stim_offset;
+                    }
+                    anim.state = AnimState::Idle;
+                    anim.captured_user_enabled = None;
+                    self.config.animations.insert(handle + anim_offset, anim);
+                }
+                self.config.next_stim_handle += additive_next_stim;
+                self.config.next_anim_handle += additive_next_anim;
+            }
+        }
+    }
+
+    fn fixup_after_load(&mut self) {
+        for entry in self.config.stimuli.values_mut() {
+            entry.stimulus.flags_mut().dirty = true;
+            entry.stimulus.reset_phase_accum();
+            entry.stimulus.make_copy();
+        }
+        for anim in self.config.animations.values_mut() {
+            anim.state = AnimState::Idle;
+            anim.captured_user_enabled = None;
+        }
+        self.config.background.make_copy();
+        self.config.photodiode.make_copy();
     }
 }
 
@@ -239,6 +281,13 @@ impl Default for SceneState {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn make_entry_dirty(mut entry: StimulusEntry) -> StimulusEntry {
+    entry.stimulus.flags_mut().dirty = true;
+    entry.stimulus.reset_phase_accum();
+    entry.stimulus.make_copy();
+    entry
 }
 
 // ── Per-animation advance (free function to work around borrow-checker) ───────
@@ -263,7 +312,7 @@ fn advance_one(
 ) {
     // ── 1. Armed → Running ────────────────────────────────────────────────────
     {
-        let entry = match scene.animations.get(&handle) {
+        let entry = match scene.config.animations.get(&handle) {
             Some(e) => e,
             None => return,
         };
@@ -275,23 +324,23 @@ fn advance_one(
             if fires {
                 // Snapshot user_enabled for RESTORE_STATE before modifying anything.
                 let captures_state = entry.final_action.contains(FinalAction::RESTORE_STATE);
-                let stim_handles: Vec<u32> = entry.stimuli.clone();
+                let stim_handles: Vec<u32> = entry.config.stimuli.clone();
                 let start_action = entry.start_action;
                 let start_action_trigger_line = entry.start_action_trigger_line;
 
                 if captures_state {
                     let captured: Vec<bool> = stim_handles.iter()
-                        .map(|&sh| scene.stimuli.get(&sh).is_some_and(|e| e.stimulus.flags().enabled))
+                        .map(|&sh| scene.config.stimuli.get(&sh).is_some_and(|e| e.stimulus.flags().enabled))
                         .collect();
-                    scene.animations.get_mut(&handle).unwrap().captured_user_enabled = Some(captured);
+                    scene.config.animations.get_mut(&handle).unwrap().captured_user_enabled = Some(captured);
                 }
 
                 // FlashForNFrames enables stimuli at start; FlickerForNFrames sets initial phase.
-                let entry = scene.animations.get(&handle).unwrap();
+                let entry = scene.config.animations.get(&handle).unwrap();
                 match &entry.animation {
                     Animation::FlashForNFrames { .. } => {
                         for &sh in &stim_handles {
-                            if let Some(e) = scene.stimuli.get_mut(&sh) {
+                            if let Some(e) = scene.config.stimuli.get_mut(&sh) {
                                 e.stimulus.flags_mut().enabled = true;
                                 e.stimulus.flags_mut().mark_dirty();
                             }
@@ -300,7 +349,7 @@ fn advance_one(
                     Animation::FlickerForNFrames { start_on_phase, .. } => {
                         let on = *start_on_phase;
                         for &sh in &stim_handles {
-                            if let Some(e) = scene.stimuli.get_mut(&sh) {
+                            if let Some(e) = scene.config.stimuli.get_mut(&sh) {
                                 e.stimulus.flags_mut().anim_enabled = on;
                                 e.stimulus.flags_mut().mark_dirty();
                             }
@@ -312,7 +361,7 @@ fn advance_one(
                 // Apply start_action bits.
                 if start_action.contains(StartAction::ENABLE) {
                     for &sh in &stim_handles {
-                        if let Some(e) = scene.stimuli.get_mut(&sh) {
+                        if let Some(e) = scene.config.stimuli.get_mut(&sh) {
                             e.stimulus.flags_mut().enabled = true;
                             e.stimulus.flags_mut().mark_dirty();
                         }
@@ -327,7 +376,7 @@ fn advance_one(
                     output_pending[bit.bank] |= 1u64 << bit.bit;
                 }
 
-                scene.animations.get_mut(&handle).unwrap().state =
+                scene.config.animations.get_mut(&handle).unwrap().state =
                     AnimState::Running { frame_counter: 0 };
             }
         }
@@ -335,24 +384,24 @@ fn advance_one(
 
     // ── 2. Advance Running ────────────────────────────────────────────────────
     let (frame_counter, stim_handles) = {
-        let entry = match scene.animations.get(&handle) {
+        let entry = match scene.config.animations.get(&handle) {
             Some(e) => e,
             None => return,
         };
         match entry.state {
-            AnimState::Running { frame_counter } => (frame_counter, entry.stimuli.clone()),
+            AnimState::Running { frame_counter } => (frame_counter, entry.config.stimuli.clone()),
             _ => return,
         }
     };
 
     let done: bool = {
-        let entry = scene.animations.get(&handle).unwrap();
+        let entry = scene.config.animations.get(&handle).unwrap();
         match &entry.animation {
             Animation::CoupleVisibilityToTriggerLine { trigger, polarity } => {
                 let level = (input_edges.current[trigger.bank] >> trigger.bit) & 1 != 0;
                 let anim_en = level == *polarity;
                 for &sh in &stim_handles {
-                    if let Some(e) = scene.stimuli.get_mut(&sh)
+                    if let Some(e) = scene.config.stimuli.get_mut(&sh)
                         && e.stimulus.flags().anim_enabled != anim_en {
                         e.stimulus.flags_mut().anim_enabled = anim_en;
                         e.stimulus.flags_mut().mark_dirty();
@@ -366,7 +415,7 @@ fn advance_one(
                 if fired {
                     let en = *enabled;
                     for &sh in &stim_handles {
-                        if let Some(e) = scene.stimuli.get_mut(&sh) {
+                        if let Some(e) = scene.config.stimuli.get_mut(&sh) {
                             e.stimulus.flags_mut().enabled = en;
                             e.stimulus.flags_mut().mark_dirty();
                         }
@@ -389,7 +438,7 @@ fn advance_one(
                     phase_frame >= *off_frames
                 };
                 for &sh in &stim_handles {
-                    if let Some(e) = scene.stimuli.get_mut(&sh)
+                    if let Some(e) = scene.config.stimuli.get_mut(&sh)
                         && e.stimulus.flags().anim_enabled != is_on {
                         e.stimulus.flags_mut().anim_enabled = is_on;
                         e.stimulus.flags_mut().mark_dirty();
@@ -403,7 +452,7 @@ fn advance_one(
                 if idx < coords.len() {
                     let [x, y] = coords[idx];
                     for &sh in &stim_handles {
-                        if let Some(e) = scene.stimuli.get_mut(&sh) {
+                        if let Some(e) = scene.config.stimuli.get_mut(&sh) {
                             e.stimulus.move_to(false, x, y);
                         }
                     }
@@ -421,7 +470,7 @@ fn advance_one(
                         (dx * dx + dy * dy).sqrt()
                     }).collect();
                     let total_len: f32 = seg_lens.iter().sum();
-                    let total_frames = (total_len / speed_px_per_sec * scene.frame_rate).ceil() as u32;
+                    let total_frames = (total_len / speed_px_per_sec * scene.runtime.frame_rate).ceil() as u32;
                     let total_frames = total_frames.max(1);
 
                     // How far along the path are we at this frame?
@@ -443,7 +492,7 @@ fn advance_one(
                         accum += seg_len;
                     }
                     for &sh in &stim_handles {
-                        if let Some(e) = scene.stimuli.get_mut(&sh) {
+                        if let Some(e) = scene.config.stimuli.get_mut(&sh) {
                             e.stimulus.move_to(false, pos[0], pos[1]);
                         }
                     }
@@ -457,7 +506,7 @@ fn advance_one(
 
     // Increment frame counter.
     if let Some(AnimState::Running { frame_counter }) =
-        scene.animations.get_mut(&handle).map(|e| &mut e.state)
+        scene.config.animations.get_mut(&handle).map(|e| &mut e.state)
     {
         *frame_counter += 1;
     }
@@ -475,7 +524,7 @@ fn finalize(
     output_pending: &mut [u64; vtl::MAX_BANKS],
 ) {
     let (final_action, trigger_line, captured, restart) = {
-        let entry = match scene.animations.get(&handle) {
+        let entry = match scene.config.animations.get(&handle) {
             Some(e) => e,
             None => return,
         };
@@ -489,7 +538,7 @@ fn finalize(
     if final_action.contains(FinalAction::RESTORE_STATE) {
         if let Some(caps) = &captured {
             for (&sh, &was_enabled) in stim_handles.iter().zip(caps.iter()) {
-                if let Some(e) = scene.stimuli.get_mut(&sh) {
+                if let Some(e) = scene.config.stimuli.get_mut(&sh) {
                     e.stimulus.flags_mut().enabled = was_enabled;
                     e.stimulus.flags_mut().mark_dirty();
                 }
@@ -497,7 +546,7 @@ fn finalize(
         }
     } else if final_action.contains(FinalAction::DISABLE) {
         for &sh in stim_handles {
-            if let Some(e) = scene.stimuli.get_mut(&sh) {
+            if let Some(e) = scene.config.stimuli.get_mut(&sh) {
                 e.stimulus.flags_mut().enabled = false;
                 e.stimulus.flags_mut().mark_dirty();
             }
@@ -507,12 +556,12 @@ fn finalize(
     // Reset anim_enabled for animations that held it during execution.
     {
         let anim_held = matches!(
-            scene.animations.get(&handle).map(|e| &e.animation),
+            scene.config.animations.get(&handle).map(|e| &e.animation),
             Some(Animation::FlickerForNFrames { .. }) | Some(Animation::CoupleVisibilityToTriggerLine { .. })
         );
         if anim_held {
             for &sh in stim_handles {
-                if let Some(e) = scene.stimuli.get_mut(&sh)
+                if let Some(e) = scene.config.stimuli.get_mut(&sh)
                     && !e.stimulus.flags().anim_enabled {
                     e.stimulus.flags_mut().anim_enabled = true;
                     e.stimulus.flags_mut().mark_dirty();
@@ -531,17 +580,17 @@ fn finalize(
     }
 
     if final_action.contains(FinalAction::END_DEFERRED) {
-        scene.pending_flip = true;
-        scene.deferred_mode = false;
+        scene.runtime.pending_flip = true;
+        scene.runtime.deferred_mode = false;
     }
 
     if restart {
-        if let Some(entry) = scene.animations.get_mut(&handle) {
+        if let Some(entry) = scene.config.animations.get_mut(&handle) {
             entry.state = AnimState::Running { frame_counter: 0 };
             entry.captured_user_enabled = None;
         }
     } else {
-        if let Some(entry) = scene.animations.get_mut(&handle) {
+        if let Some(entry) = scene.config.animations.get_mut(&handle) {
             entry.state = AnimState::Done;
         }
     }

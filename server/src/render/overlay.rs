@@ -213,14 +213,14 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
         if let Ok(sc) = scene.try_read() {
             ui.label(format!(
                 "total: {}  errors: {}",
-                sc.command_log_total, sc.command_log_errors
+                sc.runtime.command_log_total, sc.runtime.command_log_errors
             ));
             ui.separator();
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
                 .max_height(120.0)
                 .show(ui, |ui| {
-                    for entry in &sc.command_log {
+                    for entry in &sc.runtime.command_log {
                         let color = if entry.ok {
                             egui::Color32::from_rgb(80, 200, 80)
                         } else {

@@ -57,7 +57,7 @@ fn main() {
             log::info!("vstimd: null renderer — ZMQ server + animation loop running, no display");
             let frame_period = {
                 let s = scene.read().unwrap();
-                std::time::Duration::from_secs_f32(1.0 / s.frame_rate)
+                std::time::Duration::from_secs_f32(1.0 / s.runtime.frame_rate)
             };
             let mut output_pending = [0u64; vtl::MAX_BANKS];
             loop {
@@ -67,11 +67,11 @@ fn main() {
                     .unwrap_or_default();
                 {
                     let mut s = scene.write().unwrap();
-                    if s.pending_flip {
+                    if s.runtime.pending_flip {
                         s.apply_flip();
                     }
-                    s.frame_count += 1;
-                    let _ = s.frame_notifier.send(s.frame_count);
+                    s.runtime.frame_count += 1;
+                    let _ = s.runtime.frame_notifier.send(s.runtime.frame_count);
                     let output_snapshot = [0u64; vtl::MAX_BANKS];
                     s.advance_animations(&edges, &output_snapshot, &mut output_pending);
                 }

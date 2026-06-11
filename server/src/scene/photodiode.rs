@@ -11,6 +11,7 @@ pub struct PhotoDiodeConfig {
 ///
 /// Always rendered last (on top of all stimuli) when `enabled`.
 /// Deref/DerefMut give transparent access to the config fields.
+#[derive(Clone)]
 pub struct PhotoDiodeState {
     pub config:        PhotoDiodeConfig,
     pub enabled_copy:  bool,

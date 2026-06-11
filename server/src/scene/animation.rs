@@ -104,7 +104,7 @@ impl Animation {
 }
 
 /// Serializable animation configuration.
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct AnimationConfig {
     pub name: String,
     pub state: AnimState,
@@ -124,6 +124,7 @@ pub struct AnimationConfig {
 
 /// Full animation entry: serializable config + runtime state.
 /// Deref/DerefMut give transparent access to the config fields.
+#[derive(Clone)]
 pub struct AnimationEntry {
     pub config: AnimationConfig,
     /// Snapshot of each stimulus's `user_enabled` taken when the animation first

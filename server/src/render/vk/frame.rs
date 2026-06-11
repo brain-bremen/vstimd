@@ -94,17 +94,17 @@ pub fn render_frame(
         let screen_w = ctx.extent.width as f32;
         let screen_h = ctx.extent.height as f32;
         let mut sc = scene.write().expect("scene lock poisoned");
-        if sc.pending_flip {
+        if sc.runtime.pending_flip {
             sc.apply_flip();
         }
-        sc.frame_count += 1;
-        let _ = sc.frame_notifier.send(sc.frame_count);
+        sc.runtime.frame_count += 1;
+        let _ = sc.runtime.frame_notifier.send(sc.runtime.frame_count);
 
 
-        sc.screen_size = Some(screen_size);
-        sc.frame_rate = fps;
-        if sc.last_uploaded_size != screen_size {
-            sc.last_uploaded_size = screen_size;
+        sc.runtime.screen_size = Some(screen_size);
+        sc.runtime.frame_rate = fps;
+        if sc.runtime.last_uploaded_size != screen_size {
+            sc.runtime.last_uploaded_size = screen_size;
             for entry in sc.stimuli.values_mut() {
                 entry.stimulus.flags_mut().mark_dirty();
             }

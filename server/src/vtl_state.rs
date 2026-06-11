@@ -139,7 +139,7 @@ pub enum Edge {
     Falling,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct VtlNameEntry {
     pub name:      String,
     pub bank:      u8,

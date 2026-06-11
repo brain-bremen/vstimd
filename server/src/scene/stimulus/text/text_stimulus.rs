@@ -4,7 +4,7 @@ use crate::scene::stimulus::{StimulusFlags, Transform2D};
 use super::text_params::{Anchor, LanguageStyle, TextRenderParams};
 
 /// Serializable text configuration.
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct TextConfig {
     pub flags:            StimulusFlags,
     pub transform:        Deferred<Transform2D>,
@@ -20,6 +20,7 @@ pub struct TextConfig {
 
 /// Full text stimulus: serializable config + deferred text copy.
 /// Deref/DerefMut give transparent access to the config fields.
+#[derive(Clone)]
 pub struct TextStimulus {
     pub config:    TextConfig,
     // String is not Copy, so live/copy are managed manually. Not serialized;

@@ -24,7 +24,7 @@ use uuid::Uuid;
 /// `id` is stable across sessions (survives serialization round-trips and lets
 /// reconnecting clients match server-side stimuli to their in-memory objects).
 /// `name` is optional human-readable label for debugging/tooling.
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct StimulusEntry {
     pub id: Uuid,
     pub name: Option<String>,
@@ -40,7 +40,7 @@ impl StimulusEntry {
 
 // ── Stimulus enum ─────────────────────────────────────────────────────────────
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub enum Stimulus {
     Shape(ShapeStimulus),
     Grating(GratingStimulus),
@@ -79,6 +79,15 @@ impl Stimulus {
             Stimulus::Shape(s)   => s.transform_mut(),
             Stimulus::Grating(s) => &mut s.transform,
             Stimulus::Text(s)    => &mut s.transform,
+        }
+    }
+
+    // ── Config load ───────────────────────────────────────────────────────────
+
+    /// Reset render-thread runtime state after loading from config.
+    pub fn reset_phase_accum(&mut self) {
+        if let Stimulus::Grating(s) = self {
+            s.reset_phase_accum();
         }
     }
 

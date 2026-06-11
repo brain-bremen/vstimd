@@ -348,7 +348,7 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
 
     let resp = scene.handle_request(set_deferred_mode_req(true, false), None);
     assert!(is_ok(&resp));
-    assert!(scene.deferred_mode);
+    assert!(scene.runtime.deferred_mode);
 
     let resp = scene.handle_request(proto::Request {
         target: Some(stim(h)),
@@ -414,11 +414,11 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
 
     let resp = scene.handle_request(set_deferred_mode_req(false, false), None);
     assert!(is_ok(&resp));
-    assert!(!scene.deferred_mode);
-    assert!(scene.pending_flip);
+    assert!(!scene.runtime.deferred_mode);
+    assert!(scene.runtime.pending_flip);
 
     scene.apply_flip();
-    assert!(!scene.pending_flip);
+    assert!(!scene.runtime.pending_flip);
 
     let entry = scene.stimuli.get(&h).unwrap();
     let stim = &entry.stimulus;
@@ -535,7 +535,7 @@ fn test_list_stimuli() {
 #[test]
 fn test_query_server_info() {
     let mut scene = SceneState::new();
-    scene.screen_size = Some((1920, 1080));
+    scene.runtime.screen_size = Some((1920, 1080));
     let resp = scene.handle_request(proto::Request {
         target: Some(sys()),
         body: Some(request::Body::QueryServerInfo(proto::QueryServerInfoRequest {})),
