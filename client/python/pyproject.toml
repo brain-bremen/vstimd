@@ -5,16 +5,57 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "vstimd"
 version = "0.1.0"
-description = "Python client for vstimd (protobuf + ZMQ)"
+description = "Python client for the vstimd visual stimulus server (ZMQ + protobuf)"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.12"
+authors = [
+    { name = "Joscha Schmiedt", email = "joscha@schmiedt.dev" },
+]
+keywords = [
+    "psychopy",
+    "visual-stimulus",
+    "neuroscience",
+    "vision-science",
+    "zmq",
+    "zeromq",
+    "protobuf",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Multimedia :: Graphics",
+    "Typing :: Typed",
+]
 dependencies = [
     "pyzmq>=25",
     "protobuf>=5",
 ]
 
+[project.urls]
+Homepage = "https://github.com/braemons/vstimd"
+Repository = "https://github.com/braemons/vstimd"
+"Bug Tracker" = "https://github.com/braemons/vstimd/issues"
+
 [dependency-groups]
 # grpcio-tools bundles protoc and is required for `make proto`
-dev = ["pytest>=8", "grpcio-tools>=1.62", "ty>=0.0.1a1"]
+dev = [
+    "pytest>=8",
+    "grpcio-tools>=1.62",
+    "ty>=0.0.1a1",
+    "sphinx>=8",
+    "myst-parser>=4",
+    "furo>=2024",
+    "sphinx-copybutton>=0.5",
+    "sphinx-autodoc-typehints>=2",
+]
 
 [tool.ty.src]
 # Only check hand-written source; skip generated proto stubs.

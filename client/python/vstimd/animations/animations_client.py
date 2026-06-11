@@ -38,18 +38,28 @@ def _sys() -> service_pb2.SystemTarget:
 
 
 class AnimationClient:
-    """Animation management commands.
+    """Frame-accurate animation commands.
+
+    Accessed as ``conn.animations`` on a :class:`~vstimd.Connection` instance.
 
     Animations run once per frame in the render loop. They are created in the
     ``IDLE`` state and must be *armed* before they fire.  Trigger-reactive
-    animations wait for an edge after arming; free-running animations start
+    animations wait for a VTL edge after arming; free-running animations start
     immediately when armed (unless ``start_trigger`` is also set).
 
-    All ``create_*`` methods return the integer animation handle.
+    All ``create_*`` methods return an :class:`~vstimd.AnimationHandle`.
 
     Frame/time parameters accept either a ``*_frames`` integer or a ``*_ms``
     float.  Specify exactly one; the ms variant is converted using the server's
     reported frame rate, queried lazily on first use and cached.
+
+    Example::
+
+        with Connection() as conn:
+            h = conn.stimuli.shapes.create_rect(pos=Vec2(0, 0), width=100, height=100,
+                                                color=Color(1, 0, 0))
+            anim = conn.animations.create_flash(h, duration_ms=100)
+            conn.animations.arm(anim)
     """
 
     def __init__(self, send: _SendFn, fps_getter: _FpsGetter) -> None:

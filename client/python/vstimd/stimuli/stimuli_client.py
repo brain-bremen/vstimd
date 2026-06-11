@@ -18,7 +18,23 @@ from .vec import Vec2
 
 
 class StimuliClient:
-    """Top-level stimuli client; groups subclients by stimulus family."""
+    """Stimulus creation and mutation commands.
+
+    Accessed as ``conn.stimuli`` on a :class:`~vstimd.Connection` instance.
+    Groups sub-clients by stimulus family:
+
+    * ``shapes`` — :class:`~vstimd.stimuli.ShapesClient`: rect, circle, ellipse, polygon
+    * ``grating`` — :class:`~vstimd.stimuli.GratingClient`: grating stimuli
+    * ``text`` — :class:`~vstimd.stimuli.TextClient`: text stimuli
+
+    Example::
+
+        with Connection() as conn:
+            h = conn.stimuli.shapes.create_rect(pos=Vec2(0, 0), width=200, height=100,
+                                                color=Color(1, 0, 0))
+            conn.stimuli.set_enabled(h, False)
+            conn.stimuli.delete(h)
+    """
 
     def __init__(self, send: _SendFn) -> None:
         self.shapes = ShapesClient(send)

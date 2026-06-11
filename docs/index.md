@@ -37,10 +37,11 @@ Experiment PC                    Stimulus PC (Linux, DRM)
 
     ```python
     from vstimd import Connection
+    from vstimd.stimuli import Vec2, Color
 
     with Connection("tcp://stimulus-pc:5555") as conn:
-        h = conn.stimuli.create_rect(x=0, y=0, width=200, height=100,
-                                     r=1.0, g=0.0, b=0.0)
+        h = conn.stimuli.shapes.create_rect(pos=Vec2(0, 0), width=200, height=100,
+                                            color=Color(1.0, 0.0, 0.0))
         conn.stimuli.set_enabled(h, True)
         conn.stimuli.delete(h)
     ```
@@ -48,10 +49,10 @@ Experiment PC                    Stimulus PC (Linux, DRM)
 === "PsychoPy"
 
     ```python
-    from vstimd.psychopy import Window, Rect
+    from vstimd.psychopy import visual
 
-    win = Window(host="tcp://stimulus-pc:5555")
-    rect = Rect(win, width=0.5, height=0.25, fillColor="red")
+    win = visual.Window(address="tcp://stimulus-pc:5555")
+    rect = visual.Rect(win, width=0.5, height=0.25, fillColor="red")
     rect.draw()
     win.flip()
     ```

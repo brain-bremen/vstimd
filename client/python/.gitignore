@@ -4,6 +4,7 @@ __pycache__/
 .venv/
 dist/
 build/
+docs/_build/
 
 # Generated protobuf stubs — regenerate with: make proto
 vstimd/_proto/**/*_pb2.py

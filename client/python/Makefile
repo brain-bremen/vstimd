@@ -16,7 +16,7 @@ PROTO_SRC  := ../../proto/vstimd/v1/vec2.proto \
               ../../proto/vstimd/v1/service.proto
 PROTO_OUT  := vstimd/_proto
 
-.PHONY: build publish proto test test-integration test-e2e test-e2e-null typecheck clean
+.PHONY: build publish proto test test-integration test-e2e test-e2e-null typecheck docs clean
 
 proto:
 	uv run --group dev python -m grpc_tools.protoc \
@@ -48,5 +48,8 @@ test-e2e-null: proto
 typecheck: proto
 	uv run --group dev ty check
 
+docs: proto
+	uv run --group dev sphinx-build -b html docs docs/_build/html
+
 clean:
-	rm -rf dist/ .venv/
+	rm -rf dist/ .venv/ docs/_build/

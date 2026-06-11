@@ -14,5 +14,6 @@ from .rect import Rect
 from .circle import Circle
 from .grating import GratingStim, GratingMask, GratingTexture
 from .text import TextBox2
+from ._types import PsychoPyColor, PsychoPyVec2
 
-__all__ = ["Window", "Rect", "Circle", "GratingStim", "GratingMask", "GratingTexture", "TextBox2"]
+__all__ = ["Window", "Rect", "Circle", "GratingStim", "GratingMask", "GratingTexture", "TextBox2", "PsychoPyColor", "PsychoPyVec2"]

@@ -14,7 +14,17 @@ _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
 
 
 class SystemClient:
-    """Scene-wide commands and server queries (system target)."""
+    """Scene-wide commands and server queries.
+
+    Accessed as ``conn.system`` on a :class:`~vstimd.Connection` instance.
+
+    Example::
+
+        with Connection() as conn:
+            info = conn.system.query_server_info()
+            print(info.width, info.height, info.frame_rate)
+            conn.system.set_background(0.0, 0.0, 0.0)
+    """
 
     def __init__(self, send: _SendFn) -> None:
         self._send = send

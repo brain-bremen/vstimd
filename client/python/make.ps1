@@ -59,12 +59,17 @@ switch ($Target) {
         Invoke-Proto
         uv run --group dev pytest tests/e2e/test_e2e_null.py tests/e2e/test_psychopy_visual_null.py -v
     }
+    "docs" {
+        Invoke-Proto
+        uv run --group dev sphinx-build -b html docs docs/_build/html
+        Write-Host "Docs built: docs/_build/html/index.html"
+    }
     "clean" {
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue dist/, .venv/
     }
     default {
         Write-Error "Unknown target: $Target"
-        Write-Host "Available targets: proto, build, publish, test, test-integration, test-e2e, test-e2e-null, clean"
+        Write-Host "Available targets: proto, build, publish, test, test-integration, test-e2e, test-e2e-null, docs, clean"
         exit 1
     }
 }

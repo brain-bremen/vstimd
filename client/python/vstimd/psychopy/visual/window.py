@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import Any, Callable
 
 from ..._handles import StimulusHandle
@@ -12,11 +13,14 @@ class Window:
 
     Parameters mirror psychopy.visual.Window.  The only required addition is
     *address* to specify the server endpoint.
+
+    The window resolution is queried from the server automatically and stored
+    in ``self.size``.  Passing *size* has no effect and raises a warning.
     """
 
     def __init__(
         self,
-        size: tuple[int, int] = (800, 600),
+        size: tuple[int, int] | None = None,
         color: PsychoPyColor = (-1, -1, -1),
         units: str = "pix",
         monitor: MonitorProtocol | None = None,
@@ -28,13 +32,20 @@ class Window:
         colorSpace: str = "rgb",
         autoLog: bool = False,
     ) -> None:
-        self.size = tuple(size)
+        if size is not None:
+            warnings.warn(
+                "Window(size=...) is ignored — the window size is queried from the server.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        self._conn = Connection(address)
+        info = self._conn.system.query_server_info()
+        self.size: tuple[int, int] = (info.width, info.height)
         self.units = units
         self.monitor = monitor
         self.deferred = deferred
         self.colorSpace = colorSpace
-
-        self._conn = Connection(address)
         self._queue: list[tuple[Callable[..., Any], tuple[Any, ...]]] = []
         self._to_draw_once: list[StimulusHandle] = []
 

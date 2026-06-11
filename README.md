@@ -48,10 +48,11 @@ Or drive the server directly from Python:
 
 ```python
 from vstimd import Connection
-from vstimd import Vec2
+from vstimd.stimuli import Vec2, Color
 
 with Connection() as conn:
-    h = conn.stimuli.shapes.create_rect(pos=Vec2(0,-200, width=300, height=200)
+    h = conn.stimuli.shapes.create_rect(pos=Vec2(0, -200), width=300, height=200,
+                                        color=Color(1.0, 0.0, 0.0))
     conn.stimuli.set_enabled(h, False)
     conn.stimuli.delete(h)
     info = conn.system.query_server_info()
@@ -80,9 +81,9 @@ uv run examples/flash_rects.py
 
 ## Documentation
 
-- [`docs/PLAN.md`](docs/PLAN.md) — full design and roadmap
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — module structure, wire protocol, threading model, stack
-- [`docs/BARE_METAL_LINUX.md`](docs/BARE_METAL_LINUX.md) — DRM/console rendering on Linux (Jetson, Pi)
-- [`docs/PYTHON_CLIENT.md`](docs/PYTHON_CLIENT.md) — Python client API and PsychoPy compatibility
-- [`docs/INPUT_LATENCY.md`](docs/INPUT_LATENCY.md) — latency analysis for position input
-- [`docs/3D_ROADMAP.md`](docs/3D_ROADMAP.md) — 3-D stimulus roadmap
+- [`dev/PLAN.md`](dev/PLAN.md) — full design and roadmap
+- [`docs/concepts/architecture.md`](docs/concepts/architecture.md) — module structure, wire protocol, threading model, stack
+- [`docs/getting-started/bare-metal.md`](docs/getting-started/bare-metal.md) — DRM/console rendering on Linux (Jetson, Pi)
+- [`docs/api/python/index.md`](docs/api/python/index.md) — Python client API and PsychoPy compatibility
+- [`dev/INPUT_LATENCY.md`](dev/INPUT_LATENCY.md) — latency analysis for position input
+- [`dev/3D_ROADMAP.md`](dev/3D_ROADMAP.md) — 3-D stimulus roadmap

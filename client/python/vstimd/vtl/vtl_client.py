@@ -33,22 +33,30 @@ def _sys() -> service_pb2.SystemTarget:
 
 
 class VtlClient:
-    """Virtual Trigger Line commands.
+    """Virtual Trigger Line (VTL) commands.
+
+    Accessed as ``conn.vtl`` on a :class:`~vstimd.Connection` instance.
 
     **Input lines** represent signals arriving into vstimd.  The canonical
     writer is nidaqd (hardware DAQ) via shared memory; ZMQ ``SetInput*``
-    commands simulate that path.  The render loop is designed to poll input
-    lines once per frame at the *start* of each frame, detect rising/falling
-    edges, and feed them to the animation system.
+    commands simulate that path.  The render loop polls input lines once per
+    frame at the start of each frame, detects rising/falling edges, and feeds
+    them to the animation system.
 
-    **Output lines** represent signals driven by vstimd.  The render loop is
-    designed to write output lines once per frame at the *end* of each frame
-    (after vsync).  nidaqd reads ``output_state`` to pulse hardware DAQ lines
-    (frame-sync, stimulus-onset markers).  ZMQ ``SetOutput*`` commands are a
-    manual override for testing.
+    **Output lines** represent signals driven by vstimd.  The render loop
+    writes output lines once per frame at the end of each frame (after vsync).
+    nidaqd reads ``output_state`` to pulse hardware DAQ lines (frame-sync,
+    stimulus-onset markers).  ZMQ ``SetOutput*`` commands are a manual
+    override for testing.
 
     Note: render-loop integration (frame-gated poll and output write) is not
     yet implemented.  Both directions are currently only accessible via ZMQ.
+
+    Example::
+
+        with Connection() as conn:
+            conn.vtl.set_line_name(0, 0, VtlDirection.OUTPUT, "frame_sync")
+            conn.vtl.set_output_line("frame_sync", True)
     """
 
     def __init__(self, send: _SendFn) -> None:

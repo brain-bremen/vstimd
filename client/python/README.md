@@ -6,6 +6,18 @@ over ZMQ using protobuf encoding.
 ## Install
 
 ```bash
+pip install vstimd
+```
+
+Or with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv add vstimd
+```
+
+### Development install
+
+```bash
 cd client/python
 uv sync
 ```
@@ -14,11 +26,11 @@ uv sync
 
 ```python
 from vstimd import Connection
-from vstimd import Vec2
+from vstimd.stimuli import Vec2, Color
 
 with Connection() as conn:
-    h = conn.stimuli.create_rect(x=-200, y=0, width=300, height=200,
-                                 r=1.0, g=0.0, b=0.0)
+    h = conn.stimuli.shapes.create_rect(pos=Vec2(-200, 0), width=300, height=200,
+                                        color=Color(1.0, 0.0, 0.0))
     conn.stimuli.set_enabled(h, False)
     conn.stimuli.delete(h)
     info = conn.system.query_server_info()
@@ -42,8 +54,7 @@ from vstimd import psychopy as visual
 The only required addition is `address=` on `Window`:
 
 ```python
-win = visual.Window(size=(1920, 1080), units='pix',
-                    address='tcp://192.168.1.10:5555')
+win = visual.Window(address='tcp://192.168.1.10:5555')
 circ = visual.Circle(win, radius=50, fillColor='red')
 rect = visual.Rect(win, width=200, height=100, fillColor=(-1, 1, -1))
 grat = visual.GratingStim(win, sf=0.05, mask='circle')
@@ -66,9 +77,10 @@ accepted and silently ignored for drop-in compatibility.
 
 ### Deferred (frame-buffer) mode
 
-By default (`deferred=True`) property changes are queued locally and flushed
-atomically on `win.flip()`, aligned to the next vsync. Set `deferred=False`
-to send each command immediately.
+By default (`deferred=True`) property changes are sent to the server's deferred
+queue immediately; `win.flip()` tells the server to apply the entire queue
+atomically before the next vsync. Set `deferred=False` to apply each command
+immediately as it arrives.
 
 ### Color formats accepted
 
@@ -88,7 +100,7 @@ make proto   # requires grpcio-tools in the dev dependency group
 cd client/python
 
 # Unit tests (no server required)
-uv run pytest tests/unit/ -v
+make test
 
 # E2E against the null renderer (builds server binary automatically)
 make test-e2e-null

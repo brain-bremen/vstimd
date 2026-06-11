@@ -35,6 +35,23 @@ _ERROR_CODE_MAP: dict[int, type[VstimdError]] = {
 class Connection:
     """ZMQ REQ socket connected to a single vstimd instance.
 
+    Client sub-objects are available as attributes and cover the full command
+    API:
+
+    * ``stimuli`` — :class:`~vstimd.stimuli.StimuliClient`: create and mutate stimuli
+    * ``system`` — :class:`~vstimd.system.SystemClient`: scene-wide commands and server queries
+    * ``vtl`` — :class:`~vstimd.VtlClient`: Virtual Trigger Line control
+    * ``animations`` — :class:`~vstimd.AnimationClient`: frame-accurate animation sequences
+
+    Example::
+
+        with Connection() as conn:
+            h = conn.stimuli.shapes.create_rect(pos=Vec2(0, 0), width=200, height=100,
+                                                color=Color(1, 0, 0))
+            conn.vtl.set_line_name(0, 0, VtlDirection.OUTPUT, "frame_sync")
+            anim = conn.animations.create_flash(h, duration_ms=500)
+            conn.animations.arm(anim)
+
     Parameters
     ----------
     address:

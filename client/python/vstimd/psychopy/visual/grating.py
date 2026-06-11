@@ -34,6 +34,7 @@ class GratingStim:
     ignored so that existing PsychoPy scripts need minimal changes.
 
     Key differences from PsychoPy:
+
     - ``sf`` is in cycles/pixel (same as PsychoPy units='pix').  Pass the
       window's pixel-per-degree conversion if you need cycles/degree.
     - Drift is handled server-side: set ``drift_speed`` (cycles/s) once;

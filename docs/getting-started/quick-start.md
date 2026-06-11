@@ -28,12 +28,13 @@ Press **D** to spawn demo stimuli, **F1** to toggle the debug overlay, **Esc** t
 
     ```python
     from vstimd import Connection
+    from vstimd.stimuli import Vec2, Color
 
     with Connection() as conn:         # default: tcp://localhost:5555
         # Create a red rectangle centred on screen
-        h = conn.stimuli.create_rect(
-            x=0, y=0, width=300, height=150,
-            r=1.0, g=0.0, b=0.0,
+        h = conn.stimuli.shapes.create_rect(
+            pos=Vec2(0, 0), width=300, height=150,
+            color=Color(1.0, 0.0, 0.0),
         )
         input("Press Enter to remove...")
         conn.stimuli.delete(h)
@@ -58,13 +59,18 @@ Use deferred mode to make multiple changes visible on the exact same frame:
 === "Python"
 
     ```python
-    with Connection() as conn:
-        h1 = conn.stimuli.create_rect(x=-200, y=0, width=100, height=100, r=1, g=0, b=0)
-        h2 = conn.stimuli.create_rect(x= 200, y=0, width=100, height=100, r=0, g=0, b=1)
+    from vstimd.stimuli import Vec2, Color
 
-        with conn.system.deferred():
-            conn.stimuli.set_enabled(h1, True)
-            conn.stimuli.set_enabled(h2, True)
+    with Connection() as conn:
+        h1 = conn.stimuli.shapes.create_rect(pos=Vec2(-200, 0), width=100, height=100,
+                                             color=Color(1, 0, 0))
+        h2 = conn.stimuli.shapes.create_rect(pos=Vec2(200, 0), width=100, height=100,
+                                             color=Color(0, 0, 1))
+
+        conn.system.set_deferred_mode(active=True)
+        conn.stimuli.set_enabled(h1, True)
+        conn.stimuli.set_enabled(h2, True)
+        conn.system.set_deferred_mode(active=False)
         # Both stimuli appear on the same frame
     ```
 
@@ -75,7 +81,7 @@ Use deferred mode to make multiple changes visible on the exact same frame:
     ```python
     with Connection() as conn:
         info = conn.system.query_server_info()
-        print(info.display_width, info.display_height, info.refresh_rate_hz)
+        print(info.width, info.height, info.frame_rate)
     ```
 
 ## Next steps

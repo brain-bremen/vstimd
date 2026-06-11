@@ -23,15 +23,25 @@ class ErrorCode(IntEnum):
 
 @dataclass
 class ServerResponse:
-    """Envelope fields the server attaches to every response.
+    """Envelope returned by every mutation command.
 
-    handle         -- newly allocated stimulus handle on create; -1 on mutations/deletes
-    code           -- ErrorCode (OK on success)
-    error          -- human-readable error detail; empty string on success
-    id             -- stable UUID of newly created stimulus; empty string otherwise
-    frame_count    -- render frames completed at the time of the response
-    server_time_ns -- nanoseconds since server start (monotonic, like
-                      QueryPerformanceCounter / CLOCK_MONOTONIC)
+    Attributes
+    ----------
+    handle:
+        Newly allocated stimulus handle on ``create_*`` calls; ``-1`` on
+        mutations and deletes.
+    code:
+        :class:`ErrorCode` — always ``OK`` on return (any other code raises an
+        exception in :class:`~vstimd.Connection`).
+    error:
+        Human-readable error detail; empty string on success.
+    id:
+        Stable UUID string of a newly created stimulus; empty string otherwise.
+    frame_count:
+        Render frames completed at the time of the response.
+    server_time_ns:
+        Nanoseconds since server start (monotonic clock — equivalent to
+        ``CLOCK_MONOTONIC`` / ``QueryPerformanceCounter``).
     """
 
     handle: int = -1

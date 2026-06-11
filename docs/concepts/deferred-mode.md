@@ -17,37 +17,23 @@ frame than related commands sent just after it.
 
 ## Python usage
 
-The `Connection.system` client exposes a context manager that handles begin/commit:
-
 ```python
-with conn.system.deferred():
-    conn.stimuli.set_enabled(h1, True)
-    conn.stimuli.set_position(h2, x=100, y=0)
-    conn.stimuli.set_fill_color(h3, r=1.0, g=0.0, b=0.0)
-# All three changes appear on the same frame
+from vstimd.stimuli import Vec2, Color
+
+conn.system.set_deferred_mode(active=True)
+
+conn.stimuli.set_enabled(h1, True)
+conn.stimuli.set_position(h2, pos=Vec2(100, 0))
+conn.stimuli.set_fill_color(h3, color=Color(1.0, 0.0, 0.0))
+
+conn.system.set_deferred_mode(active=False)   # commit — all three appear on same frame
 ```
 
-If an exception is raised inside the block, the deferred mode is cancelled (staged changes
-are discarded) and the server returns to its previous state.
+To discard staged changes without committing:
 
-## Manual control
-
-=== "Python"
-
-    ```python
-    conn.system.set_deferred_mode(active=True)
-
-    conn.stimuli.set_enabled(h1, True)
-    conn.stimuli.set_enabled(h2, False)
-
-    conn.system.set_deferred_mode(active=False)  # commit
-    ```
-
-    To discard staged changes without committing:
-
-    ```python
-    conn.system.set_deferred_mode(active=False, cancel=True)
-    ```
+```python
+conn.system.set_deferred_mode(active=False, cancel=True)
+```
 
 ## Guarantees
 
