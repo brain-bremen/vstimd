@@ -12,6 +12,7 @@ pub struct PhotoDiodeConfig {
 /// Always rendered last (on top of all stimuli) when `enabled`.
 /// Deref/DerefMut give transparent access to the config fields.
 #[derive(Clone)]
+#[derive(Default)]
 pub struct PhotoDiodeState {
     pub config:        PhotoDiodeConfig,
     pub enabled_copy:  bool,
@@ -20,17 +21,6 @@ pub struct PhotoDiodeState {
     pub position_copy: u32,
 }
 
-impl Default for PhotoDiodeState {
-    fn default() -> Self {
-        Self {
-            config:        PhotoDiodeConfig::default(),
-            enabled_copy:  false,
-            lit_copy:      false,
-            flicker_copy:  false,
-            position_copy: 0,
-        }
-    }
-}
 
 impl std::ops::Deref for PhotoDiodeState {
     type Target = PhotoDiodeConfig;

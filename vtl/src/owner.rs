@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::io;
 use std::ops::Deref;
 
-use crate::layout::{SHM_SIZE, MAGIC, VERSION, MAX_BANKS};
+use crate::layout::MAX_BANKS;
 use crate::segment::VtlSegment;
 
 /// Creates and owns a VTL shared memory segment.
@@ -33,10 +33,10 @@ impl VtlOwner {
         #[cfg(not(unix))]
         {
             let _ = (shm_name, num_input_banks, num_output_banks);
-            return Err(io::Error::new(
+            Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "VTL shared memory is only supported on unix",
-            ));
+            ))
         }
 
         #[cfg(unix)]

@@ -1,16 +1,12 @@
 /// Serializable part of stimulus flags.
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 pub struct StimulusFlagsConfig {
     /// User-controlled visibility.
     pub enabled: bool,
     pub protected: bool, // survives RemoveAll
 }
 
-impl Default for StimulusFlagsConfig {
-    fn default() -> Self {
-        Self { enabled: false, protected: false }
-    }
-}
 
 /// Full stimulus flag state: serializable config + render-thread runtime fields.
 #[derive(Clone)]

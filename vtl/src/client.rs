@@ -1,7 +1,6 @@
 use std::io;
 use std::ops::Deref;
 
-use crate::layout::{SHM_SIZE, MAX_BANKS};
 use crate::segment::VtlSegment;
 
 /// Attaches to an existing VTL shared memory segment created by a [`VtlOwner`](crate::VtlOwner).
@@ -19,10 +18,10 @@ impl VtlClient {
         #[cfg(not(unix))]
         {
             let _ = shm_name;
-            return Err(io::Error::new(
+            Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "VTL shared memory is only supported on unix",
-            ));
+            ))
         }
 
         #[cfg(unix)]
