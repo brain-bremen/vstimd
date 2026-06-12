@@ -137,28 +137,52 @@ pub fn init() -> (VkContext, StimulusDisplayInfo) {
 }
 
 fn pick_mode(modes: &[vk::DisplayModePropertiesKHR]) -> vk::DisplayModePropertiesKHR {
-    eprintln!("\nAvailable display modes:");
+    log::info!("vstimd: available display modes:");
     for (i, m) in modes.iter().enumerate() {
         let w = m.parameters.visible_region.width;
         let h = m.parameters.visible_region.height;
         let hz = m.parameters.refresh_rate;
-        eprintln!("  [{i}] {w}×{h}  {}.{:03} Hz", hz / 1000, hz % 1000);
+        log::info!("  [{}] {}×{}  {}.{:03} Hz", i, w, h, hz / 1000, hz % 1000);
     }
-    loop {
-        eprint!("Select mode [0]: ");
-        let mut line = String::new();
-        std::io::stdin()
-            .read_line(&mut line)
-            .expect("failed to read stdin");
-        let t = line.trim();
-        if t.is_empty() {
-            return modes[0];
-        }
-        match t.parse::<usize>() {
-            Ok(i) if i < modes.len() => return modes[i],
-            _ => eprintln!("  Enter 0–{}", modes.len() - 1),
+
+    // Allow override via VSTIMD_DISPLAY_MODE=<index>.
+    if let Ok(s) = std::env::var("VSTIMD_DISPLAY_MODE") {
+        match s.trim().parse::<usize>() {
+            Ok(i) if i < modes.len() => {
+                let m = &modes[i];
+                let w = m.parameters.visible_region.width;
+                let h = m.parameters.visible_region.height;
+                let hz = m.parameters.refresh_rate;
+                log::info!(
+                    "vstimd: using display mode {} (VSTIMD_DISPLAY_MODE): {}×{}  {}.{:03} Hz",
+                    i, w, h, hz / 1000, hz % 1000
+                );
+                return modes[i];
+            }
+            Ok(i) => log::warn!(
+                "vstimd: VSTIMD_DISPLAY_MODE={i} out of range (0..{}), using auto-select",
+                modes.len()
+            ),
+            Err(_) => log::warn!(
+                "vstimd: VSTIMD_DISPLAY_MODE={s:?} is not a number, using auto-select"
+            ),
         }
     }
+
+    // Auto-select the mode with the highest refresh rate.
+    let best = modes
+        .iter()
+        .copied()
+        .max_by_key(|m| m.parameters.refresh_rate)
+        .unwrap_or(modes[0]);
+    let w = best.parameters.visible_region.width;
+    let h = best.parameters.visible_region.height;
+    let hz = best.parameters.refresh_rate;
+    log::info!(
+        "vstimd: auto-selected display mode {}×{}  {}.{:03} Hz",
+        w, h, hz / 1000, hz % 1000
+    );
+    best
 }
 
 fn find_graphics_queue(instance: &ash::Instance, pd: vk::PhysicalDevice) -> Option<u32> {
