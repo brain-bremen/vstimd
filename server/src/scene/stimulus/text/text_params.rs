@@ -22,18 +22,18 @@ pub enum LanguageStyle {
 /// `fill_color.a == 0` → no background fill; `border_color.a == 0` → no border.
 #[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct TextRenderParams {
-    pub color: [f32; 4],
-    pub fill_color: [f32; 4],
-    pub border_color: [f32; 4],
+    pub color: crate::Color,
+    pub fill_color: crate::Color,
+    pub border_color: crate::Color,
     pub flip_horiz: bool,
 }
 
 impl Default for TextRenderParams {
     fn default() -> Self {
         Self {
-            color: [1.0, 1.0, 1.0, 1.0],
-            fill_color: [0.0, 0.0, 0.0, 0.0],
-            border_color: [0.0, 0.0, 0.0, 0.0],
+            color: crate::Color::WHITE,
+            fill_color: crate::Color::TRANSPARENT,
+            border_color: crate::Color::TRANSPARENT,
             flip_horiz: false,
         }
     }

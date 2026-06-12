@@ -40,8 +40,8 @@ pub struct GratingParams {
     /// (perpendicular to the stripes).  When false `drift_angle` is used instead.
     pub drift_coupled: bool,
     pub drift_angle: f32, // degrees CCW; used only when !drift_coupled
-    pub fore_color: [f32; 4], // rgba peak colour (carrier = +1)
-    pub back_color: [f32; 4], // rgba trough colour (carrier = −1)
+    pub fore_color: crate::Color, // rgba peak colour (carrier = +1)
+    pub back_color: crate::Color, // rgba trough colour (carrier = −1)
     pub opacity: f32,
 }
 
@@ -57,8 +57,8 @@ impl Default for GratingParams {
             drift_speed: 0.0,
             drift_coupled: true,
             drift_angle: 0.0,
-            fore_color: [1.0, 1.0, 1.0, 1.0],
-            back_color: [0.0, 0.0, 0.0, 1.0],
+            fore_color: crate::Color::WHITE,
+            back_color: crate::Color::BLACK,
             opacity: 1.0,
         }
     }

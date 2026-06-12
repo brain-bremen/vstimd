@@ -16,7 +16,7 @@ pub fn tessellate_grating(s: &GratingStimulus, half_w: f32, half_h: f32) -> (Vec
         position: [x / half_w, -y / half_h, 0.0],
         normal: [0.0, 0.0, 1.0],
         uv: [0.0, 0.0],
-        color: [0.0; 4],
+        color: crate::Color::TRANSPARENT,
     };
     let vertices = corners.map(v).to_vec();
     let indices = vec![0, 1, 2, 0, 2, 3];

@@ -4,6 +4,7 @@ use super::animation::AnimationEntry;
 use super::deferred::Deferred;
 use super::photodiode::PhotoDiodeState;
 use super::stimulus::StimulusEntry;
+use crate::Color;
 
 pub enum LoadMode {
     Replace,
@@ -12,9 +13,9 @@ pub enum LoadMode {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct SceneConfig {
-    pub background:       Deferred<[f32; 4]>,
-    pub default_fill:     [f32; 4],
-    pub default_outline:  [f32; 4],
+    pub background:       Deferred<Color>,
+    pub default_fill:     Color,
+    pub default_outline:  Color,
     pub photodiode:       PhotoDiodeState,
     pub stimuli:          IndexMap<u32, StimulusEntry>,
     pub next_stim_handle: u32,
@@ -25,9 +26,9 @@ pub struct SceneConfig {
 impl Default for SceneConfig {
     fn default() -> Self {
         Self {
-            background:       Deferred::new([0.0, 0.0, 0.0, 1.0]),
-            default_fill:     [1.0, 1.0, 1.0, 1.0],
-            default_outline:  [0.0, 0.0, 0.0, 1.0],
+            background:       Deferred::new(Color::BLACK),
+            default_fill:     Color::WHITE,
+            default_outline:  Color::BLACK,
             photodiode:       PhotoDiodeState::default(),
             stimuli:          IndexMap::new(),
             next_stim_handle: 1,

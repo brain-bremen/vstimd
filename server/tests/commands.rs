@@ -6,6 +6,7 @@ use prost::Message;
 use vstimd::proto;
 use vstimd::proto::request;
 use vstimd::scene::{SceneState, ShapeStimulus, Stimulus};
+use vstimd::Color;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -89,10 +90,10 @@ fn test_create_rect_with_fill() {
     let entry = scene.stimuli.get_mut(&h).unwrap();
     let Stimulus::Shape(s) = &mut entry.stimulus else { panic!("expected shape stimulus") };
     let appearance = s.appearance();
-    assert_eq!(appearance.live.fill_color[0], fill.r);
-    assert_eq!(appearance.live.fill_color[1], fill.g);
-    assert_eq!(appearance.live.fill_color[2], fill.b);
-    assert_eq!(appearance.live.fill_color[3], fill.a);
+    assert_eq!(appearance.live.fill_color.r, fill.r);
+    assert_eq!(appearance.live.fill_color.g, fill.g);
+    assert_eq!(appearance.live.fill_color.b, fill.b);
+    assert_eq!(appearance.live.fill_color.a, fill.a);
 }
 
 #[test]
@@ -259,7 +260,7 @@ fn test_set_fill_color() {
     assert!(is_ok(&resp));
     let Stimulus::Shape(s) = &scene.stimuli.get(&h).unwrap().stimulus else { panic!("expected shape") };
     let app = s.appearance();
-    assert_eq!(app.live.fill_color, [1.0, 0.0, 0.5, 0.8]);
+    assert_eq!(app.live.fill_color, Color::new(1.0, 0.0, 0.5, 0.8));
 }
 
 #[test]
@@ -320,9 +321,9 @@ fn test_immediate_mode_composes_mutations_and_marks_dirty() {
 
     let Stimulus::Shape(s) = stim else { panic!("expected shape") };
     let app = s.appearance();
-    assert_eq!(app.live.fill_color, [0.1, 0.2, 0.3, 0.9]);
+    assert_eq!(app.live.fill_color, Color::new(0.1, 0.2, 0.3, 0.9));
     assert!(app.live.draw_mode == vstimd::scene::DrawMode::Stroke);
-    assert_eq!(app.live.outline_color, [0.8, 0.7, 0.6, 0.5]);
+    assert_eq!(app.live.outline_color, Color::new(0.8, 0.7, 0.6, 0.5));
     assert_eq!(app.live.stroke_width, 7.0);
     assert!(s.flags().dirty);
 }
@@ -339,8 +340,8 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     let Stimulus::Shape(s) = stim_obj else { panic!("expected shape") };
     {
         let app = s.appearance_mut();
-        app.live.fill_color = [0.11, 0.12, 0.13, 0.14];
-        app.live.outline_color = [0.21, 0.22, 0.23, 0.24];
+        app.live.fill_color = Color::new(0.11, 0.12, 0.13, 0.14);
+        app.live.outline_color = Color::new(0.21, 0.22, 0.23, 0.24);
         app.live.stroke_width = 2.5;
         app.live.draw_mode = vstimd::scene::DrawMode::FillAndStroke;
     }
@@ -402,12 +403,12 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
 
     let Stimulus::Shape(s) = stim else { panic!("expected shape") };
     let app = s.appearance();
-    assert_eq!(app.live.fill_color, [0.11, 0.12, 0.13, 0.14]);
-    assert_eq!(app.live.outline_color, [0.21, 0.22, 0.23, 0.24]);
+    assert_eq!(app.live.fill_color, Color::new(0.11, 0.12, 0.13, 0.14));
+    assert_eq!(app.live.outline_color, Color::new(0.21, 0.22, 0.23, 0.24));
     assert_eq!(app.live.stroke_width, 2.5);
     assert!(app.live.draw_mode == vstimd::scene::DrawMode::FillAndStroke);
-    assert_eq!(app.copy.fill_color, [0.1, 0.2, 0.3, 0.9]);
-    assert_eq!(app.copy.outline_color, [0.8, 0.7, 0.6, 0.5]);
+    assert_eq!(app.copy.fill_color, Color::new(0.1, 0.2, 0.3, 0.9));
+    assert_eq!(app.copy.outline_color, Color::new(0.8, 0.7, 0.6, 0.5));
     assert_eq!(app.copy.stroke_width, 7.0);
     assert!(app.copy.draw_mode == vstimd::scene::DrawMode::Stroke);
     assert!(!s.flags().dirty);
@@ -427,8 +428,8 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     assert_eq!(t.live.angle, 30.0);
     let Stimulus::Shape(s) = stim else { panic!("expected shape") };
     let app = s.appearance();
-    assert_eq!(app.live.fill_color, [0.1, 0.2, 0.3, 0.9]);
-    assert_eq!(app.live.outline_color, [0.8, 0.7, 0.6, 0.5]);
+    assert_eq!(app.live.fill_color, Color::new(0.1, 0.2, 0.3, 0.9));
+    assert_eq!(app.live.outline_color, Color::new(0.8, 0.7, 0.6, 0.5));
     assert_eq!(app.live.stroke_width, 7.0);
     assert!(app.live.draw_mode == vstimd::scene::DrawMode::Stroke);
     assert!(s.flags().dirty);
@@ -655,8 +656,8 @@ fn test_create_text() {
     assert_eq!(t.letter_height_px, 32.0);
     assert_eq!(t.box_size.live, [400.0, 80.0]);
     assert_eq!(t.transform.live.pos, [10.0, -20.0]);
-    assert_eq!(t.params.live.color, [1.0, 1.0, 0.0, 1.0]);
-    assert_eq!(t.params.live.fill_color[3], 0.0); // transparent by default
+    assert_eq!(t.params.live.color, Color::new(1.0, 1.0, 0.0, 1.0));
+    assert_eq!(t.params.live.fill_color.a, 0.0); // transparent by default
 }
 
 #[test]
@@ -676,7 +677,7 @@ fn test_create_text_defaults() {
     };
     assert_eq!(t.box_size.live, [200.0, 100.0]);
     assert_eq!(t.letter_height_px, 32.0);
-    assert_eq!(t.params.live.color, [1.0, 1.0, 1.0, 1.0]); // white default
+    assert_eq!(t.params.live.color, Color::WHITE); // white default
 }
 
 #[test]
@@ -722,7 +723,7 @@ fn test_set_text_color() {
     assert!(is_ok(&resp));
 
     let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
-    assert_eq!(t.params.live.color, [0.0, 1.0, 0.5, 0.8]);
+    assert_eq!(t.params.live.color, Color::new(0.0, 1.0, 0.5, 0.8));
 }
 
 #[test]
@@ -831,8 +832,8 @@ fn test_text_deferred_set_text_and_color() {
     let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
     assert_eq!(t.text_live, "initial");
     assert_eq!(t.text_copy, "deferred");
-    assert_eq!(t.params.live.color, [1.0, 1.0, 1.0, 1.0]);
-    assert_eq!(t.params.copy.color, [1.0, 0.0, 0.0, 1.0]);
+    assert_eq!(t.params.live.color, Color::WHITE);
+    assert_eq!(t.params.copy.color, Color::new(1.0, 0.0, 0.0, 1.0));
 
     // End deferred and flip
     scene.handle_request(set_deferred_mode_req(false, false), None);
@@ -840,7 +841,7 @@ fn test_text_deferred_set_text_and_color() {
 
     let Stimulus::Text(t) = &scene.stimuli[&h].stimulus else { panic!() };
     assert_eq!(t.text_live, "deferred");
-    assert_eq!(t.params.live.color, [1.0, 0.0, 0.0, 1.0]);
+    assert_eq!(t.params.live.color, Color::new(1.0, 0.0, 0.0, 1.0));
 }
 
 #[test]

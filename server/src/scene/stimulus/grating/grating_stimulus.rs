@@ -66,7 +66,7 @@ impl GratingStimulus {
 
     // ── Setters ───────────────────────────────────────────────────────────────
 
-    pub fn set_fore_color(&mut self, deferred: bool, color: [f32; 4]) {
+    pub fn set_fore_color(&mut self, deferred: bool, color: crate::Color) {
         let prev = if deferred { self.params.copy } else { self.params.live };
         self.params.set(deferred, GratingParams { fore_color: color, ..prev });
         if !deferred {
@@ -74,7 +74,7 @@ impl GratingStimulus {
         }
     }
 
-    pub fn set_back_color(&mut self, deferred: bool, color: [f32; 4]) {
+    pub fn set_back_color(&mut self, deferred: bool, color: crate::Color) {
         let prev = if deferred { self.params.copy } else { self.params.live };
         self.params.set(deferred, GratingParams { back_color: color, ..prev });
         if !deferred {
@@ -208,8 +208,8 @@ pub fn build_grating_push_constants(
         contrast: p.contrast,
         global_opacity: p.opacity,
         _pad_color: 0,
-        fore_color: p.fore_color,
-        back_color: p.back_color,
+        fore_color: p.fore_color.into(),
+        back_color: p.back_color.into(),
         waveform: p.waveform as u32,
         mask_type: p.mask as u32,
         mask_param: p.mask_param,
@@ -253,23 +253,23 @@ mod tests {
     #[test]
     fn set_fore_color_immediate() {
         let mut s = default_stim();
-        s.set_fore_color(false, [1.0, 0.0, 0.0, 0.5]);
-        assert_eq!(s.params.live.fore_color, [1.0, 0.0, 0.0, 0.5]);
+        s.set_fore_color(false, crate::Color::new(1.0, 0.0, 0.0, 0.5));
+        assert_eq!(s.params.live.fore_color, crate::Color::new(1.0, 0.0, 0.0, 0.5));
     }
 
     #[test]
     fn set_fore_color_deferred() {
         let mut s = default_stim();
-        s.set_fore_color(true, [0.0, 1.0, 0.0, 1.0]);
-        assert_eq!(s.params.live.fore_color, [1.0, 1.0, 1.0, 1.0]); // live unchanged
-        assert_eq!(s.params.copy.fore_color, [0.0, 1.0, 0.0, 1.0]);
+        s.set_fore_color(true, crate::Color::new(0.0, 1.0, 0.0, 1.0));
+        assert_eq!(s.params.live.fore_color, crate::Color::WHITE); // live unchanged
+        assert_eq!(s.params.copy.fore_color, crate::Color::new(0.0, 1.0, 0.0, 1.0));
     }
 
     #[test]
     fn set_back_color_immediate() {
         let mut s = default_stim();
-        s.set_back_color(false, [0.0, 0.0, 1.0, 0.0]);
-        assert_eq!(s.params.live.back_color, [0.0, 0.0, 1.0, 0.0]);
+        s.set_back_color(false, crate::Color::new(0.0, 0.0, 1.0, 0.0));
+        assert_eq!(s.params.live.back_color, crate::Color::new(0.0, 0.0, 1.0, 0.0));
     }
 
     #[test]
@@ -282,9 +282,9 @@ mod tests {
     #[test]
     fn push_constants_colors_and_opacity() {
         let mut s = default_stim();
-        s.set_fore_color(false, [1.0, 0.5, 0.25, 0.8]);
+        s.set_fore_color(false, crate::Color::new(1.0, 0.5, 0.25, 0.8));
         s.set_opacity(false, 0.75);
-        s.set_back_color(false, [0.1, 0.2, 0.3, 0.0]);
+        s.set_back_color(false, crate::Color::new(0.1, 0.2, 0.3, 0.0));
         let pc = build_grating_push_constants(&s, 800.0, 600.0);
         assert_eq!(pc.fore_color, [1.0, 0.5, 0.25, 0.8]);
         assert_eq!(pc.back_color, [0.1, 0.2, 0.3, 0.0]);

@@ -16,6 +16,7 @@ use crate::ipc::{err, err_not_found, err_wrong_type, ok_ack, ok_body, ok_handle,
 use super::animation::{AnimState, Animation, AnimationEntry, Edge, FinalAction, StartAction, VtlBit};
 use crate::proto;
 use crate::proto::request;
+use crate::Color;
 use crate::vtl_state::{VtlConfig, VtlNameEntry, VtlState};
 use crate::io_config::{
     is_format_error, is_not_found, list_config_names, load_config,
@@ -461,7 +462,7 @@ impl SceneState {
 
     fn cmd_set_fill_color(&mut self, handle: u32, cmd: proto::SetFillColorRequest) -> proto::Response {
         let c = match cmd.color {
-            Some(c) => [c.r, c.g, c.b, c.a],
+            Some(c) => c.into(),
             None => return err(proto::ErrorCode::InvalidArgument, "fill color must be set"),
         };
         match self.config.stimuli.get_mut(&handle) {
@@ -491,7 +492,7 @@ impl SceneState {
                     let deferred = self.runtime.deferred_mode;
                     let app = s.appearance_mut();
                     let mut prev = if deferred { app.copy } else { app.live };
-                    prev.fill_color[3] = cmd.opacity;
+                    prev.fill_color.a = cmd.opacity;
                     app.set(deferred, prev);
                     if !deferred { s.flags_mut().mark_dirty(); }
                     ok_ack()
@@ -586,7 +587,7 @@ impl SceneState {
         cmd: proto::SetOutlineColorRequest,
     ) -> proto::Response {
         let c = match cmd.color {
-            Some(c) => [c.r, c.g, c.b, c.a],
+            Some(c) => c.into(),
             None => return err(proto::ErrorCode::InvalidArgument, "outline color must be set"),
         };
         match self.config.stimuli.get_mut(&handle) {
@@ -740,7 +741,7 @@ impl SceneState {
 
     fn cmd_set_grating_fore_color(&mut self, handle: u32, cmd: proto::SetGratingForeColorRequest) -> proto::Response {
         let c = match cmd.fore_color {
-            Some(c) => [c.r, c.g, c.b, c.a],
+            Some(c) => c.into(),
             None => return err(proto::ErrorCode::InvalidArgument, "fore_color must be set"),
         };
         match self.config.stimuli.get_mut(&handle) {
@@ -754,7 +755,7 @@ impl SceneState {
 
     fn cmd_set_grating_back_color(&mut self, handle: u32, cmd: proto::SetGratingBackColorRequest) -> proto::Response {
         let c = match cmd.back_color {
-            Some(c) => [c.r, c.g, c.b, c.a],
+            Some(c) => c.into(),
             None => return err(proto::ErrorCode::InvalidArgument, "back_color must be set"),
         };
         match self.config.stimuli.get_mut(&handle) {
@@ -829,7 +830,7 @@ impl SceneState {
 
     fn cmd_set_text_color(&mut self, handle: u32, cmd: proto::SetTextColorRequest) -> proto::Response {
         let c = match cmd.color {
-            Some(c) => [c.r, c.g, c.b, c.a],
+            Some(c) => c.into(),
             None => return err(proto::ErrorCode::InvalidArgument, "color must be set"),
         };
         match self.config.stimuli.get_mut(&handle) {
@@ -848,7 +849,7 @@ impl SceneState {
 
     fn cmd_set_background(&mut self, cmd: proto::SetBackgroundRequest) -> proto::Response {
         let c = match cmd.color {
-            Some(c) => [c.r, c.g, c.b, c.a],
+            Some(c) => c.into(),
             None => {
                 return err(proto::ErrorCode::InvalidArgument, "background color must be set");
             }
@@ -894,7 +895,7 @@ impl SceneState {
             width: w,
             height: h,
             frame_rate: self.runtime.frame_rate,
-            background_color: Some(proto::Color { r: bg[0], g: bg[1], b: bg[2], a: bg[3] }),
+            background_color: Some(bg.into()),
             backend: proto::RenderBackend::Unspecified as i32,
             version: Some(version),
         }))
@@ -955,11 +956,11 @@ impl SceneState {
                     };
                     (
                         st, p,
-                        Some(proto::Color { r: a.fill_color[0], g: a.fill_color[1], b: a.fill_color[2], a: a.fill_color[3] }),
-                        Some(proto::Color { r: a.outline_color[0], g: a.outline_color[1], b: a.outline_color[2], a: a.outline_color[3] }),
+                        Some(a.fill_color.into()),
+                        Some(a.outline_color.into()),
                         a.stroke_width,
                         scene_draw_mode_to_proto(a.draw_mode),
-                        a.fill_color[3],
+                        a.fill_color.a,
                     )
                 }
                 Stimulus::Grating(s) => {
@@ -968,7 +969,7 @@ impl SceneState {
                     (
                         proto::StimulusType::Grating as i32,
                         Some(grating_query_params(s)),
-                        Some(proto::Color { r: fc[0], g: fc[1], b: fc[2], a: op }),
+                        Some(proto::Color { r: fc.r, g: fc.g, b: fc.b, a: op }),
                         None,
                         0.0,
                         proto::ShapeDrawMode::Filled as i32,
@@ -980,11 +981,11 @@ impl SceneState {
                     (
                         proto::StimulusType::Text as i32,
                         Some(text_query_params(s)),
-                        Some(proto::Color { r: c[0], g: c[1], b: c[2], a: c[3] }),
+                        Some(c.into()),
                         None,
                         0.0,
                         proto::ShapeDrawMode::Filled as i32,
-                        c[3],
+                        c.a,
                     )
                 }
             };
@@ -1593,8 +1594,8 @@ fn resolve_vtl_handle(
     }
 }
 
-fn color_or_default(c: Option<proto::Color>, default: [f32; 4]) -> [f32; 4] {
-    c.map(|c| [c.r, c.g, c.b, c.a]).unwrap_or(default)
+fn color_or_default(c: Option<proto::Color>, default: Color) -> Color {
+    c.map(|c| c.into()).unwrap_or(default)
 }
 
 fn parse_or_new_uuid(s: &str) -> Result<Uuid, Box<proto::Response>> {

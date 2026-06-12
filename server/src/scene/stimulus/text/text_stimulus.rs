@@ -90,7 +90,7 @@ impl TextStimulus {
         }
     }
 
-    pub fn set_color(&mut self, deferred: bool, color: [f32; 4]) {
+    pub fn set_color(&mut self, deferred: bool, color: crate::Color) {
         let prev = if deferred { self.params.copy } else { self.params.live };
         self.params.set(deferred, TextRenderParams { color, ..prev });
         if !deferred {
@@ -172,8 +172,8 @@ mod tests {
     #[test]
     fn set_color_immediate() {
         let mut s = default_stim();
-        s.set_color(false, [1.0, 0.0, 0.0, 0.5]);
-        assert_eq!(s.params.live.color, [1.0, 0.0, 0.0, 0.5]);
+        s.set_color(false, crate::Color::new(1.0, 0.0, 0.0, 0.5));
+        assert_eq!(s.params.live.color, crate::Color::new(1.0, 0.0, 0.0, 0.5));
         assert!(s.flags.dirty);
     }
 
@@ -181,25 +181,25 @@ mod tests {
     fn set_color_deferred_leaves_live_unchanged() {
         let mut s = default_stim();
         s.flags.dirty = false;
-        s.set_color(true, [0.0, 1.0, 0.0, 1.0]);
-        assert_eq!(s.params.live.color, [1.0, 1.0, 1.0, 1.0]);
-        assert_eq!(s.params.copy.color, [0.0, 1.0, 0.0, 1.0]);
+        s.set_color(true, crate::Color::new(0.0, 1.0, 0.0, 1.0));
+        assert_eq!(s.params.live.color, crate::Color::WHITE);
+        assert_eq!(s.params.copy.color, crate::Color::new(0.0, 1.0, 0.0, 1.0));
         assert!(!s.flags.dirty);
     }
 
     #[test]
     fn set_color_deferred_then_flip() {
         let mut s = default_stim();
-        s.set_color(true, [0.5, 0.5, 0.5, 0.8]);
+        s.set_color(true, crate::Color::new(0.5, 0.5, 0.5, 0.8));
         s.flip();
-        assert_eq!(s.params.live.color, [0.5, 0.5, 0.5, 0.8]);
+        assert_eq!(s.params.live.color, crate::Color::new(0.5, 0.5, 0.5, 0.8));
     }
 
     #[test]
     fn default_params_white_text_transparent_fill() {
         let s = default_stim();
-        assert_eq!(s.params.live.color, [1.0, 1.0, 1.0, 1.0]);
-        assert_eq!(s.params.live.fill_color[3], 0.0);
-        assert_eq!(s.params.live.border_color[3], 0.0);
+        assert_eq!(s.params.live.color, crate::Color::WHITE);
+        assert_eq!(s.params.live.fill_color.a, 0.0);
+        assert_eq!(s.params.live.border_color.a, 0.0);
     }
 }

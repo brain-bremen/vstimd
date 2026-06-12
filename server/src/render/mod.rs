@@ -71,7 +71,7 @@ pub(crate) fn spawn_demo_stimuli(
                 angle: 0.0,
             }),
             appearance: Deferred::new(ShapeAppearance {
-                fill_color: [0.0, 0.8, 0.8, 1.0],
+                fill_color: crate::Color::new(0.0, 0.8, 0.8, 1.0),
                 ..Default::default()
             }),
             radius: Deferred::new(80.0),
@@ -90,7 +90,7 @@ pub(crate) fn spawn_demo_stimuli(
                 angle: 30.0,
             }),
             appearance: Deferred::new(ShapeAppearance {
-                fill_color: [0.8, 0.0, 0.8, 1.0],
+                fill_color: crate::Color::new(0.8, 0.0, 0.8, 1.0),
                 ..Default::default()
             }),
             size: Deferred::new([120.0, 50.0]),
@@ -121,7 +121,7 @@ pub(crate) fn spawn_demo_stimuli(
                 48.0,
                 Anchor::Center,
                 LanguageStyle::default(),
-                TextRenderParams { color: [1.0, 1.0, 0.0, 1.0], ..Default::default() },
+                TextRenderParams { color: crate::Color::new(1.0, 1.0, 0.0, 1.0), ..Default::default() },
             )),
         ),
     );

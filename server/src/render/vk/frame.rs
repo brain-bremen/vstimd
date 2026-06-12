@@ -251,7 +251,7 @@ pub fn render_frame(
 
         let bg = {
             let sc = scene.read().expect("scene lock poisoned");
-            vk::ClearColorValue { float32: sc.background.live }
+            vk::ClearColorValue { float32: sc.background.live.into() }
         };
 
         let render_area = vk::Rect2D {
@@ -321,7 +321,7 @@ pub fn render_frame(
                 ctx.device.cmd_push_constants(
                     cb, text_pipeline.layout,
                     vk::ShaderStageFlags::FRAGMENT,
-                    0, bytemuck::bytes_of(&TextPushConstants { color: t.params.live.color }),
+                    0, bytemuck::bytes_of(&TextPushConstants { color: t.params.live.color.into() }),
                 );
                 if let Some(mesh) = scene_cache.text.meshes.get(h).filter(|m| m.index_count > 0) {
                     ctx.device.cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);

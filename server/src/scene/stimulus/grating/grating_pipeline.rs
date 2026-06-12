@@ -187,14 +187,13 @@ impl VkGratingPipeline {
     }
 
     fn create_quad(device: &ash::Device, mem_props: vk::PhysicalDeviceMemoryProperties) -> VkMesh {
-        let z = [0.0f32; 4];
         let n = [0.0f32, 0.0, 1.0];
         let uv = [0.0f32; 2];
         let verts: [Vertex; 4] = [
-            Vertex { position: [-1.0, -1.0, 0.0], normal: n, uv, color: z },
-            Vertex { position: [ 1.0, -1.0, 0.0], normal: n, uv, color: z },
-            Vertex { position: [ 1.0,  1.0, 0.0], normal: n, uv, color: z },
-            Vertex { position: [-1.0,  1.0, 0.0], normal: n, uv, color: z },
+            Vertex { position: [-1.0, -1.0, 0.0], normal: n, uv, color: crate::Color::TRANSPARENT },
+            Vertex { position: [ 1.0, -1.0, 0.0], normal: n, uv, color: crate::Color::TRANSPARENT },
+            Vertex { position: [ 1.0,  1.0, 0.0], normal: n, uv, color: crate::Color::TRANSPARENT },
+            Vertex { position: [-1.0,  1.0, 0.0], normal: n, uv, color: crate::Color::TRANSPARENT },
         ];
         let idxs: [u32; 6] = [0, 1, 2, 0, 2, 3];
         let (vb, vm) = Self::alloc_buf(device, mem_props, vk::BufferUsageFlags::VERTEX_BUFFER, bytemuck::cast_slice(&verts));

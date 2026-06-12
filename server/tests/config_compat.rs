@@ -12,7 +12,7 @@ fn load_v1_reference() {
 
     // Scene structure
     assert_eq!(scene.stimuli.len(), 3, "expected 3 stimuli");
-    assert_eq!(scene.background.live, [0.05, 0.05, 0.05, 1.0]);
+    assert_eq!(scene.background.live, vstimd::Color::new(0.05, 0.05, 0.05, 1.0));
 
     // Stimulus 1: rect
     let rect_entry = scene.stimuli.values().find(|e| e.name.as_deref() == Some("ref_rect")).expect("ref_rect must exist");
@@ -20,7 +20,7 @@ fn load_v1_reference() {
     if let Stimulus::Shape(ShapeStimulus::Rect(ref r)) = rect_entry.stimulus {
         assert_eq!(r.transform.live.pos, [100.0, -50.0]);
         assert!((r.transform.live.angle - 30.0).abs() < 1e-4);
-        assert!((r.appearance.live.fill_color[0] - 1.0).abs() < 1e-6);
+        assert!((r.appearance.live.fill_color.r - 1.0).abs() < 1e-6);
         assert!(r.flags.enabled);
     }
 

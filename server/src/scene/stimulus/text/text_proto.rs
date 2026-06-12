@@ -47,14 +47,14 @@ pub fn language_style_to_proto(ls: LanguageStyle) -> i32 {
 
 pub fn text_render_params_from_proto(cmd: &proto::CreateTextRequest) -> TextRenderParams {
     let color = cmd.color.as_ref()
-        .map(|c| [c.r, c.g, c.b, c.a])
-        .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+        .map(|c| crate::Color::new(c.r, c.g, c.b, c.a))
+        .unwrap_or(crate::Color::WHITE);
     let fill_color = cmd.fill_color.as_ref()
-        .map(|c| [c.r, c.g, c.b, c.a])
-        .unwrap_or([0.0, 0.0, 0.0, 0.0]);
+        .map(|c| crate::Color::new(c.r, c.g, c.b, c.a))
+        .unwrap_or(crate::Color::TRANSPARENT);
     let border_color = cmd.border_color.as_ref()
-        .map(|c| [c.r, c.g, c.b, c.a])
-        .unwrap_or([0.0, 0.0, 0.0, 0.0]);
+        .map(|c| crate::Color::new(c.r, c.g, c.b, c.a))
+        .unwrap_or(crate::Color::TRANSPARENT);
     TextRenderParams {
         color,
         fill_color,
@@ -77,18 +77,9 @@ pub fn text_query_params(s: &TextStimulus) -> proto::StimulusParams {
                 y: s.box_size.live[1],
             }),
             anchor: anchor_to_str(s.anchor).to_string(),
-            fill_color: Some(proto::Color {
-                r: p.fill_color[0], g: p.fill_color[1],
-                b: p.fill_color[2], a: p.fill_color[3],
-            }),
-            border_color: Some(proto::Color {
-                r: p.border_color[0], g: p.border_color[1],
-                b: p.border_color[2], a: p.border_color[3],
-            }),
-            text_color: Some(proto::Color {
-                r: p.color[0], g: p.color[1],
-                b: p.color[2], a: p.color[3],
-            }),
+            fill_color:   Some(p.fill_color.into()),
+            border_color: Some(p.border_color.into()),
+            text_color:   Some(p.color.into()),
             flip_horiz:     p.flip_horiz,
             language_style: language_style_to_proto(s.language_style),
         })),

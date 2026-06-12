@@ -16,7 +16,7 @@ fn make_rect_entry() -> StimulusEntry {
             flags: StimulusFlags::enabled(true),
             transform: Deferred::new(Transform2D { pos: [100.0, -50.0], angle: 45.0 }),
             appearance: Deferred::new(ShapeAppearance {
-                fill_color: [1.0, 0.5, 0.0, 1.0],
+                fill_color: vstimd::Color::new(1.0, 0.5, 0.0, 1.0),
                 ..Default::default()
             }),
             size: Deferred::new([200.0, 80.0]),
@@ -32,7 +32,7 @@ fn make_circle_entry() -> StimulusEntry {
             flags: StimulusFlags::enabled(false),
             transform: Deferred::new(Transform2D { pos: [-200.0, 300.0], angle: 0.0 }),
             appearance: Deferred::new(ShapeAppearance {
-                fill_color: [0.0, 0.0, 1.0, 1.0],
+                fill_color: vstimd::Color::new(0.0, 0.0, 1.0, 1.0),
                 ..Default::default()
             }),
             radius: Deferred::new(75.0),
@@ -66,7 +66,7 @@ fn roundtrip_rect_stimulus() {
         panic!("expected rect");
     };
     assert_eq!(rect.transform.live.pos, [100.0, -50.0]);
-    assert!((rect.appearance.live.fill_color[0] - 1.0).abs() < 1e-6);
+    assert!((rect.appearance.live.fill_color.r - 1.0).abs() < 1e-6);
 }
 
 #[test]
@@ -104,13 +104,13 @@ fn roundtrip_vtl_names() {
 #[test]
 fn roundtrip_background_color() {
     let mut scene = SceneConfig::default();
-    scene.background = Deferred::new([0.2, 0.3, 0.4, 1.0]);
+    scene.background = Deferred::new(vstimd::Color::new(0.2, 0.3, 0.4, 1.0));
 
     let vtl = VtlConfig::default();
     let json = retrieve_config_json(&scene, &vtl).unwrap();
     let (loaded, _io) = parse_config_json(&json).unwrap();
 
-    assert_eq!(loaded.background.live, [0.2, 0.3, 0.4, 1.0]);
+    assert_eq!(loaded.background.live, vstimd::Color::new(0.2, 0.3, 0.4, 1.0));
 }
 
 #[test]

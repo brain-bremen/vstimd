@@ -6,6 +6,7 @@ use lyon_tessellation::math::{Angle, Box2D, Transform, Vector, point};
 use lyon_tessellation::path::{Path, Winding};
 
 use crate::geom::Vertex;
+use crate::Color;
 use crate::scene::photodiode::PhotoDiodeState;
 use crate::scene::stimulus::{
     CircleStimulus, DrawMode, EllipseStimulus, RectStimulus, ShapeAppearance, ShapeStimulus,
@@ -117,7 +118,7 @@ fn tessellate_path(
 fn tessellate_fill(
     path: &Path,
     xf: &Transform,
-    color: [f32; 4],
+    color: Color,
     half_w: f32,
     half_h: f32,
 ) -> (Vec<Vertex>, Vec<u32>) {
@@ -170,7 +171,7 @@ pub fn tessellate_photodiode(
     if !state.enabled {
         return (vec![], vec![]);
     }
-    let color: [f32; 4] = if state.lit { [1.0, 1.0, 1.0, 1.0] } else { [0.0, 0.0, 0.0, 1.0] };
+    let color = if state.lit { Color::WHITE } else { Color::BLACK };
     let size = 60.0_f32;
     let half_w = screen_size.0 as f32 * 0.5;
     let half_h = screen_size.1 as f32 * 0.5;
