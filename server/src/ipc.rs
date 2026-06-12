@@ -31,19 +31,23 @@ use uuid::Uuid;
 /// fail with a lookup error.  Use `tcp://0.0.0.0:5555` to bind on all
 /// interfaces, or `tcp://127.0.0.1:5555` for loopback only.
 ///
-/// Returns the `JoinHandle` and a shutdown sender.
+/// Returns the `JoinHandle`, a shutdown sender, and a bound receiver.
 ///
-/// Drop the sender to signal the ZMQ loop to exit cleanly, then join the
-/// handle.  This ensures the thread's `Arc` references are released so that
+/// Drop the shutdown sender to signal the ZMQ loop to exit cleanly, then join
+/// the handle.  This ensures the thread's `Arc` references are released so that
 /// shared resources (e.g. `VtlOwner` / shm segment) are properly cleaned up.
+///
+/// The bound receiver fires once after `socket.bind()` succeeds — callers can
+/// wait on it before signalling `sd_notify(READY=1)`.
 pub fn spawn_zmq_thread(
     scene: Arc<RwLock<SceneState>>,
     vtl: Option<Arc<Mutex<VtlState>>>,
     bind_addr: &str,
-) -> (std::thread::JoinHandle<()>, tokio::sync::oneshot::Sender<()>) {
+) -> (std::thread::JoinHandle<()>, tokio::sync::oneshot::Sender<()>, std::sync::mpsc::Receiver<()>) {
     let addr = bind_addr.to_owned();
     let frame_rx = scene.read().expect("scene lock poisoned").runtime.frame_notifier.subscribe();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let (bound_tx, bound_rx) = std::sync::mpsc::sync_channel::<()>(1);
     let handle = std::thread::Builder::new()
         .name("zmq-server".into())
         .spawn(move || {
@@ -51,10 +55,10 @@ pub fn spawn_zmq_thread(
                 .enable_all()
                 .build()
                 .expect("failed to create tokio runtime for ZMQ thread");
-            rt.block_on(zmq_loop(scene, vtl, &addr, frame_rx, shutdown_rx));
+            rt.block_on(zmq_loop(scene, vtl, &addr, frame_rx, shutdown_rx, bound_tx));
         })
         .expect("failed to spawn ZMQ server thread");
-    (handle, shutdown_tx)
+    (handle, shutdown_tx, bound_rx)
 }
 
 // ── Response helpers (used by all stimulus command impls) ─────────────────────
@@ -111,6 +115,7 @@ async fn zmq_loop(
     addr: &str,
     mut frame_rx: tokio::sync::watch::Receiver<u64>,
     mut shutdown: tokio::sync::oneshot::Receiver<()>,
+    bound_tx: std::sync::mpsc::SyncSender<()>,
 ) {
     let mut socket = zeromq::RepSocket::new();
     socket
@@ -118,6 +123,7 @@ async fn zmq_loop(
         .await
         .unwrap_or_else(|e| panic!("ZMQ bind to {addr} failed: {e}"));
     log::info!("ZMQ REP server listening on {addr}");
+    let _ = bound_tx.try_send(());
 
     loop {
         // Shutdown sender dropped → exit cleanly so Arc refs are released.
