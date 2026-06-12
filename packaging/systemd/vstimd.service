@@ -16,6 +16,10 @@ TimeoutStopSec=5
 # Log level — override with e.g. RUST_LOG=debug for diagnostics.
 Environment=RUST_LOG=info
 
+# Prevent Vulkan from picking up a running Wayland/X11 session and trying
+# to use WSI instead of VK_KHR_display.
+UnsetEnvironment=DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR
+
 # VT / terminal — systemd restores KD_TEXT and hangs up the TTY on stop,
 # which avoids the black-screen-until-VT-switch issue on clean exit.
 TTYPath=/dev/tty1

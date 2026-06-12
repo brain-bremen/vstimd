@@ -16,10 +16,7 @@ override_dh_auto_test:
 	:
 
 override_dh_auto_install:
-	install -D -m 0755 target/release/vstimd \
-		debian/vstimd/usr/bin/vstimd
-	install -D -m 0644 packaging/systemd/vstimd.service \
-		debian/vstimd/usr/lib/systemd/system/vstimd.service
+	$(MAKE) install DESTDIR=$(CURDIR)/debian/vstimd PREFIX=/usr UNITDIR=/usr/lib/systemd/system
 
 # Ubuntu containers have libc6 diversions that cause dpkg-shlibdeps to
 # abort with "diversions involved". Pass --ignore-missing-info so it

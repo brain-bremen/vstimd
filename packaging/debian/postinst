@@ -2,28 +2,7 @@
 set -e
 
 if [ "$1" = "configure" ]; then
-    # Create the vstimd system user if it doesn't exist.
-    if ! id -u vstimd > /dev/null 2>&1; then
-        adduser \
-            --system \
-            --group \
-            --no-create-home \
-            --home /nonexistent \
-            --shell /usr/sbin/nologin \
-            --gecos "vstimd visual stimulus server" \
-            vstimd
-    fi
-
-    # Add vstimd to the groups it needs:
-    #   input — /dev/input/event* (libinput keyboard/mouse)
-    #   video — /dev/dri/card*    (DRM master / Vulkan)
-    # 'render' is used instead of 'video' on Raspberry Pi OS; add both
-    # so the same package works on all platforms.
-    for grp in input video render; do
-        if getent group "$grp" > /dev/null 2>&1; then
-            usermod -aG "$grp" vstimd
-        fi
-    done
+    systemd-sysusers /usr/lib/sysusers.d/vstimd.conf
 
     # Warn if a display manager is enabled — it holds DRM master and will
     # prevent vstimd from acquiring the display via VK_KHR_display.
