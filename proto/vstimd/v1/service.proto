@@ -152,6 +152,9 @@ message Request {
     LoadConfigRequest    load_config     = 111;
     UploadConfigRequest  upload_config   = 112;
     RetrieveConfigRequest retrieve_config = 113;
+
+    // ── Lifecycle (system target) ─────────────────────────────────────────────
+    ShutdownRequest shutdown = 120;
   }
 }
 

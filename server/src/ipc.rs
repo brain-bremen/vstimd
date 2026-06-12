@@ -31,24 +31,30 @@ use uuid::Uuid;
 /// fail with a lookup error.  Use `tcp://0.0.0.0:5555` to bind on all
 /// interfaces, or `tcp://127.0.0.1:5555` for loopback only.
 ///
-/// Returns the `JoinHandle` for the thread (detach or join on shutdown).
+/// Returns the `JoinHandle` and a shutdown sender.
+///
+/// Drop the sender to signal the ZMQ loop to exit cleanly, then join the
+/// handle.  This ensures the thread's `Arc` references are released so that
+/// shared resources (e.g. `VtlOwner` / shm segment) are properly cleaned up.
 pub fn spawn_zmq_thread(
     scene: Arc<RwLock<SceneState>>,
     vtl: Option<Arc<Mutex<VtlState>>>,
     bind_addr: &str,
-) -> std::thread::JoinHandle<()> {
+) -> (std::thread::JoinHandle<()>, tokio::sync::oneshot::Sender<()>) {
     let addr = bind_addr.to_owned();
     let frame_rx = scene.read().expect("scene lock poisoned").runtime.frame_notifier.subscribe();
-    std::thread::Builder::new()
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let handle = std::thread::Builder::new()
         .name("zmq-server".into())
         .spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .expect("failed to create tokio runtime for ZMQ thread");
-            rt.block_on(zmq_loop(scene, vtl, &addr, frame_rx));
+            rt.block_on(zmq_loop(scene, vtl, &addr, frame_rx, shutdown_rx));
         })
-        .expect("failed to spawn ZMQ server thread")
+        .expect("failed to spawn ZMQ server thread");
+    (handle, shutdown_tx)
 }
 
 // ── Response helpers (used by all stimulus command impls) ─────────────────────
@@ -104,6 +110,7 @@ async fn zmq_loop(
     vtl: Option<Arc<Mutex<VtlState>>>,
     addr: &str,
     mut frame_rx: tokio::sync::watch::Receiver<u64>,
+    mut shutdown: tokio::sync::oneshot::Receiver<()>,
 ) {
     let mut socket = zeromq::RepSocket::new();
     socket
@@ -113,81 +120,91 @@ async fn zmq_loop(
     log::info!("ZMQ REP server listening on {addr}");
 
     loop {
-        let msg = match socket.recv().await {
-            Ok(m) => m,
-            Err(e) => {
-                log::error!("ZMQ recv error: {e}");
-                continue;
+        // Shutdown sender dropped → exit cleanly so Arc refs are released.
+        tokio::select! {
+            biased;
+            _ = &mut shutdown => {
+                log::info!("vstimd: ZMQ server shutting down");
+                return;
             }
-        };
-
-        let bytes: Vec<u8> = msg
-            .into_vec()
-            .into_iter()
-            .flat_map(|frame| frame.to_vec())
-            .collect();
-
-        let response = match proto::Request::decode(bytes.as_slice()) {
-            Ok(req) => {
-                match &req.body {
-                    Some(proto::request::Body::WaitForFrames(cmd)) => {
-                        let target = scene.read().expect("scene lock poisoned")
-                            .runtime.frame_count.saturating_add(cmd.count as u64);
-                        let _ = frame_rx.wait_for(|&c| c >= target).await;
-                        let s = scene.read().expect("scene lock poisoned");
-                        proto::Response {
-                            code: proto::ErrorCode::Ok as i32,
-                            handle: -1,
-                            frame_count: s.runtime.frame_count,
-                            server_time_ns: s.runtime.server_start.elapsed().as_nanos() as u64,
-                            ..Default::default()
-                        }
+            result = socket.recv() => {
+                let msg = match result {
+                    Ok(m) => m,
+                    Err(e) => {
+                        log::error!("ZMQ recv error: {e}");
+                        continue;
                     }
-                    Some(proto::request::Body::WaitUntil(cmd)) => {
-                        let target_ns = cmd.server_time_ns;
-                        loop {
-                            let elapsed = scene.read().expect("scene lock poisoned")
-                                .runtime.server_start.elapsed().as_nanos() as u64;
-                            if elapsed >= target_ns { break; }
-                            let remaining = target_ns - elapsed;
-                            if remaining > 500_000 {
-                                tokio::time::sleep(
-                                    std::time::Duration::from_nanos(remaining - 500_000)
-                                ).await;
-                            } else {
-                                tokio::task::yield_now().await;
+                };
+
+                let bytes: Vec<u8> = msg
+                    .into_vec()
+                    .into_iter()
+                    .flat_map(|frame| frame.to_vec())
+                    .collect();
+
+                let response = match proto::Request::decode(bytes.as_slice()) {
+                    Ok(req) => {
+                        match &req.body {
+                            Some(proto::request::Body::WaitForFrames(cmd)) => {
+                                let target = scene.read().expect("scene lock poisoned")
+                                    .runtime.frame_count.saturating_add(cmd.count as u64);
+                                let _ = frame_rx.wait_for(|&c| c >= target).await;
+                                let s = scene.read().expect("scene lock poisoned");
+                                proto::Response {
+                                    code: proto::ErrorCode::Ok as i32,
+                                    handle: -1,
+                                    frame_count: s.runtime.frame_count,
+                                    server_time_ns: s.runtime.server_start.elapsed().as_nanos() as u64,
+                                    ..Default::default()
+                                }
+                            }
+                            Some(proto::request::Body::WaitUntil(cmd)) => {
+                                let target_ns = cmd.server_time_ns;
+                                loop {
+                                    let elapsed = scene.read().expect("scene lock poisoned")
+                                        .runtime.server_start.elapsed().as_nanos() as u64;
+                                    if elapsed >= target_ns { break; }
+                                    let remaining = target_ns - elapsed;
+                                    if remaining > 500_000 {
+                                        tokio::time::sleep(
+                                            std::time::Duration::from_nanos(remaining - 500_000)
+                                        ).await;
+                                    } else {
+                                        tokio::task::yield_now().await;
+                                    }
+                                }
+                                let s = scene.read().expect("scene lock poisoned");
+                                proto::Response {
+                                    code: proto::ErrorCode::Ok as i32,
+                                    handle: -1,
+                                    frame_count: s.runtime.frame_count,
+                                    server_time_ns: s.runtime.server_start.elapsed().as_nanos() as u64,
+                                    ..Default::default()
+                                }
+                            }
+                            _ => {
+                                let mut scene = scene.write().expect("scene lock poisoned");
+                                let mut vtl_guard = vtl.as_ref().and_then(|v| v.lock().ok());
+                                let vtl_ref = vtl_guard.as_deref_mut();
+                                let mut resp = scene.handle_request(req, vtl_ref);
+                                resp.frame_count = scene.runtime.frame_count;
+                                resp.server_time_ns = scene.runtime.server_start.elapsed().as_nanos() as u64;
+                                resp
                             }
                         }
-                        let s = scene.read().expect("scene lock poisoned");
-                        proto::Response {
-                            code: proto::ErrorCode::Ok as i32,
-                            handle: -1,
-                            frame_count: s.runtime.frame_count,
-                            server_time_ns: s.runtime.server_start.elapsed().as_nanos() as u64,
-                            ..Default::default()
-                        }
                     }
-                    _ => {
-                        let mut scene = scene.write().expect("scene lock poisoned");
-                        let mut vtl_guard = vtl.as_ref().and_then(|v| v.lock().ok());
-                        let vtl_ref = vtl_guard.as_deref_mut();
-                        let mut resp = scene.handle_request(req, vtl_ref);
-                        resp.frame_count = scene.runtime.frame_count;
-                        resp.server_time_ns = scene.runtime.server_start.elapsed().as_nanos() as u64;
-                        resp
-                    }
+                    Err(e) => proto::Response {
+                        code: proto::ErrorCode::Unknown as i32,
+                        error: format!("protobuf decode error: {e}"),
+                        ..Default::default()
+                    },
+                };
+
+                let out = response.encode_to_vec();
+                if let Err(e) = socket.send(out.into()).await {
+                    log::error!("ZMQ send error: {e}");
                 }
             }
-            Err(e) => proto::Response {
-                code: proto::ErrorCode::Unknown as i32,
-                error: format!("protobuf decode error: {e}"),
-                ..Default::default()
-            },
-        };
-
-        let out = response.encode_to_vec();
-        if let Err(e) = socket.send(out.into()).await {
-            log::error!("ZMQ send error: {e}");
         }
     }
 }

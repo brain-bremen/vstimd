@@ -257,11 +257,10 @@ impl DrmRenderState {
     }
 
     pub fn run_loop(mut self) {
-        // SIGTERM/SIGINT → set flag → clean exit so Drop restores the CRTC.
-        static SHUTDOWN: std::sync::atomic::AtomicBool =
-            std::sync::atomic::AtomicBool::new(false);
+        // SIGTERM/SIGINT → set shared shutdown flag → clean exit so Drop restores the CRTC.
+        // The proto Shutdown command sets the same flag via crate::shutdown::request().
         extern "C" fn on_signal(_: libc::c_int) {
-            SHUTDOWN.store(true, std::sync::atomic::Ordering::Relaxed);
+            crate::shutdown::request();
         }
         unsafe {
             libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
@@ -269,7 +268,7 @@ impl DrmRenderState {
         }
 
         loop {
-            if SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed) {
+            if crate::shutdown::is_requested() {
                 return;
             }
 

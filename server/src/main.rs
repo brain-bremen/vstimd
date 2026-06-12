@@ -50,7 +50,8 @@ fn main() {
         }
     }
 
-    let _zmq = vstimd::ipc::spawn_zmq_thread(scene.clone(), vtl.clone(), "tcp://0.0.0.0:5555");
+    let (zmq_thread, zmq_shutdown) =
+        vstimd::ipc::spawn_zmq_thread(scene.clone(), vtl.clone(), "tcp://0.0.0.0:5555");
 
     match args.render_target {
         #[cfg(target_os = "linux")]
@@ -71,12 +72,26 @@ fn main() {
         }
         RenderTarget::Null => {
             log::info!("vstimd: null renderer — ZMQ server + animation loop running, no display");
+
+            // Install signal handler so SIGTERM/SIGINT break the loop cleanly.
+            // The proto Shutdown command sets the same flag.
+            extern "C" fn on_signal(_: libc::c_int) {
+                vstimd::shutdown::request();
+            }
+            unsafe {
+                libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
+                libc::signal(libc::SIGINT, on_signal as *const () as libc::sighandler_t);
+            }
+
             let frame_period = {
                 let s = scene.read().unwrap();
                 std::time::Duration::from_secs_f32(1.0 / s.runtime.frame_rate)
             };
             let mut output_pending = [0u64; vtl::MAX_BANKS];
             loop {
+                if vstimd::shutdown::is_requested() {
+                    break;
+                }
                 let t0 = std::time::Instant::now();
                 let edges = vtl.as_ref()
                     .and_then(|v| v.lock().ok().map(|mut g| g.poll()))
@@ -97,6 +112,12 @@ fn main() {
             }
         }
     }
+
+    // Signal the ZMQ thread to exit and wait for it to finish.  This ensures
+    // the thread's Arc references are released — VtlOwner::drop runs shm_unlink
+    // and the shm segment is cleaned up before the process exits.
+    drop(zmq_shutdown);
+    zmq_thread.join().ok();
 }
 
 // ── Argument parsing ──────────────────────────────────────────────────────────
