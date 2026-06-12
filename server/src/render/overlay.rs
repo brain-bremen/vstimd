@@ -1,11 +1,13 @@
 use std::sync::{Arc, Mutex, RwLock};
 
+use crate::io_config::{load_config, save_config};
 use crate::log_buffer::LogBuffer;
 use crate::render::SystemMetrics;
+use crate::render::file_browser::{BrowserMode, FileBrowser};
 use crate::scene::stimulus::ShapeStimulus;
-use crate::scene::{SceneState, Stimulus};
+use crate::scene::{LoadMode, SceneState, Stimulus};
 use crate::timing::{FramePhases, FrameStats};
-use crate::vtl_state::VtlState;
+use crate::vtl_state::{VtlConfig, VtlState};
 
 pub use super::system_info::{ClockSource, SystemInfo};
 use super::benchmark::BenchmarkState;
@@ -22,10 +24,11 @@ pub struct OverlayArgs<'a> {
     pub metrics: &'a SystemMetrics,
     pub log_buffer: &'a LogBuffer,
     pub bench: &'a mut BenchmarkState,
+    pub file_browser: &'a mut FileBrowser,
 }
 
 pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
-    let OverlayArgs { scene, vtl, frame_stats, last_phases, sys, metrics, log_buffer, bench } = args;
+    let OverlayArgs { scene, vtl, frame_stats, last_phases, sys, metrics, log_buffer, bench, file_browser } = args;
     let last_phases = *last_phases;
     egui::Window::new("System").show(ctx, |ui| {
         ui.label(format!(
@@ -422,4 +425,59 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
             }
         }
     });
+
+    // Config persistence window
+    egui::Window::new("Config").default_size([200.0, 80.0]).show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            if ui.button("Save…").clicked() {
+                file_browser.open_save();
+            }
+            if ui.button("Open (replace)…").clicked() {
+                file_browser.open_load_replace();
+            }
+            if ui.button("Open (additive)…").clicked() {
+                file_browser.open_load_additive();
+            }
+        });
+    });
+
+    // File browser modal
+    file_browser.show(ctx);
+
+    // Handle file browser result
+    if let Some((mode, path)) = file_browser.take_result() {
+        match mode {
+            BrowserMode::Save => {
+                let scene_guard = scene.read().unwrap();
+                let default_vtl = VtlConfig::default();
+                let vtl_guard = vtl.and_then(|v| v.try_lock().ok());
+                let vtl_cfg = vtl_guard.as_ref().map(|v| &v.config).unwrap_or(&default_vtl);
+                if let Err(e) = save_config(&scene_guard.config, vtl_cfg, &path) {
+                    log::error!("Config save failed: {e}");
+                } else {
+                    log::info!("Config saved to {:?}", path);
+                }
+            }
+            BrowserMode::OpenReplace | BrowserMode::OpenAdditive => {
+                let load_mode = if matches!(mode, BrowserMode::OpenReplace) {
+                    LoadMode::Replace
+                } else {
+                    LoadMode::Additive
+                };
+                match load_config(&path) {
+                    Ok((scene_cfg, io)) => {
+                        if let Some(v) = vtl {
+                            if let Ok(mut v) = v.lock() {
+                                v.config.names = io.vtl.names;
+                                v.sync_names_to_shm();
+                            }
+                        }
+                        scene.write().unwrap().load_snapshot(scene_cfg, load_mode);
+                        log::info!("Config loaded from {:?}", path);
+                    }
+                    Err(e) => log::error!("Config load failed: {e}"),
+                }
+            }
+        }
+    }
 }

@@ -16,7 +16,11 @@ use crate::ipc::{err, err_not_found, err_wrong_type, ok_ack, ok_body, ok_handle,
 use super::animation::{AnimState, Animation, AnimationEntry, Edge, FinalAction, StartAction, VtlBit};
 use crate::proto;
 use crate::proto::request;
-use crate::vtl_state::{VtlNameEntry, VtlState};
+use crate::vtl_state::{VtlConfig, VtlNameEntry, VtlState};
+use crate::io_config::{
+    is_format_error, is_not_found, list_config_names, load_config,
+    parse_config_json, retrieve_config_json,
+};
 
 // ── Request summary for the command log ───────────────────────────────────────
 
@@ -126,6 +130,10 @@ fn command_summary(req: &proto::Request) -> String {
         Some(request::Body::QueryAnimation(c)) => format!("QueryAnimation({})", c.handle),
         Some(request::Body::WaitForFrames(c)) => format!("WaitForFrames({})", c.count),
         Some(request::Body::WaitUntil(c)) => format!("WaitUntil({}ns)", c.server_time_ns),
+        Some(request::Body::ListConfigs(_)) => "ListConfigs".into(),
+        Some(request::Body::LoadConfig(c)) => format!("LoadConfig({:?})", c.name),
+        Some(request::Body::UploadConfig(c)) => format!("UploadConfig({:?})", c.name),
+        Some(request::Body::RetrieveConfig(_)) => "RetrieveConfig".into(),
         None => "?".into(),
     }
 }
@@ -219,6 +227,10 @@ impl SceneState {
             request::Body::DeleteAnimation(cmd) => self.cmd_delete_animation(cmd),
             request::Body::ListAnimations(_) => self.cmd_list_animations(),
             request::Body::QueryAnimation(cmd) => self.cmd_query_animation(cmd),
+            request::Body::ListConfigs(_) => self.cmd_list_configs(),
+            request::Body::LoadConfig(cmd) => self.cmd_load_config(cmd, vtl),
+            request::Body::UploadConfig(cmd) => self.cmd_upload_config(cmd, vtl),
+            request::Body::RetrieveConfig(_) => self.cmd_retrieve_config(vtl.as_deref()),
             _ => err(
                 proto::ErrorCode::WrongTarget,
                 "command requires a stimulus handle (target.stimulus > 0)",
@@ -259,7 +271,11 @@ impl SceneState {
             | request::Body::ListAnimations(_)
             | request::Body::QueryAnimation(_)
             | request::Body::WaitForFrames(_)
-            | request::Body::WaitUntil(_) => err(
+            | request::Body::WaitUntil(_)
+            | request::Body::ListConfigs(_)
+            | request::Body::LoadConfig(_)
+            | request::Body::UploadConfig(_)
+            | request::Body::RetrieveConfig(_) => err(
                 proto::ErrorCode::WrongTarget,
                 "system command must use target.system (not a stimulus handle)",
             ),
@@ -1600,5 +1616,76 @@ fn parse_cargo_version() -> proto::Version {
         major: parts.next().unwrap_or(0),
         minor: parts.next().unwrap_or(0),
         patch: parts.next().unwrap_or(0),
+    }
+}
+
+// ── Config persistence commands ───────────────────────────────────────────────
+
+impl SceneState {
+    fn cmd_list_configs(&self) -> proto::Response {
+        match list_config_names(&self.runtime.config_dir) {
+            Ok(names) => ok_body(proto::response::Body::ConfigList(proto::ListConfigsResponse { names })),
+            Err(e) => err(proto::ErrorCode::FileIo, &e.to_string()),
+        }
+    }
+
+    fn cmd_load_config(&mut self, cmd: proto::LoadConfigRequest, vtl: Option<&mut VtlState>) -> proto::Response {
+        let path = self.runtime.config_dir.join(format!("{}.config.json", cmd.name));
+        match load_config(&path) {
+            Ok((scene_cfg, io)) => {
+                if let Some(v) = vtl {
+                    v.config.names = io.vtl.names;
+                    v.sync_names_to_shm();
+                }
+                let mode = if cmd.additive {
+                    super::scene_config::LoadMode::Additive
+                } else {
+                    super::scene_config::LoadMode::Replace
+                };
+                self.load_snapshot(scene_cfg, mode);
+                ok_ack()
+            }
+            Err(e) if is_not_found(&e) => err(proto::ErrorCode::FileNotFound, &e.to_string()),
+            Err(e) if is_format_error(&e) => err(proto::ErrorCode::FileFormat, &e.to_string()),
+            Err(e) => err(proto::ErrorCode::FileIo, &e.to_string()),
+        }
+    }
+
+    fn cmd_upload_config(&mut self, cmd: proto::UploadConfigRequest, vtl: Option<&mut VtlState>) -> proto::Response {
+        let (scene_cfg, io) = match parse_config_json(&cmd.json) {
+            Ok(v) => v,
+            Err(e) => return err(proto::ErrorCode::FileFormat, &e.to_string()),
+        };
+        let path = self.runtime.config_dir.join(format!("{}.config.json", cmd.name));
+        if path.exists() && !cmd.overwrite {
+            return err(proto::ErrorCode::FileAlreadyExists, "config already exists");
+        }
+        if let Err(e) = std::fs::create_dir_all(&self.runtime.config_dir)
+            .and_then(|_| std::fs::write(&path, &cmd.json))
+        {
+            return err(proto::ErrorCode::FileIo, &e.to_string());
+        }
+        if cmd.apply_now {
+            if let Some(v) = vtl {
+                v.config.names = io.vtl.names;
+                v.sync_names_to_shm();
+            }
+            let mode = if cmd.additive {
+                super::scene_config::LoadMode::Additive
+            } else {
+                super::scene_config::LoadMode::Replace
+            };
+            self.load_snapshot(scene_cfg, mode);
+        }
+        ok_ack()
+    }
+
+    fn cmd_retrieve_config(&self, vtl: Option<&VtlState>) -> proto::Response {
+        let default_vtl = VtlConfig::default();
+        let vtl_cfg = vtl.map_or(&default_vtl, |v| &v.config);
+        match retrieve_config_json(&self.config, vtl_cfg) {
+            Ok(json) => ok_body(proto::response::Body::RetrievedConfig(proto::RetrieveConfigResponse { json })),
+            Err(e) => err(proto::ErrorCode::Unknown, &e.to_string()),
+        }
     }
 }

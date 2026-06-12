@@ -12,6 +12,8 @@ pub use benchmark::BenchmarkState;
 pub(crate) mod system_metrics;
 pub use system_metrics::{MetricsSampler, SystemMetrics};
 pub(crate) mod overlay;
+pub mod file_browser;
+pub use file_browser::FileBrowser;
 pub mod render_state;
 pub use render_state::RenderState;
 pub mod tess;

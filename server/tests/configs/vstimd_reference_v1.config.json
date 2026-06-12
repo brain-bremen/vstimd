@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "scene": {
+    "background": [
+      0.05,
+      0.05,
+      0.05,
+      1.0
+    ],
+    "default_fill": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "default_outline": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "photodiode": {
+      "enabled": false,
+      "lit": false,
+      "flicker": false,
+      "position": 0
+    },
+    "stimuli": {
+      "1": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "ref_rect",
+        "stimulus": {
+          "Shape": {
+            "Rect": {
+              "flags": {
+                "enabled": true,
+                "protected": false
+              },
+              "transform": {
+                "pos": [
+                  100.0,
+                  -50.0
+                ],
+                "angle": 30.0
+              },
+              "appearance": {
+                "fill_color": [
+                  1.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "outline_color": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "stroke_width": 2.0,
+                "draw_mode": "Fill"
+              },
+              "size": [
+                200.0,
+                80.0
+              ]
+            }
+          }
+        }
+      },
+      "2": {
+        "id": "00000000-0000-0000-0000-000000000002",
+        "name": "ref_circle",
+        "stimulus": {
+          "Shape": {
+            "Circle": {
+              "flags": {
+                "enabled": false,
+                "protected": false
+              },
+              "transform": {
+                "pos": [
+                  -300.0,
+                  200.0
+                ],
+                "angle": 0.0
+              },
+              "appearance": {
+                "fill_color": [
+                  0.0,
+                  0.5,
+                  1.0,
+                  1.0
+                ],
+                "outline_color": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "stroke_width": 2.0,
+                "draw_mode": "Fill"
+              },
+              "radius": 50.0
+            }
+          }
+        }
+      },
+      "3": {
+        "id": "00000000-0000-0000-0000-000000000003",
+        "name": "ref_grating",
+        "stimulus": {
+          "Grating": {
+            "flags": {
+              "enabled": true,
+              "protected": false
+            },
+            "transform": {
+              "pos": [
+                0.0,
+                0.0
+              ],
+              "angle": 0.0
+            },
+            "size": [
+              150.0,
+              150.0
+            ],
+            "params": {
+              "sf": 0.05,
+              "phase": 0.0,
+              "contrast": 1.0,
+              "waveform": "Sin",
+              "mask": "None",
+              "mask_param": 0.0,
+              "drift_speed": 2.0,
+              "drift_coupled": true,
+              "drift_angle": 0.0,
+              "fore_color": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "back_color": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ],
+              "opacity": 1.0
+            }
+          }
+        }
+      }
+    },
+    "next_stim_handle": 4,
+    "animations": {},
+    "next_anim_handle": 1
+  },
+  "io": {
+    "vtl": {
+      "names": [
+        {
+          "name": "stim_onset",
+          "bank": 0,
+          "bit": 0,
+          "direction": "Output"
+        },
+        {
+          "name": "trial_gate",
+          "bank": 0,
+          "bit": 4,
+          "direction": "Input"
+        }
+      ]
+    }
+  }
+}

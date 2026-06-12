@@ -1,4 +1,5 @@
 pub mod geom;
+pub mod io_config;
 pub mod ipc;
 pub mod log_buffer;
 pub mod proto;

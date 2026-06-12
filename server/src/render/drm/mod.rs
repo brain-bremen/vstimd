@@ -12,7 +12,7 @@ use crate::render::RenderState;
 use crate::render::system_info::ClockSource;
 use crate::render::vk::{GlyphAtlas, SceneCache, VkEguiRenderer, VkGratingPipeline, VkPipeline, VkTextPipeline};
 use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
-use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, query_local_ip};
+use crate::render::{FileBrowser, RenderTarget, StimulusDisplayInfo, SystemInfo, query_local_ip};
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats};
 use crate::vtl_state::VtlState;
@@ -145,6 +145,7 @@ impl DrmRenderState {
             ctx.render_pass,
             glyph_atlas.descriptor_set_layout,
         );
+        let config_dir = scene.read().unwrap().runtime.config_dir.clone();
         let rs = RenderState {
             frame_stats: FrameStats::new(display_info.refresh_hz),
             ctx,
@@ -168,6 +169,7 @@ impl DrmRenderState {
             local_ip: query_local_ip(),
             log_buffer,
             metrics: MetricsSampler::new(),
+            file_browser: FileBrowser::new(config_dir),
         };
 
         Self {

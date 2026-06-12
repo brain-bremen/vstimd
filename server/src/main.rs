@@ -17,7 +17,8 @@ fn main() {
     .build();
     let log_buffer = vstimd::log_buffer::install(env_logger, server_start);
 
-    let scene = Arc::new(RwLock::new(SceneState::new()));
+    let config_dir = args.config_dir.clone().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let scene = Arc::new(RwLock::new(SceneState::new_with_config_dir(config_dir.clone())));
 
     // Create VTL shared memory on Linux. The Arc<Mutex<>> lets both the ZMQ
     // thread (software triggers, naming) and the render backend (frame polling)
@@ -32,6 +33,21 @@ fn main() {
 
     if vtl.is_some() {
         log::info!("vtl: shared memory segment created at /vstimd_vtl");
+    }
+
+    if let Some(ref path) = args.config_file {
+        match vstimd::io_config::load_config(path) {
+            Ok((scene_cfg, io)) => {
+                if let Some(ref v) = vtl {
+                    let mut v = v.lock().unwrap();
+                    v.config.names = io.vtl.names;
+                    v.sync_names_to_shm();
+                }
+                scene.write().unwrap().load_snapshot(scene_cfg, vstimd::scene::LoadMode::Replace);
+                log::info!("vstimd: loaded config from {:?}", path);
+            }
+            Err(e) => log::error!("vstimd: failed to load config {:?}: {e}", path),
+        }
     }
 
     let _zmq = vstimd::ipc::spawn_zmq_thread(scene.clone(), vtl.clone(), "tcp://0.0.0.0:5555");
@@ -88,6 +104,8 @@ fn main() {
 struct Args {
     render_target: RenderTarget,
     verbose: bool,
+    config_file: Option<std::path::PathBuf>,
+    config_dir:  Option<std::path::PathBuf>,
 }
 
 /// Automatically detect the best render target for the current platform.
@@ -121,6 +139,8 @@ fn parse_args() -> Args {
     let mut window_mode = WindowMode::default();
     let mut verbose = false;
     let mut null = false;
+    let mut config_file: Option<std::path::PathBuf> = None;
+    let mut config_dir:  Option<std::path::PathBuf> = None;
 
     let mut args = std::env::args().skip(1).peekable();
     while let Some(arg) = args.next() {
@@ -137,6 +157,12 @@ fn parse_args() -> Args {
                     width: w,
                     height: h,
                 };
+            }
+            "--config" => {
+                config_file = args.next().map(std::path::PathBuf::from);
+            }
+            "--config-dir" => {
+                config_dir = args.next().map(std::path::PathBuf::from);
             }
             "--help" | "-h" => {
                 print_usage();
@@ -160,6 +186,8 @@ fn parse_args() -> Args {
     Args {
         render_target,
         verbose,
+        config_file,
+        config_dir,
     }
 }
 
@@ -170,6 +198,8 @@ fn print_usage() {
     eprintln!("  -w, --windowed <WxH>      Start in windowed mode with size WxH (desktop only)");
     eprintln!("      --null                No rendering; ZMQ server only (also: VSTIMD_NULL=1)");
     eprintln!("  -v, --verbose             Enable debug logging (overridden by RUST_LOG)");
+  eprintln!("      --config <path>        Load config file at startup");
+  eprintln!("      --config-dir <path>    Directory for named config files (default: .)");
     eprintln!("  -h, --help                Show this help message");
     eprintln!();
     eprintln!("Render target is automatically detected:");

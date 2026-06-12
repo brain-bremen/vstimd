@@ -93,3 +93,38 @@ message StimulusEntry {
 message ListStimuliResponse {
   repeated StimulusEntry entries = 1;
 }
+
+// ── Config persistence (system target) ───────────────────────────────────────
+
+// List all configs available in the server's config directory.
+message ListConfigsRequest {}
+
+message ListConfigsResponse {
+  repeated string names = 1; // bare names, no path or extension
+}
+
+// Load a named config from the server's config directory and apply it.
+// additive=false: clear existing scene then restore (default).
+// additive=true:  merge stimuli/animations; I/O config always fully replaced.
+message LoadConfigRequest {
+  string name     = 1;
+  bool   additive = 2;
+}
+
+// Upload a config (as JSON) to the server's config directory.
+// apply_now=true also applies the config immediately after saving.
+// overwrite=false returns an error if the name already exists.
+message UploadConfigRequest {
+  string name      = 1;
+  string json      = 2;
+  bool   overwrite = 3;
+  bool   apply_now = 4;
+  bool   additive  = 5; // only used when apply_now=true
+}
+
+// Return the current scene + I/O config as a JSON string.
+message RetrieveConfigRequest {}
+
+message RetrieveConfigResponse {
+  string json = 1;
+}

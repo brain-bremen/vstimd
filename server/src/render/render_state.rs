@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use crate::log_buffer::LogBuffer;
 use crate::render::BenchmarkState;
+use crate::render::FileBrowser;
 use crate::render::MetricsSampler;
 use crate::render::overlay::{OverlayArgs, build_overlay_ui};
 use crate::render::system_info::SystemInfo;
@@ -45,6 +46,7 @@ pub struct RenderState {
     pub local_ip: String,
     pub log_buffer: LogBuffer,
     pub metrics: MetricsSampler,
+    pub file_browser: FileBrowser,
 }
 
 impl Drop for RenderState {
@@ -122,6 +124,7 @@ impl RenderState {
                     metrics,
                     log_buffer: &self.log_buffer,
                     bench: &mut self.benchmark,
+                    file_browser: &mut self.file_browser,
                 });
             });
             platform_output = Some(output.platform_output);

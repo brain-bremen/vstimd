@@ -22,6 +22,8 @@ pub struct CommandEntry {
 // ── Non-serializable runtime state ────────────────────────────────────────────
 
 pub struct SceneRuntimeState {
+    /// Directory where named config files are stored.  Set from `--config-dir` arg.
+    pub config_dir: std::path::PathBuf,
     /// True while commands should write into copy fields instead of live fields.
     pub deferred_mode: bool,
     /// Set by `DeferredMode{start:false}`; cleared by the render thread after flip.
@@ -47,9 +49,10 @@ pub struct SceneRuntimeState {
 }
 
 impl SceneRuntimeState {
-    fn new() -> Self {
+    pub fn new_with_config_dir(config_dir: std::path::PathBuf) -> Self {
         let (tx, _rx) = tokio::sync::watch::channel(0u64);
         Self {
+            config_dir,
             deferred_mode: false,
             pending_flip: false,
             frame_rate: 60.0,
@@ -64,6 +67,10 @@ impl SceneRuntimeState {
             frame_count: 0,
             frame_notifier: std::sync::Arc::new(tx),
         }
+    }
+
+    fn new() -> Self {
+        Self::new_with_config_dir(std::path::PathBuf::from("."))
     }
 }
 
@@ -106,6 +113,13 @@ impl SceneState {
         Self {
             config: SceneConfig::default(),
             runtime: SceneRuntimeState::new(),
+        }
+    }
+
+    pub fn new_with_config_dir(config_dir: std::path::PathBuf) -> Self {
+        Self {
+            config: SceneConfig::default(),
+            runtime: SceneRuntimeState::new_with_config_dir(config_dir),
         }
     }
 

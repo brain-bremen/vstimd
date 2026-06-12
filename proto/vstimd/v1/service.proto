@@ -37,6 +37,16 @@ enum ErrorCode {
   ERROR_CODE_NOT_SUPPORTED = 8;
   // Server is still initialising; retry after the first rendered frame.
   ERROR_CODE_NOT_READY = 9;
+  // Named config does not exist on the server.
+  ERROR_CODE_FILE_NOT_FOUND = 10;
+  // Filesystem error (permission denied, disk full, etc.).
+  ERROR_CODE_FILE_IO = 11;
+  // Invalid JSON or schema mismatch in config file.
+  ERROR_CODE_FILE_FORMAT = 12;
+  // Config file version is not supported by this server.
+  ERROR_CODE_UNSUPPORTED_VERSION = 13;
+  // Upload collision: config already exists and overwrite=false.
+  ERROR_CODE_FILE_ALREADY_EXISTS = 14;
 }
 
 // ── Request routing ───────────────────────────────────────────────────────────
@@ -136,6 +146,12 @@ message Request {
     DeleteAnimationRequest delete_animation = 103;
     ListAnimationsRequest list_animations = 104;
     QueryAnimationRequest query_animation = 105;
+
+    // ── Config persistence (system target) ───────────────────────────────────
+    ListConfigsRequest   list_configs    = 110;
+    LoadConfigRequest    load_config     = 111;
+    UploadConfigRequest  upload_config   = 112;
+    RetrieveConfigRequest retrieve_config = 113;
   }
 }
 
@@ -167,6 +183,8 @@ message Response {
     VirtualTriggerLineStateResponse virtual_trigger_line_state = 14;
     ListAnimationsResponse animation_list = 15;
     QueryAnimationResponse query_animation_response = 16;
+    ListConfigsResponse config_list = 17;
+    RetrieveConfigResponse retrieved_config = 18;
   }
 
   // Server-side monotonic clock at response time, nanoseconds since server

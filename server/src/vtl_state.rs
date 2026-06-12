@@ -147,6 +147,12 @@ pub struct VtlNameEntry {
     pub direction: Direction,
 }
 
+/// Serializable VTL configuration — owned by `VtlState.config`.
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct VtlConfig {
+    pub names: Vec<VtlNameEntry>,
+}
+
 #[derive(Default, Clone)]
 pub struct VtlEdges {
     pub rising:  [u64; MAX_BANKS],
@@ -155,15 +161,24 @@ pub struct VtlEdges {
 }
 
 pub struct VtlState {
+    pub config:  VtlConfig,
     owner:       VtlOwner,
     prev_input:  [u64; MAX_BANKS],
     prev_output: [u64; MAX_BANKS],
-    pub names: Vec<VtlNameEntry>,
+}
+
+impl std::ops::Deref for VtlState {
+    type Target = VtlConfig;
+    fn deref(&self) -> &VtlConfig { &self.config }
+}
+
+impl std::ops::DerefMut for VtlState {
+    fn deref_mut(&mut self) -> &mut VtlConfig { &mut self.config }
 }
 
 impl VtlState {
     pub fn new(owner: VtlOwner) -> Self {
-        Self { owner, prev_input: [0; MAX_BANKS], prev_output: [0; MAX_BANKS], names: Vec::new() }
+        Self { config: VtlConfig::default(), owner, prev_input: [0; MAX_BANKS], prev_output: [0; MAX_BANKS] }
     }
 
     pub fn owner(&self) -> &VtlOwner {
