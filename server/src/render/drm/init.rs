@@ -85,6 +85,10 @@ pub fn init() -> (VkContext, StimulusDisplayInfo) {
             .get_display_mode_properties(physical_device, vk_display)
             .expect("failed to get display mode properties")
     };
+    assert!(
+        !mode_props.is_empty(),
+        "no display modes reported for display — check driver and display connection"
+    );
     let chosen = pick_mode(&mode_props);
     let display_mode = chosen.display_mode;
     let width = chosen.parameters.visible_region.width;
@@ -170,11 +174,12 @@ fn pick_mode(modes: &[vk::DisplayModePropertiesKHR]) -> vk::DisplayModePropertie
     }
 
     // Auto-select the mode with the highest refresh rate.
+    // modes is guaranteed non-empty by the assert at the call site.
     let best = modes
         .iter()
         .copied()
         .max_by_key(|m| m.parameters.refresh_rate)
-        .unwrap_or(modes[0]);
+        .expect("mode list is empty");
     let w = best.parameters.visible_region.width;
     let h = best.parameters.visible_region.height;
     let hz = best.parameters.refresh_rate;
