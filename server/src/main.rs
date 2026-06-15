@@ -75,6 +75,13 @@ fn main() {
             });
             event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
             let mut app = WinitApp::new(scene, vtl, window_mode, log_buffer);
+            extern "C" fn on_signal(_: libc::c_int) {
+                vstimd::shutdown::request();
+            }
+            unsafe {
+                libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
+                libc::signal(libc::SIGINT, on_signal as *const () as libc::sighandler_t);
+            }
             wait_zmq_bound(&zmq_bound);
             notify_ready();
             event_loop.run_app(&mut app).unwrap();

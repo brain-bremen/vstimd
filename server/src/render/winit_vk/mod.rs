@@ -339,6 +339,12 @@ impl WinitApp {
 }
 
 impl ApplicationHandler for WinitApp {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if crate::shutdown::is_requested() {
+            event_loop.exit();
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_none() {
             let attrs = match self.window_mode {
