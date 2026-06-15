@@ -1,6 +1,7 @@
 use std::io;
 use std::ops::Deref;
 
+#[cfg(unix)]
 use crate::layout::{MAX_BANKS, SHM_SIZE};
 use crate::segment::VtlSegment;
 

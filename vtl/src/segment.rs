@@ -12,6 +12,7 @@ use crate::layout::{
 /// through `AtomicU64`.
 pub struct VtlSegment {
     pub(crate) ptr:  *mut u8,
+    #[cfg(unix)]
     pub(crate) size: usize,
 }
 

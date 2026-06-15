@@ -1,8 +1,12 @@
-use std::ffi::CString;
 use std::io;
 use std::ops::Deref;
 
-use crate::layout::{MAGIC, MAX_BANKS, SHM_SIZE, VERSION};
+#[cfg(unix)]
+use std::ffi::CString;
+
+use crate::layout::MAX_BANKS;
+#[cfg(unix)]
+use crate::layout::{MAGIC, SHM_SIZE, VERSION};
 use crate::segment::VtlSegment;
 
 /// Creates and owns a VTL shared memory segment.
@@ -13,6 +17,7 @@ use crate::segment::VtlSegment;
 /// Use [`VtlClient`](crate::VtlClient) to attach to an existing segment.
 pub struct VtlOwner {
     seg: VtlSegment,
+    #[cfg(unix)]
     name: CString,
 }
 

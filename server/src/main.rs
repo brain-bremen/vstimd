@@ -59,6 +59,7 @@ fn main() {
 
     // Install signal handlers once, before any render path (including Vulkan
     // init which can take several seconds on DRM).
+    #[cfg(unix)]
     install_signal_handlers();
 
     match args.render_target {
@@ -223,6 +224,7 @@ fn parse_args() -> Args {
 /// Install SIGTERM/SIGINT handlers that set the shared shutdown flag.
 /// Called once before any render path so the handler is active during
 /// Vulkan init (which can take several seconds on DRM hardware).
+#[cfg(unix)]
 fn install_signal_handlers() {
     extern "C" fn on_signal(_: libc::c_int) {
         vstimd::shutdown::request();
