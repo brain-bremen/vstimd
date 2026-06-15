@@ -9,6 +9,9 @@ use crate::scene::stimulus::Stimulus;
 use crate::vtl_state::VtlState;
 use uuid::Uuid;
 
+/// Default ZMQ port.
+pub const DEFAULT_ZMQ_PORT: u16 = 5555;
+
 /// Spawn the ZMQ REP server on a dedicated thread with its own tokio runtime.
 ///
 /// The thread receives protobuf-encoded `Request` messages, dispatches them to

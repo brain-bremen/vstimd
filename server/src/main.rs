@@ -51,7 +51,11 @@ fn main() {
     }
 
     let (zmq_thread, zmq_shutdown, zmq_bound) =
-        vstimd::ipc::spawn_zmq_thread(scene.clone(), vtl.clone(), "tcp://0.0.0.0:5555");
+        vstimd::ipc::spawn_zmq_thread(
+            scene.clone(),
+            vtl.clone(),
+            &format!("tcp://0.0.0.0:{}", args.zmq_port),
+        );
 
     // Install signal handlers once, before any render path (including Vulkan
     // init which can take several seconds on DRM).
@@ -61,8 +65,7 @@ fn main() {
         #[cfg(target_os = "linux")]
         RenderTarget::Drm => {
             let rs = DrmRenderState::new(scene, vtl, log_buffer);
-            wait_zmq_bound(&zmq_bound);
-            notify_ready();
+            if wait_zmq_bound(&zmq_bound, args.zmq_port) { notify_ready(); }
             rs.run_loop();
         }
         #[cfg(not(target_os = "linux"))]
@@ -77,15 +80,13 @@ fn main() {
             });
             event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
             let mut app = WinitApp::new(scene, vtl, window_mode, log_buffer);
-            wait_zmq_bound(&zmq_bound);
-            notify_ready();
+            if wait_zmq_bound(&zmq_bound, args.zmq_port) { notify_ready(); }
             event_loop.run_app(&mut app).unwrap();
         }
         RenderTarget::Null => {
             log::info!("vstimd: null renderer — ZMQ server + animation loop running, no display");
 
-            wait_zmq_bound(&zmq_bound);
-            notify_ready();
+            if wait_zmq_bound(&zmq_bound, args.zmq_port) { notify_ready(); }
 
             let frame_period = {
                 let s = scene.read().unwrap();
@@ -129,6 +130,7 @@ fn main() {
 struct Args {
     render_target: RenderTarget,
     verbose: bool,
+    zmq_port: u16,
     config_file: Option<std::path::PathBuf>,
     config_dir:  Option<std::path::PathBuf>,
 }
@@ -164,6 +166,7 @@ fn parse_args() -> Args {
     let mut window_mode = WindowMode::default();
     let mut verbose = false;
     let mut null = false;
+    let zmq_port = vstimd::ipc::DEFAULT_ZMQ_PORT;
     let mut config_file: Option<std::path::PathBuf> = None;
     let mut config_dir:  Option<std::path::PathBuf> = None;
 
@@ -211,6 +214,7 @@ fn parse_args() -> Args {
     Args {
         render_target,
         verbose,
+        zmq_port,
         config_file,
         config_dir,
     }
@@ -230,12 +234,13 @@ fn install_signal_handlers() {
 }
 
 /// Block until the ZMQ thread signals that `socket.bind()` has succeeded.
-/// Logs a warning and continues if the thread takes more than 10 s (should
-/// never happen in practice — bind is fast).
-fn wait_zmq_bound(rx: &std::sync::mpsc::Receiver<()>) {
+/// Returns `true` if the signal arrived, `false` on timeout (ZMQ unavailable).
+fn wait_zmq_bound(rx: &std::sync::mpsc::Receiver<()>, port: u16) -> bool {
     if rx.recv_timeout(std::time::Duration::from_secs(10)).is_err() {
-        log::warn!("vstimd: ZMQ bind did not complete within 10 s — proceeding anyway");
+        log::warn!("vstimd: ZMQ bind did not complete within 10 s — port {port} may not be listening");
+        return false;
     }
+    true
 }
 
 /// Send `READY=1` to systemd via `$NOTIFY_SOCKET` if present.
