@@ -46,6 +46,8 @@ pub struct DrmRenderState {
     /// terminal isn't returned to text mode until Vulkan teardown is complete.
     #[allow(dead_code)]
     vt_guard: vt::VtGuard,
+    /// True while our VT is not the active one (we released the input grab).
+    suspended: bool,
 }
 
 fn check_device_permissions() {
@@ -197,6 +199,7 @@ impl DrmRenderState {
             pending_outputs: [0; vtl::MAX_BANKS],
             display_guard,
             vt_guard,
+            suspended: false,
         }
     }
 
@@ -262,11 +265,31 @@ impl DrmRenderState {
                 return;
             }
 
+            // Handle VT_PROCESS signals: release input grab when switching away,
+            // re-acquire when switching back, so the other VT's session gets input.
+            if self.vt_guard.release_requested() {
+                self.input.suspend();
+                self.vt_guard.allow_release();
+                self.suspended = true;
+                log::info!("vstimd: VT released — input suspended");
+            }
+            if self.vt_guard.acquire_requested() {
+                self.vt_guard.confirm_acquire();
+                self.input.resume();
+                self.suspended = false;
+                log::info!("vstimd: VT re-acquired — input resumed");
+            }
+            if self.suspended {
+                std::thread::sleep(std::time::Duration::from_millis(16));
+                continue;
+            }
+
             // 1. Poll keyboard input (non-blocking libinput drain).
             let (app_keys, nav_events) = self.input.poll();
             for key in app_keys {
                 match key {
                     AppKey::Escape => return,
+                    AppKey::SwitchVt(n) => self.vt_guard.switch_to(n),
                     AppKey::D => crate::render::spawn_demo_stimuli(&self.rs.scene),
                     AppKey::F1 => self.rs.show_overlay = !self.rs.show_overlay,
                     AppKey::F2 => {

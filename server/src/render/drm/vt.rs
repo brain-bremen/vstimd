@@ -1,3 +1,5 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 /// Guard that activates a specific virtual terminal, switches it to
 /// `KD_GRAPHICS` mode, and restores everything on drop.
 ///
@@ -18,6 +20,31 @@ const KD_TEXT: libc::c_int = 0x00;
 const KD_GRAPHICS: libc::c_int = 0x01;
 const VT_ACTIVATE: libc::c_ulong = 0x5606;
 const VT_WAITACTIVE: libc::c_ulong = 0x5607;
+const VT_SETMODE: libc::c_ulong = 0x5602;
+const VT_RELDISP: libc::c_ulong = 0x5605;
+const VT_PROCESS: u8 = 1;
+const VT_AUTO: u8 = 0;
+const VT_ACKACQ: libc::c_int = 2;
+
+#[repr(C)]
+struct VtMode {
+    mode: u8,
+    waitv: u8,
+    relsig: libc::c_short,
+    acqsig: libc::c_short,
+    frsig: libc::c_short,
+}
+
+// Set by signal handlers; checked and cleared each frame by the render loop.
+static VT_RELEASE_REQUESTED: AtomicBool = AtomicBool::new(false);
+static VT_ACQUIRE_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn handle_sigusr1(_: libc::c_int) {
+    VT_RELEASE_REQUESTED.store(true, Ordering::Relaxed);
+}
+extern "C" fn handle_sigusr2(_: libc::c_int) {
+    VT_ACQUIRE_REQUESTED.store(true, Ordering::Relaxed);
+}
 
 impl VtGuard {
     pub fn acquire() -> Self {
@@ -61,14 +88,73 @@ impl VtGuard {
             std::process::exit(1);
         }
 
+        // Enable VT_PROCESS mode: the kernel asks us before switching away
+        // (SIGUSR1) and notifies us when we're active again (SIGUSR2).  We
+        // use this to release/re-acquire the libinput EVIOCGRAB so the other
+        // VT's session can receive input while vstimd is in the background.
+        unsafe {
+            libc::signal(libc::SIGUSR1, handle_sigusr1 as *const () as libc::sighandler_t);
+            libc::signal(libc::SIGUSR2, handle_sigusr2 as *const () as libc::sighandler_t);
+            let mode = VtMode {
+                mode: VT_PROCESS,
+                waitv: 0,
+                relsig: libc::SIGUSR1 as libc::c_short,
+                acqsig: libc::SIGUSR2 as libc::c_short,
+                frsig: 0,
+            };
+            if libc::ioctl(fd, VT_SETMODE, &mode) < 0 {
+                log::warn!(
+                    "vstimd: VT_SETMODE VT_PROCESS failed: {} — Ctrl+Alt+Fn will not release input grab",
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
+
         log::info!("vstimd: activated tty{target_vt} (KD_GRAPHICS); was tty{prev_vt}");
         Self { fd, prev_vt }
+    }
+
+    /// Switch the active VT to `vt` without exiting.
+    ///
+    /// Used to forward Ctrl+Alt+Fn because libinput holds an exclusive
+    /// EVIOCGRAB and the kernel never sees those key combos on its own.
+    pub fn switch_to(&self, vt: u16) {
+        unsafe {
+            libc::ioctl(self.fd, VT_ACTIVATE, vt as libc::c_int);
+            libc::ioctl(self.fd, VT_WAITACTIVE, vt as libc::c_int);
+        }
+        log::info!("vstimd: switched display to tty{vt}");
+    }
+
+    /// Returns true (and clears the flag) if the kernel has requested a VT
+    /// switch away.  Caller must suspend input and call `allow_release`.
+    pub fn release_requested(&self) -> bool {
+        VT_RELEASE_REQUESTED.swap(false, Ordering::Relaxed)
+    }
+
+    /// Returns true (and clears the flag) if our VT has become active again.
+    /// Caller must call `confirm_acquire` and resume input.
+    pub fn acquire_requested(&self) -> bool {
+        VT_ACQUIRE_REQUESTED.swap(false, Ordering::Relaxed)
+    }
+
+    /// Acknowledge the kernel's VT-release request so the switch proceeds.
+    pub fn allow_release(&self) {
+        unsafe { libc::ioctl(self.fd, VT_RELDISP, 1 as libc::c_int); }
+    }
+
+    /// Acknowledge that we have re-acquired the VT.
+    pub fn confirm_acquire(&self) {
+        unsafe { libc::ioctl(self.fd, VT_RELDISP, VT_ACKACQ); }
     }
 }
 
 impl Drop for VtGuard {
     fn drop(&mut self) {
         unsafe {
+            // Restore VT_AUTO so the kernel handles subsequent switches itself.
+            let mode = VtMode { mode: VT_AUTO, waitv: 0, relsig: 0, acqsig: 0, frsig: 0 };
+            libc::ioctl(self.fd, VT_SETMODE, &mode);
             libc::ioctl(self.fd, KDSETMODE, KD_TEXT);
             libc::ioctl(self.fd, VT_ACTIVATE, self.prev_vt as libc::c_int);
             libc::close(self.fd);
