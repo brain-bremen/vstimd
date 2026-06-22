@@ -36,4 +36,4 @@ TTYVHangup=yes
 SupplementaryGroups=input video tty
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=vstimd.target

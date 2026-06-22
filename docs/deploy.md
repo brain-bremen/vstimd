@@ -74,10 +74,12 @@ sudo systemctl disable --now lightdm
 # or via raspi-config → System Options → Boot → Console (no desktop)
 ```
 
-**Desktop / development machine:** VT switching allows coexistence.  If your
-desktop session runs on VT2 (common with SDDM on Fedora/KDE), vstimd can hold
-VT1.  The unit file strips `DISPLAY`, `WAYLAND_DISPLAY`, and `XDG_RUNTIME_DIR`
-from the environment (`UnsetEnvironment`) so Vulkan does not fall back to WSI.
+**Desktop / development machine:** VT switching allows coexistence.  vstimd
+runs on VT3 by default (`TTYPath=/dev/tty3`).  Ctrl+Alt+F1–F12 is intercepted
+and forwarded so you can switch back to your desktop session; the input grab is
+released while vstimd is in the background.  The unit file strips `DISPLAY`,
+`WAYLAND_DISPLAY`, and `XDG_RUNTIME_DIR` from the environment (`UnsetEnvironment`)
+so Vulkan does not fall back to WSI.
 
 ### 2. Groups
 
@@ -165,6 +167,103 @@ cat /sys/module/nvidia_drm/parameters/modeset   # should print Y
 ```
 
 Without `modeset=1`, `VK_KHR_display` will find no displays and fail at startup.
+
+---
+
+## Boot to vstimd
+
+vstimd ships a custom `vstimd.target` that sits between `multi-user.target` and
+`graphical.target`.  Booting into it starts vstimd (and everything else in
+`multi-user.target` — networking, logging, etc.) without starting a display
+manager.  A normal boot into `graphical.target` leaves vstimd alone.
+
+**Setup (once):**
+
+```bash
+# Enable vstimd to start when vstimd.target is reached.
+# This does NOT make it start on normal graphical boots.
+sudo systemctl enable vstimd
+```
+
+### GRUB (x86 — Fedora, Ubuntu, Debian)
+
+**Fedora — use `grubby`** (easiest, version-independent):
+
+```bash
+sudo grubby --copy-default \
+  --add-kernel=$(grubby --default-kernel) \
+  --title="Boot to vstimd" \
+  --args="systemd.unit=vstimd.target"
+
+# Verify the new entry was added:
+sudo grubby --info=ALL | grep -A4 "vstimd"
+```
+
+**Ubuntu / Debian — add a custom entry manually:**
+
+Find your current kernel and initrd paths:
+
+```bash
+# or just look in /boot:
+ls /boot/vmlinuz-* /boot/initrd.img-* | sort | tail -2
+```
+
+Then add the entry to `/etc/grub.d/40_custom`:
+
+```
+menuentry "Boot to vstimd" {
+    # Copy the linux/initrd lines from your default entry in /boot/grub/grub.cfg,
+    # then append systemd.unit=vstimd.target to the linux line.
+    # Example (adjust paths to your kernel version):
+    load_video
+    set gfxpayload=keep
+    linux   /boot/vmlinuz-6.8.0-51-generic root=UUID=<your-root-uuid> ro quiet systemd.unit=vstimd.target
+    initrd  /boot/initrd.img-6.8.0-51-generic
+}
+```
+
+Apply:
+
+```bash
+sudo update-grub          # Debian/Ubuntu
+# or:
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg          # Fedora (BIOS)
+sudo grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg # Fedora (UEFI)
+```
+
+### extlinux (Jetson, Raspberry Pi, embedded)
+
+Edit `/boot/extlinux/extlinux.conf`.  Copy your primary entry and add
+`systemd.unit=vstimd.target` to the `APPEND` line:
+
+```
+LABEL vstimd
+    MENU LABEL Boot to vstimd
+    LINUX /boot/Image
+    INITRD /boot/initrd
+    APPEND ${cbootargs} quiet root=PARTUUID=<your-partuuid> rw systemd.unit=vstimd.target
+```
+
+No rebuild step is needed — extlinux reads the file directly at boot.
+
+On Jetson the file is typically at `/boot/extlinux/extlinux.conf`; on Raspberry
+Pi it may be at `/boot/firmware/extlinux/extlinux.conf` (Pi OS Bookworm) or
+`/boot/extlinux/extlinux.conf` (older).
+
+### Switching back to the desktop
+
+Select your normal boot entry from the GRUB/extlinux menu.  Or, if you booted
+into vstimd and want to start the desktop without rebooting:
+
+```bash
+# Stop vstimd, then bring up the full graphical session:
+sudo systemctl stop vstimd
+sudo systemctl isolate graphical.target
+```
+
+> **Note:** Runtime VT switching (Ctrl+Alt+Fn while vstimd is running) currently
+> works only when vstimd was started from a TTY session, not from an X11/Wayland
+> desktop.  When using the "Boot to vstimd" entry, switching works correctly.
 
 ---
 

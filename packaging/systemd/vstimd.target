@@ -1,0 +1,11 @@
+[Unit]
+Description=vstimd visual stimulus session
+Documentation=https://github.com/braemons/vstimd
+# Pull in everything from multi-user.target (network, logging, etc.)
+# but stop before graphical.target so no display manager starts.
+Requires=multi-user.target
+After=multi-user.target
+AllowIsolate=yes
+
+[Install]
+Alias=default.target

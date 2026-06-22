@@ -25,6 +25,7 @@ Jetson Orin Nano, Raspberry Pi 4/5, and desktop NVIDIA/AMD GPUs.
 %install
 install -D -m 0755 %{_builddir}/target/release/vstimd                    %{buildroot}%{_bindir}/vstimd
 install -D -m 0644 %{_builddir}/packaging/systemd/vstimd.service         %{buildroot}%{_unitdir}/vstimd.service
+install -D -m 0644 %{_builddir}/packaging/systemd/vstimd.target          %{buildroot}%{_unitdir}/vstimd.target
 install -D -m 0644 %{_builddir}/packaging/sysusers/vstimd.conf           %{buildroot}%{_sysusersdir}/vstimd.conf
 
 %post
@@ -40,4 +41,5 @@ install -D -m 0644 %{_builddir}/packaging/sysusers/vstimd.conf           %{build
 %files
 %{_bindir}/vstimd
 %{_unitdir}/vstimd.service
+%{_unitdir}/vstimd.target
 %{_sysusersdir}/vstimd.conf
