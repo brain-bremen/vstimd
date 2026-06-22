@@ -4,6 +4,7 @@ SYSUSERSDIR ?= /usr/lib/sysusers.d
 BINARY      := target/release/vstimd
 SERVICE     := packaging/systemd/vstimd.service
 TARGET_UNIT := packaging/systemd/vstimd.target
+BOOT_SCRIPT := packaging/scripts/vstimd-boot-entry
 SYSUSERS    := packaging/sysusers/vstimd.conf
 
 DIST_DIR          ?= dist
@@ -31,13 +32,16 @@ build:
 
 install:
 	install -D -m 0755 $(BINARY)      $(DESTDIR)$(PREFIX)/bin/vstimd
+	install -D -m 0755 $(BOOT_SCRIPT) $(DESTDIR)$(PREFIX)/sbin/vstimd-boot-entry
 	install -D -m 0644 $(SERVICE)     $(DESTDIR)$(UNITDIR)/vstimd.service
 	install -D -m 0644 $(TARGET_UNIT) $(DESTDIR)$(UNITDIR)/vstimd.target
 	install -D -m 0644 $(SYSUSERS)    $(DESTDIR)$(SYSUSERSDIR)/vstimd.conf
 
 uninstall:
 	systemctl disable --now vstimd 2>/dev/null || true
+	vstimd-boot-entry --remove 2>/dev/null || true
 	rm -f $(DESTDIR)$(PREFIX)/bin/vstimd
+	rm -f $(DESTDIR)$(PREFIX)/sbin/vstimd-boot-entry
 	rm -f $(DESTDIR)$(UNITDIR)/vstimd.service
 	rm -f $(DESTDIR)$(UNITDIR)/vstimd.target
 	rm -f $(DESTDIR)$(SYSUSERSDIR)/vstimd.conf

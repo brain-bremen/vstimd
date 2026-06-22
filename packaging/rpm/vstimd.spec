@@ -24,6 +24,7 @@ Jetson Orin Nano, Raspberry Pi 4/5, and desktop NVIDIA/AMD GPUs.
 
 %install
 install -D -m 0755 %{_builddir}/target/release/vstimd                    %{buildroot}%{_bindir}/vstimd
+install -D -m 0755 %{_builddir}/packaging/scripts/vstimd-boot-entry      %{buildroot}%{_sbindir}/vstimd-boot-entry
 install -D -m 0644 %{_builddir}/packaging/systemd/vstimd.service         %{buildroot}%{_unitdir}/vstimd.service
 install -D -m 0644 %{_builddir}/packaging/systemd/vstimd.target          %{buildroot}%{_unitdir}/vstimd.target
 install -D -m 0644 %{_builddir}/packaging/sysusers/vstimd.conf           %{buildroot}%{_sysusersdir}/vstimd.conf
@@ -31,15 +32,22 @@ install -D -m 0644 %{_builddir}/packaging/sysusers/vstimd.conf           %{build
 %post
 %sysusers_create_package vstimd %{_sysusersdir}/vstimd.conf
 %systemd_post vstimd.service
+# Register the "Boot to vstimd" bootloader entry; non-fatal on failure.
+%{_sbindir}/vstimd-boot-entry 2>&1 | sed 's/^/vstimd: /' || true
 
 %preun
 %systemd_preun vstimd.service
+# Remove the boot entry before the binary is erased.
+if [ $1 -eq 0 ]; then
+    %{_sbindir}/vstimd-boot-entry --remove 2>&1 | sed 's/^/vstimd: /' || true
+fi
 
 %postun
 %systemd_postun_with_restart vstimd.service
 
 %files
 %{_bindir}/vstimd
+%{_sbindir}/vstimd-boot-entry
 %{_unitdir}/vstimd.service
 %{_unitdir}/vstimd.target
 %{_sysusersdir}/vstimd.conf
