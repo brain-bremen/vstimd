@@ -21,7 +21,7 @@ extern crate vtl;
 
 use self::display_guard::DisplayGuard;
 use self::input::{AppKey, InputState};
-use self::vblank::DrmVblank;
+use self::vblank::{DrmVblank, VkVblank};
 
 /// Bare-metal Linux render state — drives the display directly via
 /// `VK_KHR_display` without a compositor.
@@ -35,6 +35,7 @@ pub struct DrmRenderState {
     vtl: Option<Arc<Mutex<VtlState>>>,
     input: InputState,
     drm_vblank: Option<DrmVblank>,
+    vk_vblank: Option<VkVblank>,
     display_info: StimulusDisplayInfo,
     /// Animation output bits accumulated this frame; committed at [A] next frame.
     pending_outputs: [u64; vtl::MAX_BANKS],
@@ -112,19 +113,19 @@ impl DrmRenderState {
         // the CRTC (mode → None), so we must save state before switching.
         let display_guard = DisplayGuard::acquire();
 
+        // Open DRM vblank here, before the VT switch and before Vulkan init.
+        // Both events clear the CRTC mode: the VT switch deactivates it on
+        // nvdisplay, and VK_KHR_display acquiring DRM master also returns
+        // mode → None.  wait_vblank is unprivileged so the fd stays valid
+        // throughout the session.
+        let drm_vblank = DrmVblank::open();
+
         // Now activate the target VT and set KD_GRAPHICS so the kernel stops
         // writing text over our framebuffer.
         let vt_guard = vt::VtGuard::acquire();
 
-        // Open DRM vblank BEFORE Vulkan init. After VK_KHR_display takes DRM
-        // master the KMS CRTC state changes and get_crtc().mode() returns None,
-        // so we must query it while the kernel still shows the CRTC as active.
-        // The fd stays valid for wait_vblank throughout the session (no master
-        // required for that ioctl).
-        let drm_vblank = DrmVblank::open();
-
         // Initialise Vulkan — VK_KHR_display acquires DRM master internally.
-        let (ctx, display_info) = init::init();
+        let (ctx, display_info, vk_display) = init::init();
         let wf_mode = if ctx.supports_wireframe {
             ash::vk::PolygonMode::LINE
         } else {
@@ -163,6 +164,11 @@ impl DrmRenderState {
             ctx.render_pass,
             glyph_atlas.descriptor_set_layout,
         );
+        // Build VkVblank before ctx moves into RenderState.
+        let vk_vblank = ctx.display_control.as_ref().map(|loader| {
+            VkVblank::new(ctx.device.clone(), loader.clone(), vk_display)
+        });
+
         let config_dir = scene.read().unwrap().runtime.config_dir.clone();
         let rs = RenderState {
             frame_stats: FrameStats::new(display_info.refresh_hz),
@@ -195,6 +201,7 @@ impl DrmRenderState {
             vtl,
             input: InputState::new(),
             drm_vblank,
+            vk_vblank,
             display_info,
             pending_outputs: [0; vtl::MAX_BANKS],
             display_guard,
@@ -213,6 +220,8 @@ impl DrmRenderState {
             wireframe: None,
             clock_source: if self.drm_vblank.is_some() {
                 ClockSource::DrmVblank
+            } else if self.vk_vblank.is_some() {
+                ClockSource::VkDisplayControl
             } else if self.rs.ctx.present_wait.is_some() {
                 ClockSource::PresentWait
             } else {
@@ -244,19 +253,25 @@ impl DrmRenderState {
     }
 
     fn wait_vblank(&mut self) -> Option<std::time::Instant> {
-        let vblank = self.drm_vblank.as_ref()?;
-        match vblank.wait() {
-            Some(t) => Some(t),
-            None => {
-                log::warn!(
-                    "vstimd: disabling DRM vblank clock after wait_vblank error"
-                );
-                // One-way fallback: stop issuing the ioctl and use
-                // GPU-completion timestamps instead.
-                self.drm_vblank = None;
-                None
+        if let Some(vblank) = self.drm_vblank.as_ref() {
+            match vblank.wait() {
+                Some(t) => return Some(t),
+                None => {
+                    log::warn!("vstimd: disabling DRM vblank clock after wait_vblank error");
+                    self.drm_vblank = None;
+                }
             }
         }
+        if let Some(vblank) = self.vk_vblank.as_ref() {
+            match vblank.wait() {
+                Some(t) => return Some(t),
+                None => {
+                    log::warn!("vstimd: disabling VK_EXT_display_control vblank after error");
+                    self.vk_vblank = None;
+                }
+            }
+        }
+        None
     }
 
     pub fn run_loop(mut self) {

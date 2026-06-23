@@ -5,6 +5,8 @@ use super::RenderTarget;
 pub enum ClockSource {
     /// DRM kernel scanout event (`drmWaitVBlank`) — most accurate.
     DrmVblank,
+    /// `VK_EXT_display_control` vblank fence — accurate, equivalent to DrmVblank.
+    VkDisplayControl,
     /// `VK_KHR_present_wait` — accurate, GPU-side.
     PresentWait,
     /// `VK_GOOGLE_display_timing` — approximate.

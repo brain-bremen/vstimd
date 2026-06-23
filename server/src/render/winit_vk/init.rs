@@ -138,5 +138,6 @@ pub fn init(window: &Window) -> VkContext {
         surface_loader,
         extent,
         debug_utils_enabled,
+        false,
     )
 }

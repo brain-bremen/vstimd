@@ -38,8 +38,9 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
         ui.label(format!("Host: {}  IP: {}", sys.hostname, sys.local_ip));
         ui.label(format!("Backend: {:?}", sys.backend));
         let (clock_label, clock_color) = match sys.clock_source {
-            ClockSource::DrmVblank     => ("Clock: DRM vblank",                     egui::Color32::from_rgb(80, 200, 80)),
-            ClockSource::PresentWait   => ("Clock: VK_KHR_present_wait",            egui::Color32::from_rgb(80, 200, 80)),
+            ClockSource::DrmVblank        => ("Clock: DRM vblank",                     egui::Color32::from_rgb(80, 200, 80)),
+            ClockSource::VkDisplayControl => ("Clock: VK_EXT_display_control",        egui::Color32::from_rgb(80, 200, 80)),
+            ClockSource::PresentWait      => ("Clock: VK_KHR_present_wait",           egui::Color32::from_rgb(80, 200, 80)),
             ClockSource::DisplayTiming => ("Clock: VK_GOOGLE_display_timing",       egui::Color32::YELLOW),
             ClockSource::GpuCompletion => ("Clock: GPU-completion (inaccurate)",    egui::Color32::RED),
         };

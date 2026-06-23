@@ -86,3 +86,53 @@ impl DrmVblank {
         }
     }
 }
+
+/// Vblank clock using `VK_EXT_display_control`.
+///
+/// `vkRegisterDisplayEventEXT` creates a one-shot fence that fires on the
+/// display's first-pixel-out event (≈ vblank).  This is the fallback when
+/// the legacy `DRM_IOCTL_WAIT_VBLANK` ioctl is not supported by the driver
+/// (e.g. NVIDIA Tegra nvdisplay).
+pub struct VkVblank {
+    device: ash::Device,
+    loader: ash::ext::display_control::Device,
+    display: ash::vk::DisplayKHR,
+}
+
+impl VkVblank {
+    pub fn new(
+        device: ash::Device,
+        loader: ash::ext::display_control::Device,
+        display: ash::vk::DisplayKHR,
+    ) -> Self {
+        Self { device, loader, display }
+    }
+
+    /// Block until the next display vblank.
+    /// Returns `None` on error (caller should disable and fall back).
+    pub fn wait(&self) -> Option<Instant> {
+        let event_info = ash::vk::DisplayEventInfoEXT::default()
+            .display_event(ash::vk::DisplayEventTypeEXT::FIRST_PIXEL_OUT);
+        let mut fence = ash::vk::Fence::null();
+        let result = unsafe {
+            (self.loader.fp().register_display_event_ext)(
+                self.loader.device(),
+                self.display,
+                &event_info as *const _,
+                std::ptr::null(),
+                &mut fence,
+            )
+        };
+        if result != ash::vk::Result::SUCCESS {
+            log::warn!("vstimd: vkRegisterDisplayEventEXT failed: {result:?}");
+            return None;
+        }
+        let wait_result = unsafe {
+            self.device.wait_for_fences(&[fence], true, u64::MAX)
+        };
+        let t = Instant::now();
+        unsafe { self.device.destroy_fence(fence, None) };
+        wait_result.ok()?;
+        Some(t)
+    }
+}

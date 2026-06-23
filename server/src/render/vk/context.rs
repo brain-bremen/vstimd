@@ -54,6 +54,13 @@ pub struct VkContext {
     pub supports_wireframe: bool,
     /// Device-level VK_EXT_debug_utils loader; None when the instance extension is absent.
     pub debug_utils: Option<ash::ext::debug_utils::Device>,
+    /// Device-level VK_EXT_display_control loader; None when the extension is absent.
+    /// Used by the DRM backend to register per-frame vblank fences.
+    pub display_control: Option<ash::ext::display_control::Device>,
+    /// Whether VkSwapchainCounterCreateInfoEXT was chained into swapchain
+    /// creation with VK_SURFACE_COUNTER_VBLANK_BIT_EXT.  Needed by
+    /// recreate_swapchain to re-enable the counter on new swapchains.
+    pub surface_counter_enabled: bool,
 }
 
 impl Drop for VkContext {
@@ -132,6 +139,7 @@ impl VkContext {
             new_extent,
             self.present_mode,
             old_swapchain,
+            self.surface_counter_enabled,
         );
 
         unsafe {
@@ -217,6 +225,7 @@ pub fn build_context(
     surface_loader: ash::khr::surface::Instance,
     desired_extent: vk::Extent2D,
     debug_utils_enabled: bool,
+    enable_display_control: bool,
 ) -> VkContext {
     // -- Physical device + queue family + timing-extension probe -------------
     let physical_devices = unsafe {
@@ -274,6 +283,10 @@ pub fn build_context(
     //   present_wait — vkWaitForPresentKHR blocks until that frame is on screen
     let use_present_wait = has_ext("VK_KHR_present_id") && has_ext("VK_KHR_present_wait");
     let use_display_timing = has_ext("VK_GOOGLE_display_timing");
+    // VK_EXT_display_control: creates per-frame vblank fences via
+    // vkRegisterDisplayEventEXT.  Requires VK_EXT_display_surface_counter at
+    // instance level (enabled by the DRM init path when available).
+    let use_display_control = enable_display_control && has_ext("VK_EXT_display_control");
 
     // -- Physical device features ---------------------------------------------
     let phys_features = unsafe { instance.get_physical_device_features(physical_device) };
@@ -295,6 +308,9 @@ pub fn build_context(
     }
     if use_display_timing {
         device_exts.push(ash::google::display_timing::NAME.as_ptr());
+    }
+    if use_display_control {
+        device_exts.push(ash::ext::display_control::NAME.as_ptr());
     }
 
     // Feature structs must outlive `device_info` (referenced via p_next chain).
@@ -323,8 +339,13 @@ pub fn build_context(
         use_present_wait.then(|| ash::khr::present_wait::Device::new(&instance, &device));
     let display_timing_loader =
         use_display_timing.then(|| ash::google::display_timing::Device::new(&instance, &device));
+    let display_control_loader =
+        use_display_control.then(|| ash::ext::display_control::Device::new(&instance, &device));
     if use_present_wait {
         log::info!("vstimd: VK_KHR_present_wait enabled — waitable screen clock active");
+    }
+    if use_display_control {
+        log::info!("vstimd: VK_EXT_display_control enabled — vblank fence available");
     }
 
     // -- Surface format -------------------------------------------------------
@@ -364,6 +385,7 @@ pub fn build_context(
         desired_extent,
         initial_present_mode,
         vk::SwapchainKHR::null(),
+        use_display_control,
     );
 
     // -- Command pool ---------------------------------------------------------
@@ -437,6 +459,8 @@ pub fn build_context(
         entry,
         supports_wireframe,
         debug_utils,
+        display_control: display_control_loader,
+        surface_counter_enabled: use_display_control,
     }
 }
 
@@ -545,6 +569,7 @@ fn create_swapchain(
     desired_extent: vk::Extent2D,
     present_mode: vk::PresentModeKHR,
     old_swapchain: vk::SwapchainKHR,
+    enable_surface_counter: bool,
 ) -> (
     vk::SwapchainKHR,
     Vec<vk::Image>,
@@ -605,7 +630,12 @@ fn create_swapchain(
         extent.width, extent.height, image_count, format, present_mode
     );
 
-    let info = vk::SwapchainCreateInfoKHR::default()
+    // VkSwapchainCounterCreateInfoEXT must be declared before `info` because
+    // push_next borrows it by mutable reference and both must be in scope for
+    // create_swapchain.
+    let mut counter_info = vk::SwapchainCounterCreateInfoEXT::default()
+        .surface_counters(vk::SurfaceCounterFlagsEXT::VBLANK);
+    let mut info = vk::SwapchainCreateInfoKHR::default()
         .surface(surface)
         .min_image_count(image_count)
         .image_format(format)
@@ -619,6 +649,9 @@ fn create_swapchain(
         .present_mode(present_mode)
         .clipped(true)
         .old_swapchain(old_swapchain);
+    if enable_surface_counter {
+        info = info.push_next(&mut counter_info);
+    }
 
     let swapchain = unsafe {
         swapchain_loader

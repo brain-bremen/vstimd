@@ -5,25 +5,47 @@ use crate::render::StimulusDisplayInfo;
 
 /// Initialise Vulkan for bare-metal display via `VK_KHR_display`.
 ///
-/// Enumerates connected displays, prompts the user to pick a mode, creates the
-/// display surface, and returns a fully initialised `VkContext`.
-pub fn init() -> (VkContext, StimulusDisplayInfo) {
+/// Enumerates connected displays, picks a mode, creates the display surface,
+/// and returns a fully-initialised `VkContext` plus the `VkDisplayKHR` handle
+/// (needed for `VK_EXT_display_control` vblank fences).
+pub fn init() -> (VkContext, StimulusDisplayInfo, vk::DisplayKHR) {
     let entry = unsafe { ash::Entry::load().expect("failed to load libvulkan.so") };
 
     let app_info = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_1);
+
+    // Check which optional instance extensions are available.
+    let available_inst_exts: std::collections::HashSet<String> = unsafe {
+        entry
+            .enumerate_instance_extension_properties(None)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|e| {
+                std::ffi::CStr::from_ptr(e.extension_name.as_ptr())
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect()
+    };
+    // VK_EXT_display_surface_counter is an instance extension required by
+    // VK_EXT_display_control (device).  Enable it when available.
+    let use_display_surface_counter =
+        available_inst_exts.contains("VK_EXT_display_surface_counter");
 
     // VK_KHR_display lets Vulkan enumerate and drive displays directly
     // without requiring a compositor.
     // In debug builds, also attempt VK_EXT_debug_utils for RenderDoc labels.
     // Fall back silently if the driver rejects it (e.g. RenderDoc hook injection).
-    let base_exts = [
+    let mut base_exts = vec![
         ash::khr::surface::NAME.as_ptr(),
         ash::khr::display::NAME.as_ptr(),
     ];
+    if use_display_surface_counter {
+        base_exts.push(ash::ext::display_surface_counter::NAME.as_ptr());
+    }
 
     #[cfg(debug_assertions)]
     let (instance, debug_utils_enabled) = {
-        let mut exts_with = base_exts.to_vec();
+        let mut exts_with = base_exts.clone();
         exts_with.push(ash::ext::debug_utils::NAME.as_ptr());
         let info = vk::InstanceCreateInfo::default()
             .application_info(&app_info)
@@ -125,7 +147,15 @@ pub fn init() -> (VkContext, StimulusDisplayInfo) {
     };
 
     let extent = vk::Extent2D { width, height };
-    let ctx = build_context(entry, instance, surface, surface_loader, extent, debug_utils_enabled);
+    let ctx = build_context(
+        entry,
+        instance,
+        surface,
+        surface_loader,
+        extent,
+        debug_utils_enabled,
+        use_display_surface_counter,
+    );
 
     let refresh_hz = chosen.parameters.refresh_rate as f64 / 1000.0;
     log::info!("vstimd: display {}×{}  {:.3} Hz", width, height, refresh_hz);
@@ -137,6 +167,7 @@ pub fn init() -> (VkContext, StimulusDisplayInfo) {
             height_px: height,
             refresh_hz,
         },
+        vk_display,
     )
 }
 
