@@ -17,6 +17,12 @@ fn main() {
     .build();
     let log_buffer = vstimd::log_buffer::install(env_logger, server_start);
 
+    log::info!(
+        "vstimd v{} (built {})",
+        env!("CARGO_PKG_VERSION"),
+        env!("VSTIMD_BUILD_DATE"),
+    );
+
     let config_dir = args.config_dir.clone().unwrap_or_else(|| std::path::PathBuf::from("."));
     let scene = Arc::new(RwLock::new(SceneState::new_with_config_dir(config_dir.clone())));
 
