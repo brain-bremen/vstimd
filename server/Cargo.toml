@@ -65,8 +65,10 @@ providing sub-millisecond frame timing for psychophysics experiments.\n\
 Communicates via ZMQ (port 5555) using a protobuf protocol. Supports \
 Jetson Orin Nano, Raspberry Pi 4/5, and desktop NVIDIA/AMD GPUs."""
 assets = [
-    ["target/release/vstimd",            "usr/bin/vstimd",                "755"],
-    ["../packaging/sysusers/vstimd.conf", "usr/lib/sysusers.d/vstimd.conf", "644"],
+    ["target/release/vstimd",              "usr/bin/vstimd",                         "755"],
+    ["../packaging/sysusers/vstimd.conf",  "usr/lib/sysusers.d/vstimd.conf",         "644"],
+    ["../packaging/rsyslog/vstimd.conf",   "etc/rsyslog.d/10-vstimd.conf",           "644"],
+    ["../packaging/logrotate/vstimd",      "etc/logrotate.d/vstimd",                 "644"],
 ]
 maintainer-scripts = "../packaging/debian/"
 

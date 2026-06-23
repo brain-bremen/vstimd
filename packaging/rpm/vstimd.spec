@@ -28,10 +28,18 @@ install -D -m 0755 %{_builddir}/packaging/scripts/vstimd-boot-entry      %{build
 install -D -m 0644 %{_builddir}/packaging/systemd/vstimd.service         %{buildroot}%{_unitdir}/vstimd.service
 install -D -m 0644 %{_builddir}/packaging/systemd/vstimd.target          %{buildroot}%{_unitdir}/vstimd.target
 install -D -m 0644 %{_builddir}/packaging/sysusers/vstimd.conf           %{buildroot}%{_sysusersdir}/vstimd.conf
+install -D -m 0644 %{_builddir}/packaging/rsyslog/vstimd.conf             %{buildroot}%{_sysconfdir}/rsyslog.d/10-vstimd.conf
+install -D -m 0644 %{_builddir}/packaging/logrotate/vstimd                %{buildroot}%{_sysconfdir}/logrotate.d/vstimd
 
 %post
 %sysusers_create_package vstimd %{_sysusersdir}/vstimd.conf
 %systemd_post vstimd.service
+# Create log directory (rsyslog writes here as root).
+install -d -m 0755 /var/log/vstimd
+# Reload rsyslog if installed so it picks up the new drop-in.
+if systemctl is-active --quiet rsyslog.service 2>/dev/null; then
+    systemctl reload rsyslog.service || true
+fi
 # Register the "Boot to vstimd" bootloader entry; non-fatal on failure.
 %{_sbindir}/vstimd-boot-entry 2>&1 | sed 's/^/vstimd: /' || true
 
@@ -51,3 +59,6 @@ fi
 %{_unitdir}/vstimd.service
 %{_unitdir}/vstimd.target
 %{_sysusersdir}/vstimd.conf
+%config(noreplace) %{_sysconfdir}/rsyslog.d/10-vstimd.conf
+%config(noreplace) %{_sysconfdir}/logrotate.d/vstimd
+%dir /var/log/vstimd

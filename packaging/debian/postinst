@@ -4,6 +4,14 @@ set -e
 if [ "$1" = "configure" ]; then
     systemd-sysusers /usr/lib/sysusers.d/vstimd.conf
 
+    # Create log directory (rsyslog writes here as root).
+    install -d -m 0755 /var/log/vstimd
+
+    # Reload rsyslog if installed so it picks up the new drop-in.
+    if systemctl is-active --quiet rsyslog.service 2>/dev/null; then
+        systemctl reload rsyslog.service || true
+    fi
+
     # Register the "Boot to vstimd" bootloader entry.
     # Failures are non-fatal — the user can run vstimd-boot-entry manually.
     vstimd-boot-entry 2>&1 | sed 's/^/vstimd: /' || true
