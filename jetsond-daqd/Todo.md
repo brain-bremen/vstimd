@@ -24,12 +24,53 @@ re-open with `open_vtl_with_retry`.
 No SIGTERM/SIGINT handler.  The daemon should drain output pins to 0 on exit
 so downstream equipment isn't left with a stale high signal.
 
+### CPU core affinity
+The Jetson Orin Nano has 6 Cortex-A78AE cores.  Pinning threads to dedicated
+cores eliminates OS migration overhead and prevents cache thrashing between
+the GPIO bridge and vstimd's render loop.
+
+Proposed layout:
+
+| Thread / process  | Core(s) | Notes |
+|-------------------|---------|-------|
+| vstimd render     | 0–3     | Heavy; leave the high cores free |
+| jetsond-daqd input watchers | 4 | Interrupt-driven; stable L1 cache |
+| jetsond-daqd output loop    | 5 | Timing-critical; dedicated core |
+
+Implementation — two layers:
+
+1. **systemd** (`jetsond-daqd.service`): `CPUAffinity=4 5` — confines the whole
+   process to cores 4–5 at the OS scheduler level, keeping it off vstimd's cores.
+   No code change required.
+
+2. **Rust** (`bridge.rs`): call `libc::sched_setaffinity(0, &cpuset)` at the top
+   of `run_output_loop` (core 5 only) and `run_input_loop` (core 4 only).
+   `libc` is already a dependency.  Example:
+   ```rust
+   let mut set = unsafe { std::mem::zeroed::<libc::cpu_set_t>() };
+   unsafe { libc::CPU_SET(core, &mut set); }
+   unsafe { libc::sched_setaffinity(0, std::mem::size_of_val(&set), &set); }
+   ```
+   Expose the core assignments as config fields (default `None` = no pinning)
+   so they can be disabled without a recompile.
+
+3. **Kernel** (optional, best latency): add `isolcpus=4,5 nohz_full=4,5
+   rcu_nocbs=4,5` to `/boot/extlinux/extlinux.conf` on the Jetson.  Removes
+   cores 4–5 from the general scheduler entirely; worst-case output jitter drops
+   from ~200 µs to ~10 µs.  Requires a reboot and affects all processes.
+
+Config addition needed:
+```toml
+[affinity]
+output_core = 5   # optional; omit to disable pinning
+input_core  = 4
+```
+
 ### Output timing accuracy
 The 1 ms `thread::sleep` drifts under load (std sleep is a minimum, not exact).
 For tighter output timing consider:
-- `timerfd_create(CLOCK_MONOTONIC)` with a fixed interval
-- A higher-priority thread (SCHED_FIFO) for the output loop
-- Accepting that outputs are inherently coarser than the interrupt-driven inputs
+- `timerfd_create(CLOCK_MONOTONIC)` with a fixed interval replacing `sleep`
+- Accepting that outputs are inherently coarser than interrupt-driven inputs
   and documenting the expected worst-case latency
 
 ### Per-line GPIO chip
