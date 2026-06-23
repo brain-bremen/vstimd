@@ -6,7 +6,7 @@ Wants=systemd-udev-settle.service
 
 [Service]
 Type=notify
-User=vstimd
+User=root
 ExecStart=/usr/bin/vstimd
 Restart=on-failure
 RestartSec=2
