@@ -86,3 +86,71 @@ impl DrmVblank {
         }
     }
 }
+
+/// Vblank clock using `VK_EXT_display_control`.
+///
+/// `vkRegisterDisplayEventEXT` creates a one-shot fence that fires on the
+/// display's first-pixel-out event (≈ vblank).  This is the fallback when
+/// the legacy `DRM_IOCTL_WAIT_VBLANK` ioctl is not supported by the driver
+/// (e.g. NVIDIA Tegra nvdisplay).
+///
+/// # Two-phase usage (avoids double-blocking with FIFO acquire)
+///
+/// With `VK_PRESENT_MODE_FIFO_KHR`, `vkAcquireNextImageKHR` already blocks at
+/// the display vblank boundary.  If we also block on `FIRST_PIXEL_OUT` *before*
+/// the acquire the loop runs at half the refresh rate.
+///
+/// The fix: **register** the fence just before render/present; **collect** it at
+/// the very top of the *next* iteration before acquire.  The collect blocks for
+/// the remaining ≈7 ms until FIRST_PIXEL_OUT fires, then acquire sees a free
+/// image and returns immediately.
+pub struct VkVblank {
+    device: ash::Device,
+    loader: ash::ext::display_control::Device,
+    display: ash::vk::DisplayKHR,
+}
+
+impl VkVblank {
+    pub fn new(
+        device: ash::Device,
+        loader: ash::ext::display_control::Device,
+        display: ash::vk::DisplayKHR,
+    ) -> Self {
+        Self { device, loader, display }
+    }
+
+    /// Register a FIRST_PIXEL_OUT event and return the one-shot fence.
+    /// Returns `None` on error.
+    pub fn register(&self) -> Option<ash::vk::Fence> {
+        let event_info = ash::vk::DisplayEventInfoEXT::default()
+            .display_event(ash::vk::DisplayEventTypeEXT::FIRST_PIXEL_OUT);
+        let mut fence = ash::vk::Fence::null();
+        let result = unsafe {
+            (self.loader.fp().register_display_event_ext)(
+                self.loader.device(),
+                self.display,
+                &event_info as *const _,
+                std::ptr::null(),
+                &mut fence,
+            )
+        };
+        if result != ash::vk::Result::SUCCESS {
+            log::warn!("vstimd: vkRegisterDisplayEventEXT failed: {result:?}");
+            return None;
+        }
+        Some(fence)
+    }
+
+    /// Wait for a previously registered fence and return the timestamp.
+    /// Destroys the fence regardless of outcome.
+    /// Returns `None` on error (caller should disable and fall back).
+    pub fn collect(&self, fence: ash::vk::Fence) -> Option<Instant> {
+        let wait_result = unsafe {
+            self.device.wait_for_fences(&[fence], true, u64::MAX)
+        };
+        let t = Instant::now();
+        unsafe { self.device.destroy_fence(fence, None) };
+        wait_result.ok()?;
+        Some(t)
+    }
+}

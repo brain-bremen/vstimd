@@ -49,6 +49,7 @@ struct State {
     window: Arc<Window>,
     refresh_hz: f64,
     window_mode: WindowMode,
+    hardware_model: String,
 }
 
 impl State {
@@ -59,6 +60,7 @@ impl State {
         event_loop: &ActiveEventLoop,
         window_mode: WindowMode,
         log_buffer: LogBuffer,
+        hardware_model: String,
     ) -> Self {
         let ctx = init::init(&window);
         // FIFO is set by build_context and never changed — the swapchain is
@@ -180,6 +182,7 @@ impl State {
             window,
             refresh_hz: hz,
             window_mode,
+            hardware_model,
         }
     }
 
@@ -190,11 +193,13 @@ impl State {
                 width_px: size.width,
                 height_px: size.height,
                 refresh_hz: self.refresh_hz,
+                mode_index: None,
             },
             backend: RenderTarget::Desktop(self.window_mode),
             local_ip: self.rs.local_ip.clone(),
             hostname: String::new(),
             gpu_name: String::new(),
+            hardware_model: self.hardware_model.clone(),
             wireframe: self.rs.ctx.supports_wireframe.then_some(self.rs.wireframe),
             // VK_GOOGLE_display_timing alone does not mean we're using display
             // timestamps yet — report GpuCompletion until present_wait is active.
@@ -278,6 +283,7 @@ pub struct WinitApp {
     modifiers: winit::event::Modifiers,
     is_fullscreen: bool,
     log_buffer: Option<LogBuffer>,
+    hardware_model: String,
 }
 
 impl WinitApp {
@@ -286,6 +292,7 @@ impl WinitApp {
         vtl: Option<Arc<Mutex<VtlState>>>,
         window_mode: WindowMode,
         log_buffer: LogBuffer,
+        hardware_model: String,
     ) -> Self {
         Self {
             scene: Some(scene),
@@ -295,6 +302,7 @@ impl WinitApp {
             state: None,
             modifiers: winit::event::Modifiers::default(),
             log_buffer: Some(log_buffer),
+            hardware_model,
         }
     }
 
@@ -371,6 +379,7 @@ impl ApplicationHandler for WinitApp {
                 event_loop,
                 self.window_mode,
                 log_buffer,
+                self.hardware_model.clone(),
             ));
         }
     }

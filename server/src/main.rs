@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 #[cfg(target_os = "linux")]
 use vstimd::render::DrmRenderState;
-use vstimd::render::{RenderTarget, WindowMode, WinitApp};
+use vstimd::render::{RenderTarget, WindowMode, WinitApp, query_hardware_model};
 use vstimd::scene::SceneState;
 use vstimd::vtl_state::VtlState;
 
@@ -22,6 +22,8 @@ fn main() {
         env!("CARGO_PKG_VERSION"),
         env!("VSTIMD_BUILD_DATE"),
     );
+    let hardware_model = query_hardware_model();
+    log::info!("vstimd: hardware: {hardware_model}");
 
     let config_dir = args.config_dir.clone().unwrap_or_else(|| std::path::PathBuf::from("."));
     let scene = Arc::new(RwLock::new(SceneState::new_with_config_dir(config_dir.clone())));
@@ -70,7 +72,7 @@ fn main() {
     match args.render_target {
         #[cfg(target_os = "linux")]
         RenderTarget::Drm => {
-            let rs = DrmRenderState::new(scene, vtl, log_buffer);
+            let rs = DrmRenderState::new(scene, vtl, log_buffer, hardware_model);
             if wait_zmq_bound(&zmq_bound, args.zmq_port) { notify_ready(); }
             rs.run_loop();
         }
@@ -85,7 +87,7 @@ fn main() {
                 std::process::exit(1);
             });
             event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-            let mut app = WinitApp::new(scene, vtl, window_mode, log_buffer);
+            let mut app = WinitApp::new(scene, vtl, window_mode, log_buffer, hardware_model);
             if wait_zmq_bound(&zmq_bound, args.zmq_port) { notify_ready(); }
             event_loop.run_app(&mut app).unwrap();
         }

@@ -5,7 +5,7 @@ pub mod display_info;
 pub use display_info::StimulusDisplayInfo;
 
 pub mod system_info;
-pub use system_info::{SystemInfo, query_local_ip};
+pub use system_info::{SystemInfo, query_local_ip, query_hardware_model};
 
 pub(crate) mod benchmark;
 pub use benchmark::BenchmarkState;

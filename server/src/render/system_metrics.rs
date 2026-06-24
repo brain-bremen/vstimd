@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use nvml_wrapper::Nvml;
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, Pid, ProcessRefreshKind, RefreshKind, System};
 
+#[derive(Default)]
 pub struct SystemMetrics {
     pub cpu_pct: f32,
     pub process_cpu_pct: f32,

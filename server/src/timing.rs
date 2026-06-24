@@ -86,6 +86,12 @@ impl FrameStats {
     /// Returns the number of frames dropped since the previous call
     /// (0 = on time). The same value is included in the `FrameTick`
     /// returned from `render_frame`.
+    /// Returns true while still in the warmup window (first few frames).
+    /// Callers should suppress drop warnings during this period.
+    pub fn is_warming_up(&self) -> bool {
+        self.frame_index < 5
+    }
+
     pub fn on_present(&mut self, vblank_time: std::time::Instant) -> u32 {
         let dropped = if let Some(last) = self.last_present {
             let dur_ns = vblank_time.duration_since(last).as_nanos() as u64;

@@ -456,8 +456,9 @@ pub fn render_frame(
 
     let submit_us = t_submit_start.elapsed().as_micros() as u32;
 
+    let warming_up = frame_stats.is_warming_up();
     let dropped_frames = frame_stats.on_present(vblank_time);
-    if dropped_frames > 0 {
+    if dropped_frames > 0 && !warming_up {
         log::warn!(
             "vstimd: {} dropped frame(s) before frame {} \
              [tess={}µs fence={}µs acquire={}µs record={}µs submit={}µs]",

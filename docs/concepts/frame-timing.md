@@ -21,16 +21,62 @@ which frame a batch of changes becomes visible.
 
 ## Vblank synchronisation
 
-The server uses the following priority chain to lock to the display vblank:
+The server uses the following priority chain to lock to the display vblank. Each source
+is tried in order; on error the source is permanently disabled and the next is used.
+The active source is shown in the **System** panel of the debug overlay (F1).
 
-1. **DRM vblank** (`drmWaitVBlank`) — used in bare-metal DRM mode. Most precise; hardware
-   interrupt from the display controller.
-2. **`VK_KHR_present_wait`** — Vulkan extension, blocks until the swapchain image is
-   displayed. Available on most drivers in desktop mode.
-3. **`VK_GOOGLE_display_timing`** — predicted presentation timestamps.
-4. **GPU fence completion** — fallback; waits for the GPU to finish, not for the actual flip.
+### Priority chain
 
-The active clock source is shown in the **System** panel of the debug overlay (F1).
+1. **DRM vblank** (`DRM_IOCTL_WAIT_VBLANK`) — bare-metal DRM mode only. A blocking
+   kernel ioctl that fires at the start of the vertical blanking interval. Most precise;
+   zero offset from true vblank, minimal kernel overhead.
+
+2. **`VK_EXT_display_control`** (`vkRegisterDisplayEventEXT`) — bare-metal DRM mode
+   fallback. Creates a one-shot Vulkan fence that signals on `FIRST_PIXEL_OUT`, which
+   is the first active scanline after the blanking interval ends. On a 120 Hz display
+   this is approximately **330 µs** after true vblank — a fixed, predictable offset.
+   Used on Jetson Orin (Tegra nvdisplay) where `DRM_IOCTL_WAIT_VBLANK` is not
+   available when `VK_KHR_display` holds DRM master (the driver does not enable
+   vblank IRQs for non-master file descriptors).
+
+3. **`VK_KHR_present_wait`** — Vulkan extension that wakes after the previous frame is
+   confirmed presented. Available on most drivers in desktop (winit) mode.
+
+4. **GPU fence completion** — last resort. Wakes when the GPU finishes rendering, not
+   when the frame appears on screen. Adds up to one frame of unpredictable latency.
+   The overlay labels this *"Clock: GPU-completion (inaccurate)"*.
+
+### Why FIFO acquire is not used as a vblank source
+
+`vkAcquireNextImageKHR` with `FIFO` present mode blocks at the display refresh rate,
+but the block point is at **image acquisition** — before tessellation and upload.
+This means scene inputs are processed after the sync point; they are stale by one
+full frame relative to sources 1–3, which all fire after the previous frame is already
+visible and before tessellation begins.
+
+For input-latency-sensitive applications (neuroscience, psychophysics) the DRM /
+`VK_EXT_display_control` approach is the correct choice.
+
+### Platform notes
+
+| Platform | Source selected | Reason |
+|---|---|---|
+| Jetson Orin (nvdisplay) | VK_EXT_display_control | nvdisplay does not enable vblank IRQs for non-master fds |
+| Generic Linux desktop | DrmVblank or PresentWait | Depends on driver and present mode |
+| Any platform | GpuCompletion | Last resort if no vblank source is available |
+
+### VK_EXT_display_control prerequisites
+
+The extension requires three things at init time:
+
+1. `VK_EXT_display_surface_counter` enabled as an **instance** extension.
+2. `VK_EXT_display_control` enabled as a **device** extension.
+3. `VkSwapchainCounterCreateInfoEXT` with `VK_SURFACE_COUNTER_VBLANK_BIT_EXT` chained
+   into swapchain creation — without this, `vkRegisterDisplayEventEXT` returns
+   `ERROR_UNKNOWN`.
+
+These are handled automatically by `drm/init.rs` and `vk/context.rs`; the extension is
+only activated when the driver advertises all required capabilities.
 
 ## Present mode
 
