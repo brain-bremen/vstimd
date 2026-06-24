@@ -46,10 +46,9 @@ fn main() -> Result<()> {
         toml::from_str(&raw).with_context(|| format!("parse config {config_path}"))?;
 
     info!(
-        "gpiochip-daqd: VTL={} chip={} poll={}ms  ({} output(s), {} input(s)){}",
+        "gpiochip-daqd: VTL={} chip={}  ({} output(s), {} input(s)){}",
         cfg.vtl.shm_name,
         cfg.gpio.chip,
-        OUTPUT_POLL_INTERVAL.as_millis(),
         cfg.outputs.len(),
         cfg.inputs.len(),
         if standalone { "  [standalone]" } else { "" },
@@ -101,7 +100,7 @@ fn main() -> Result<()> {
     #[cfg(target_os = "linux")]
     sd_notify::notify(false, &[sd_notify::NotifyState::Ready])?;
 
-    // Output polling loop on the main thread — runs until GPIO error.
+    // Output loop on the main thread — runs until GPIO error.
     if let Err(e) = bridge::run_output_loop(&gpio.chip, &outputs, &vtl, OUTPUT_POLL_INTERVAL) {
         error!("output loop error: {e:#}");
         return Err(e);

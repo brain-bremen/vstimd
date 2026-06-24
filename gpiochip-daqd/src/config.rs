@@ -18,7 +18,7 @@ pub struct VtlConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct GpioConfig {
-    /// GPIO chip device path, e.g. "/dev/gpiochip0" (tegra234-gpio, 164 lines).
+    /// GPIO chip device path, e.g. "/dev/gpiochip0".
     pub chip: String,
 }
 

@@ -25,9 +25,8 @@ No SIGTERM/SIGINT handler.  The daemon should drain output pins to 0 on exit
 so downstream equipment isn't left with a stale high signal.
 
 ### CPU core affinity
-The Jetson Orin Nano has 6 Cortex-A78AE cores.  Pinning threads to dedicated
-cores eliminates OS migration overhead and prevents cache thrashing between
-the GPIO bridge and vstimd's render loop.
+Pinning threads to dedicated cores eliminates OS migration overhead and
+prevents cache thrashing between the GPIO bridge and vstimd's render loop.
 
 Proposed layout:
 
@@ -54,10 +53,9 @@ Implementation — two layers:
    Expose the core assignments as config fields (default `None` = no pinning)
    so they can be disabled without a recompile.
 
-3. **Kernel** (optional, best latency): add `isolcpus=4,5 nohz_full=4,5
-   rcu_nocbs=4,5` to `/boot/extlinux/extlinux.conf` on the Jetson.  Removes
-   cores 4–5 from the general scheduler entirely; worst-case output jitter drops
-   from ~200 µs to ~10 µs.  Requires a reboot and affects all processes.
+3. **Kernel** (optional, best latency): isolate cores from the general scheduler
+   via `isolcpus`, `nohz_full`, `rcu_nocbs` kernel parameters.  Worst-case
+   output jitter drops from ~200 µs to ~10 µs.  Requires a reboot.
 
 Config addition needed:
 ```toml
@@ -74,9 +72,8 @@ For tighter output timing consider:
   and documenting the expected worst-case latency
 
 ### Per-line GPIO chip
-All lines must currently share the same `[gpio] chip`.  Some Jetson header pins
-are on `gpiochip1` (tegra234-gpio-aon).  Config should allow per-line chip
-override:
+All lines must currently share the same `[gpio] chip`.  On some boards, pins
+are spread across multiple chips.  Config should allow per-line chip override:
 ```toml
 [[outputs]]
 name      = "stim_onset"
@@ -97,9 +94,10 @@ the config directory and set GPIO group permissions.
 ## Known gaps in tests
 
 ### Hardware pin mapping table
-`tests/loopback.rs` documents GPIO line *offsets* but not which 40-pin header
-pins they correspond to on Jetson Orin Nano.  Add a mapping table so it's easy
-to pick a safe loopback pair without consulting the datasheet.
+`tests/loopback.rs` documents GPIO line *offsets* but not which header pins
+they correspond to.  Device-specific config files (e.g.
+`jetson-orin-nano_in16_out4.toml`) carry this mapping; link to them from the
+test docs so it's easy to pick a safe loopback pair.
 
 ### Output pulse test
 No test exercises `output_set_pulse` / `poll_outputs_once` for one-shot pulse
@@ -111,5 +109,5 @@ compares it to the `Instant` before `set_value` to characterise round-trip
 latency of the loopback path.
 
 ### CI for hw-tests
-Hardware tests are manually opt-in only.  If a Jetson with loopback wiring is
+Hardware tests are manually opt-in only.  If a board with loopback wiring is
 available in CI, wire up `--features hw-tests` with the appropriate env vars.

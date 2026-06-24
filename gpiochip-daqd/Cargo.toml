@@ -2,7 +2,7 @@
 name        = "gpiochip-daqd"
 version     = "0.1.0"
 edition     = "2024"
-description = "Jetson GPIO ↔ VTL trigger-line bridge daemon"
+description = "Linux gpiochip ↔ VTL trigger-line bridge daemon"
 license     = "AGPL-3.0-only"
 repository  = "https://github.com/braemons/vstimd"
 
@@ -38,13 +38,13 @@ depends    = "$auto"
 section    = "science"
 priority   = "optional"
 extended-description = """\
-gpiochip-daqd bridges the VTL shared-memory trigger lines to physical Jetson \
-GPIO pins.  Output lines (vstimd → GPIO) are polled at 1 kHz; input lines \
-(GPIO → vstimd) use kernel edge-event blocking with no busy-wait.\
+gpiochip-daqd bridges VTL shared-memory trigger lines to physical GPIO pins \
+via the Linux GPIO character device (/dev/gpiochipN).  Compatible with any \
+Linux board that exposes GPIO through the kernel character device interface.\
 """
 assets = [
     ["target/release/gpiochip-daqd",               "usr/bin/gpiochip-daqd",                        "755"],
-    ["config/gpiochip-daqd.toml",                  "etc/braemons/gpiochip-daqd/gpiochip-daqd.toml", "644"],
+    ["config/jetson-orin-nano_in16_out4.toml",       "etc/braemons/gpiochip-daqd/gpiochip-daqd.toml", "644"],
 ]
 maintainer-scripts = "../packaging/debian/"
 

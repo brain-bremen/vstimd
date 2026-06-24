@@ -1,5 +1,5 @@
 [Unit]
-Description=Jetson GPIO bridge for VTL trigger lines
+Description=Linux gpiochip ↔ VTL trigger-line bridge
 Documentation=https://github.com/braemons/vstimd
 # Start after vstimd so the VTL shared-memory segment exists.
 # BindsTo ensures we stop if vstimd exits (segment would be unlinked).

@@ -1,14 +1,14 @@
-# /etc/braemons/gpiochip-daqd/gpiochip-daqd.toml
-# Jetson GPIO ↔ VTL trigger-line bridge configuration.
+# gpiochip-daqd — NVIDIA Jetson Orin Nano, 16 inputs / 4 outputs
+# Install to: /etc/braemons/gpiochip-daqd/gpiochip-daqd.toml
 #
-# VTL bit numbering convention (Jetson Orin Nano 40-pin header):
+# VTL bit numbering convention:
 #
 #   vtl_bit  ==  40-pin header pin number
 #
-# Inputs (bank 0) and outputs (bank 0) are completely independent VTL arrays,
-# so the same bit number can appear in both without conflict.
+# Inputs (bank 0) and outputs (bank 0) are independent VTL arrays;
+# the same bit number can appear in both without conflict.
 #
-# Header pin → GPIO line offset mapping (gpiochip0 = tegra234-gpio):
+# 40-pin header pin → gpiochip0 line offset:
 #
 #   pin  7 → line 144    pin 12 → line  50    pin 19 → line 135    pin 26 → line 137
 #   pin 11 → line 112    pin 13 → line  85    pin 21 → line 134    pin 29 → line 105
@@ -30,7 +30,7 @@ shm_name = "/vstimd_vtl"
 chip = "/dev/gpiochip0"
 
 # ── Output lines (vtl_bit = header pin number) ────────────────────────────────
-# vstimd writes output_state; this daemon drives these pins to match (~1 kHz).
+# vstimd writes output_state; this daemon drives these pins to match.
 
 [[outputs]]
 name      = "out_pin36"

@@ -10,7 +10,7 @@ use crate::config::{Edge, InputLine, OutputLine};
 
 const CONSUMER: &str = "gpiochip-daqd";
 
-/// SCHED_FIFO priority for the output polling thread (timing-critical).
+/// SCHED_FIFO priority for the output thread (timing-critical).
 pub const PRIO_OUTPUT: i32 = 60;
 /// SCHED_FIFO priority for input watcher threads (interrupt-driven, less critical).
 pub const PRIO_INPUT: i32 = 50;
@@ -38,7 +38,7 @@ pub fn set_thread_realtime(priority: i32) {
 #[cfg(not(target_os = "linux"))]
 pub fn set_thread_realtime(_priority: i32) {}
 
-/// Drives GPIO output pins from VTL `output_state`, polled every `interval`.
+/// Drives GPIO output pins from VTL `output_state` on a fixed interval.
 ///
 /// Runs forever (or until a GPIO error). Intended for the main thread after
 /// input watchers have been spawned.

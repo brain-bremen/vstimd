@@ -39,7 +39,7 @@ mod hw {
     }
 
     fn unique_shm() -> String {
-        format!("/jetsond_lb_{}", std::process::id())
+        format!("/gpiochip_lb_{}", std::process::id())
     }
 
     /// Verify the wire: drive the output pin directly and read the input pin.
