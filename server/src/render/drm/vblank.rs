@@ -93,6 +93,17 @@ impl DrmVblank {
 /// display's first-pixel-out event (≈ vblank).  This is the fallback when
 /// the legacy `DRM_IOCTL_WAIT_VBLANK` ioctl is not supported by the driver
 /// (e.g. NVIDIA Tegra nvdisplay).
+///
+/// # Two-phase usage (avoids double-blocking with FIFO acquire)
+///
+/// With `VK_PRESENT_MODE_FIFO_KHR`, `vkAcquireNextImageKHR` already blocks at
+/// the display vblank boundary.  If we also block on `FIRST_PIXEL_OUT` *before*
+/// the acquire the loop runs at half the refresh rate.
+///
+/// The fix: **register** the fence just before render/present; **collect** it at
+/// the very top of the *next* iteration before acquire.  The collect blocks for
+/// the remaining ≈7 ms until FIRST_PIXEL_OUT fires, then acquire sees a free
+/// image and returns immediately.
 pub struct VkVblank {
     device: ash::Device,
     loader: ash::ext::display_control::Device,
@@ -108,9 +119,9 @@ impl VkVblank {
         Self { device, loader, display }
     }
 
-    /// Block until the next display vblank.
-    /// Returns `None` on error (caller should disable and fall back).
-    pub fn wait(&self) -> Option<Instant> {
+    /// Register a FIRST_PIXEL_OUT event and return the one-shot fence.
+    /// Returns `None` on error.
+    pub fn register(&self) -> Option<ash::vk::Fence> {
         let event_info = ash::vk::DisplayEventInfoEXT::default()
             .display_event(ash::vk::DisplayEventTypeEXT::FIRST_PIXEL_OUT);
         let mut fence = ash::vk::Fence::null();
@@ -127,6 +138,13 @@ impl VkVblank {
             log::warn!("vstimd: vkRegisterDisplayEventEXT failed: {result:?}");
             return None;
         }
+        Some(fence)
+    }
+
+    /// Wait for a previously registered fence and return the timestamp.
+    /// Destroys the fence regardless of outcome.
+    /// Returns `None` on error (caller should disable and fall back).
+    pub fn collect(&self, fence: ash::vk::Fence) -> Option<Instant> {
         let wait_result = unsafe {
             self.device.wait_for_fences(&[fence], true, u64::MAX)
         };

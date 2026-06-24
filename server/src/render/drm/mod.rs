@@ -36,6 +36,10 @@ pub struct DrmRenderState {
     input: InputState,
     drm_vblank: Option<DrmVblank>,
     vk_vblank: Option<VkVblank>,
+    /// One-shot FIRST_PIXEL_OUT fence registered just before the previous present;
+    /// collected at the top of the next iteration to get an accurate vblank time
+    /// without double-blocking with the FIFO acquire.
+    pending_vblank_fence: Option<ash::vk::Fence>,
     display_info: StimulusDisplayInfo,
     hardware_model: String,
     /// Animation output bits accumulated this frame; committed at [A] next frame.
@@ -203,6 +207,7 @@ impl DrmRenderState {
             input: InputState::new(),
             drm_vblank,
             vk_vblank,
+            pending_vblank_fence: None,
             display_info,
             hardware_model,
             pending_outputs: [0; vtl::MAX_BANKS],
@@ -255,6 +260,12 @@ impl DrmRenderState {
         }
     }
 
+    /// Collect the FIRST_PIXEL_OUT fence registered at the end of the previous
+    /// frame.  Blocks for the remaining portion of the frame period (~7 ms at
+    /// 120 Hz) until the display signals that our previous present is on screen.
+    ///
+    /// DRM vblank (when available) is a simple blocking ioctl that replaces the
+    /// collect/register two-phase scheme used by the VK path.
     fn wait_vblank(&mut self) -> Option<std::time::Instant> {
         if let Some(vblank) = self.drm_vblank.as_ref() {
             match vblank.wait() {
@@ -265,21 +276,43 @@ impl DrmRenderState {
                 }
             }
         }
-        // vkRegisterDisplayEventEXT requires at least one prior present to succeed
-        // on NVIDIA Tegra nvdisplay.  Skip the VK path on frame 0; it will be
-        // attempted from frame 1 onward once the swapchain has been presented.
-        if self.rs.frame_index > 0 {
+        // VK path: collect the fence registered at the end of the previous frame.
+        // On frame 0 there is no pending fence; we return None and render without
+        // a vblank timestamp (render_one_frame falls back to Instant::now()).
+        if let Some(fence) = self.pending_vblank_fence.take() {
             if let Some(vblank) = self.vk_vblank.as_ref() {
-                match vblank.wait() {
+                match vblank.collect(fence) {
                     Some(t) => return Some(t),
                     None => {
                         log::warn!("vstimd: disabling VK_EXT_display_control vblank after error");
                         self.vk_vblank = None;
                     }
                 }
+            } else {
+                // vk_vblank was disabled between register and collect; destroy fence.
+                unsafe { self.rs.ctx.device.destroy_fence(fence, None) };
             }
         }
         None
+    }
+
+    /// Register the FIRST_PIXEL_OUT fence for collection at the top of the next
+    /// frame.  Called just before render/present so the fence captures the vblank
+    /// that will show the frame we are about to submit.
+    ///
+    /// Not called on the DRM vblank path (DRM handles its own blocking ioctl).
+    fn register_vblank(&mut self) {
+        if self.drm_vblank.is_some() {
+            return;
+        }
+        // vkRegisterDisplayEventEXT always returns ERROR_UNKNOWN on NVIDIA Tegra
+        // before the first present.  Skip frame 0 to avoid a spurious warning.
+        if self.rs.frame_index == 0 {
+            return;
+        }
+        if let Some(vblank) = self.vk_vblank.as_ref() {
+            self.pending_vblank_fence = vblank.register();
+        }
     }
 
     pub fn run_loop(mut self) {
@@ -338,13 +371,13 @@ impl DrmRenderState {
             let egui_raw_input = self.rs.show_overlay
                 .then(|| self.build_egui_raw_input(nav_events));
 
-            // 3. Wait for the next vblank (blocking kernel scanout ioctl).
-            //    When this returns, the previous frame is confirmed visible on
-            //    the display.  This is the canonical "frame start" boundary.
+            // 3. Collect the FIRST_PIXEL_OUT fence from the previous present
+            //    (VK path) or block on the DRM vblank ioctl.  When this returns,
+            //    the previous frame is confirmed visible on the display.
             let screen_clock = self.wait_vblank();
 
             // Log the settled clock source once, after frame 1 (when the VK
-            // vblank path has been exercised for the first time).
+            // fence has been collected for the first time).
             if !clock_logged && self.rs.frame_index > 0 {
                 clock_logged = true;
                 log::info!("vstimd: vblank clock: {}", self.sys_info().clock_source.as_str());
@@ -364,6 +397,12 @@ impl DrmRenderState {
                     &input_edges, &output_snapshot, &mut self.pending_outputs,
                 );
             }
+
+            // Register the FIRST_PIXEL_OUT fence for the frame we are about to
+            // present.  The fence is collected at the top of the next iteration.
+            // This two-phase register→collect pattern avoids double-blocking with
+            // the FIFO vkAcquireNextImageKHR (which also syncs to the display).
+            self.register_vblank();
 
             // 4. Render: build overlay UI, tessellate scene, record Vulkan
             //    commands, submit to GPU, present to display.
