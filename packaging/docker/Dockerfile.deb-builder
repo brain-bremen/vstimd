@@ -1,0 +1,98 @@
+# Compile and package inside the target OS image so the binary's glibc
+# requirement matches exactly. cargo-deb reads metadata from Cargo.toml —
+# no debian/control, debian/rules, or debian/changelog needed.
+#
+# Usage (amd64, Ubuntu 22.04):
+#   docker build -f packaging/docker/Dockerfile.deb-builder -t vstimd-deb-builder .
+#   docker run --rm -v $(pwd)/dist:/output vstimd-deb-builder
+#
+# Cross-compile for arm64 (Jetson / Raspberry Pi):
+#   docker build -f packaging/docker/Dockerfile.deb-builder \
+#     --build-arg RUST_TARGET=aarch64-unknown-linux-gnu \
+#     --build-arg DEB_HOST_ARCH=arm64 \
+#     -t vstimd-deb-builder-arm64 .
+#
+# Target a different Ubuntu release (e.g. 24.04):
+#   docker build -f packaging/docker/Dockerfile.deb-builder \
+#     --build-arg BASE_IMAGE=ubuntu:24.04 \
+#     -t vstimd-deb-builder-noble .
+
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
+
+ARG RUST_TARGET=x86_64-unknown-linux-gnu
+ARG DEB_HOST_ARCH=amd64
+ARG REVISION=1
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CARGO_HOME=/usr/local/cargo
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV PATH=/usr/local/cargo/bin:$PATH
+ENV PKG_CONFIG_ALLOW_CROSS=1
+ENV PKG_CONFIG_AARCH64_UNKNOWN_LINUX_GNU=/usr/local/bin/aarch64-linux-gnu-pkg-config
+
+# Build-time deps + dpkg-dev (for cargo-deb's dpkg-shlibdeps) + amd64 runtime
+# libs needed so dpkg-shlibdeps can resolve shared-library dependencies.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates \
+        build-essential pkg-config \
+        libinput-dev libudev-dev libdrm-dev libwayland-dev \
+        protobuf-compiler \
+        dpkg-dev binutils-aarch64-linux-gnu \
+        libinput10 libudev1 libcap2 libevdev2 libmtdev1 \
+        libwacom9 libgudev-1.0-0 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+# arm64 cross-compilation setup (no-op for native amd64 builds).
+# Also installs arm64 runtime libs so dpkg-shlibdeps can resolve dependencies
+# for the arm64 ELF binary. archive.ubuntu.com only carries amd64/i386;
+# arm64 packages come from ports.ubuntu.com.
+RUN if [ "${RUST_TARGET}" = "aarch64-unknown-linux-gnu" ]; then \
+        dpkg --add-architecture arm64 && \
+        sed -i 's/^deb /deb [arch=amd64] /g' /etc/apt/sources.list && \
+        printf "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse\n\
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse\n\
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse\n" \
+            >> /etc/apt/sources.list && \
+        apt-get update && apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu \
+            libinput-dev:arm64 libudev-dev:arm64 libdrm-dev:arm64 libwayland-dev:arm64 \
+            libudev1:arm64 libinput10:arm64 libcap2:arm64 libevdev2:arm64 libmtdev1:arm64 \
+            libwacom9:arm64 libgudev-1.0-0:arm64 libglib2.0-0:arm64 \
+            libgcc-s1:arm64 libc6:arm64 && \
+        rm -rf /var/lib/apt/lists/* && \
+        mkdir -p ${CARGO_HOME} && \
+        printf '[target.aarch64-unknown-linux-gnu]\nlinker = "aarch64-linux-gnu-gcc"\n' \
+            >> ${CARGO_HOME}/config.toml && \
+        printf '#!/bin/sh\nexec env PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig pkg-config "$@"\n' \
+            > /usr/local/bin/aarch64-linux-gnu-pkg-config && \
+        chmod +x /usr/local/bin/aarch64-linux-gnu-pkg-config; \
+    fi
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable \
+    && rustup target add ${RUST_TARGET}
+
+# Install cargo-deb as a separate layer so Docker caches it independently
+# of source changes.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git \
+    cargo install cargo-deb
+
+WORKDIR /src
+
+COPY Cargo.toml Cargo.lock ./
+COPY server/     server/
+COPY vtl/        vtl/
+COPY proto/      proto/
+COPY packaging/  packaging/
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git \
+    --mount=type=cache,target=/src/target,id=cargo-target-${RUST_TARGET} \
+    cargo build --release --target ${RUST_TARGET} && \
+    cargo deb -p vstimd --no-build --target ${RUST_TARGET} --deb-revision ${REVISION} && \
+    mkdir -p /out && \
+    find target -name 'vstimd_*.deb' -not -name '*dbgsym*' -exec cp {} /out/ \;
+
+CMD ["bash", "-c", "cp /out/*.deb /output/ && echo 'deb copied to /output/'"]

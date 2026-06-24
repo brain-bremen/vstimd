@@ -42,10 +42,15 @@ impl VtlOwner {
         #[cfg(unix)]
         {
             let name = CString::new(shm_name).expect("shm_name must not contain nul");
+
+            // Remove any stale segment (e.g. from a previous run that crashed
+            // as a different user).  Ignore errors — it may not exist.
+            unsafe { libc::shm_unlink(name.as_ptr()) };
+
             let fd = unsafe {
                 libc::shm_open(
                     name.as_ptr(),
-                    libc::O_CREAT | libc::O_RDWR | libc::O_TRUNC,
+                    libc::O_CREAT | libc::O_EXCL | libc::O_RDWR,
                     0o600,
                 )
             };

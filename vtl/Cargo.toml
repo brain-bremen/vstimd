@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 description = "Virtual Trigger Line shared-memory interface for vstimd"
 license = "AGPL-3.0-only"
-license-file = "../LICENSE"
 repository = "https://github.com/braemons/vstimd"
 
 [dependencies]

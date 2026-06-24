@@ -94,6 +94,12 @@ message ListStimuliResponse {
   repeated StimulusEntry entries = 1;
 }
 
+// ── Lifecycle (system target) ────────────────────────────────────────────────
+
+// Request a clean server shutdown. The server finishes the current frame,
+// tears down Vulkan and the VT, then exits. Equivalent to SIGTERM.
+message ShutdownRequest {}
+
 // ── Config persistence (system target) ───────────────────────────────────────
 
 // List all configs available in the server's config directory.

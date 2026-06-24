@@ -11,6 +11,8 @@ pub enum AppKey {
     F2,
     F3,
     D,
+    /// Ctrl+Alt+Fn pressed — forward to the kernel as a VT switch.
+    SwitchVt(u16),
 }
 
 // ── TTY keyboard suppression guard ───────────────────────────────────────────
@@ -111,6 +113,19 @@ impl InputState {
         }
     }
 
+    /// Suspend libinput, releasing the EVIOCGRAB on all input devices so the
+    /// active VT's session can receive input while vstimd is in the background.
+    pub fn suspend(&mut self) {
+        self.ctx.suspend();
+    }
+
+    /// Resume libinput, re-acquiring EVIOCGRAB on all input devices.
+    pub fn resume(&mut self) {
+        if self.ctx.resume().is_err() {
+            log::warn!("vstimd: libinput resume failed");
+        }
+    }
+
     /// Drain pending events.  Returns app-level key actions and egui keyboard
     /// events for overlay navigation (Tab, arrows, Enter, Space, etc.).
     /// Non-blocking — returns immediately if there are no events.
@@ -129,10 +144,22 @@ impl InputState {
             match kb.key() {
                 // Modifier tracking (press + release) — no separate egui event;
                 // modifier state is embedded in subsequent key events.
-                42 | 54 => self.modifiers.shift = pressed, // KEY_LEFTSHIFT, KEY_RIGHTSHIFT
-                29 | 97 => self.modifiers.ctrl = pressed,  // KEY_LEFTCTRL, KEY_RIGHTCTRL
+                42 | 54  => self.modifiers.shift = pressed, // KEY_LEFTSHIFT, KEY_RIGHTSHIFT
+                29 | 97  => self.modifiers.ctrl  = pressed, // KEY_LEFTCTRL,  KEY_RIGHTCTRL
+                56 | 100 => self.modifiers.alt   = pressed, // KEY_LEFTALT,   KEY_RIGHTALT
+                // Ctrl+Alt+F1–F12 → VT switch (libinput grabs input exclusively,
+                // so the kernel never sees these; we forward them ourselves).
+                code @ 59..=68 if pressed && self.modifiers.ctrl && self.modifiers.alt => {
+                    app_keys.push(AppKey::SwitchVt((code - 58) as u16)); // F1=59→1 … F10=68→10
+                }
+                87 if pressed && self.modifiers.ctrl && self.modifiers.alt => {
+                    app_keys.push(AppKey::SwitchVt(11)); // KEY_F11
+                }
+                88 if pressed && self.modifiers.ctrl && self.modifiers.alt => {
+                    app_keys.push(AppKey::SwitchVt(12)); // KEY_F12
+                }
                 // App-level keys (press only)
-                1 if pressed => app_keys.push(AppKey::Escape),  // KEY_ESC
+                1  if pressed => app_keys.push(AppKey::Escape), // KEY_ESC
                 32 if pressed => app_keys.push(AppKey::D),      // KEY_D
                 59 if pressed => app_keys.push(AppKey::F1),     // KEY_F1
                 60 if pressed => app_keys.push(AppKey::F2),     // KEY_F2

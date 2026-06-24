@@ -2,6 +2,7 @@ mod display_guard;
 mod init;
 mod input;
 mod vblank;
+mod vt;
 
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -26,8 +27,9 @@ use self::vblank::DrmVblank;
 /// `VK_KHR_display` without a compositor.
 ///
 /// Fields drop in declaration order: `rs` (Vulkan resources) before
-/// `display_guard` (CRTC restore), so the kernel display is restored only
-/// after Vulkan has released DRM master.
+/// `display_guard` (CRTC restore) before `vt_guard` (KD_TEXT restore), so
+/// the VT is returned to text mode only after Vulkan has fully released the
+/// display hardware.
 pub struct DrmRenderState {
     rs: RenderState,
     vtl: Option<Arc<Mutex<VtlState>>>,
@@ -36,14 +38,24 @@ pub struct DrmRenderState {
     display_info: StimulusDisplayInfo,
     /// Animation output bits accumulated this frame; committed at [A] next frame.
     pending_outputs: [u64; vtl::MAX_BANKS],
-    /// Holds the CRTC snapshot; dropped last to restore the console after
-    /// Vulkan teardown.  `#[allow(dead_code)]` silences the "never read"
-    /// warning — the value is consumed by its `Drop` impl.
+    /// Holds the CRTC snapshot; dropped before `vt_guard` to restore the
+    /// console framebuffer before KD_TEXT is re-enabled.
     #[allow(dead_code)]
     display_guard: Option<DisplayGuard>,
+    /// Activates the target VT and holds KD_GRAPHICS; dropped last so the
+    /// terminal isn't returned to text mode until Vulkan teardown is complete.
+    #[allow(dead_code)]
+    vt_guard: vt::VtGuard,
+    /// True while our VT is not the active one (we released the input grab).
+    suspended: bool,
 }
 
 fn check_device_permissions() {
+    // Root can access all devices regardless of group membership.
+    if unsafe { libc::getuid() } == 0 {
+        return;
+    }
+
     let mut missing: Vec<String> = Vec::new();
 
     let drm_ok = (0..8u32).any(|n| {
@@ -95,8 +107,14 @@ impl DrmRenderState {
     pub fn new(scene: Arc<RwLock<SceneState>>, vtl: Option<Arc<Mutex<VtlState>>>, log_buffer: LogBuffer) -> Self {
         check_device_permissions();
 
-        // Snapshot display state before Vulkan takes DRM master.
+        // Snapshot display state first, while the current VT still has an
+        // active CRTC mode.  On Jetson nvdisplay the VT switch deactivates
+        // the CRTC (mode → None), so we must save state before switching.
         let display_guard = DisplayGuard::acquire();
+
+        // Now activate the target VT and set KD_GRAPHICS so the kernel stops
+        // writing text over our framebuffer.
+        let vt_guard = vt::VtGuard::acquire();
 
         // Open DRM vblank BEFORE Vulkan init. After VK_KHR_display takes DRM
         // master the KMS CRTC state changes and get_crtc().mode() returns None,
@@ -180,6 +198,8 @@ impl DrmRenderState {
             display_info,
             pending_outputs: [0; vtl::MAX_BANKS],
             display_guard,
+            vt_guard,
+            suspended: false,
         }
     }
 
@@ -240,20 +260,28 @@ impl DrmRenderState {
     }
 
     pub fn run_loop(mut self) {
-        // SIGTERM/SIGINT → set flag → clean exit so Drop restores the CRTC.
-        static SHUTDOWN: std::sync::atomic::AtomicBool =
-            std::sync::atomic::AtomicBool::new(false);
-        extern "C" fn on_signal(_: libc::c_int) {
-            SHUTDOWN.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-        unsafe {
-            libc::signal(libc::SIGTERM, on_signal as *const () as libc::sighandler_t);
-            libc::signal(libc::SIGINT, on_signal as *const () as libc::sighandler_t);
-        }
-
         loop {
-            if SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed) {
+            if crate::shutdown::is_requested() {
                 return;
+            }
+
+            // Handle VT_PROCESS signals: release input grab when switching away,
+            // re-acquire when switching back, so the other VT's session gets input.
+            if self.vt_guard.release_requested() {
+                self.input.suspend();
+                self.vt_guard.allow_release();
+                self.suspended = true;
+                log::info!("vstimd: VT released — input suspended");
+            }
+            if self.vt_guard.acquire_requested() {
+                self.vt_guard.confirm_acquire();
+                self.input.resume();
+                self.suspended = false;
+                log::info!("vstimd: VT re-acquired — input resumed");
+            }
+            if self.suspended {
+                std::thread::sleep(std::time::Duration::from_millis(16));
+                continue;
             }
 
             // 1. Poll keyboard input (non-blocking libinput drain).
@@ -261,6 +289,7 @@ impl DrmRenderState {
             for key in app_keys {
                 match key {
                     AppKey::Escape => return,
+                    AppKey::SwitchVt(n) => self.vt_guard.switch_to(n),
                     AppKey::D => crate::render::spawn_demo_stimuli(&self.rs.scene),
                     AppKey::F1 => self.rs.show_overlay = !self.rs.show_overlay,
                     AppKey::F2 => {

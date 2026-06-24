@@ -1,0 +1,242 @@
+#!/bin/bash
+# vstimd-boot-entry — add a "Boot to vstimd" bootloader entry
+#
+# Detects grubby (Fedora/RHEL), GRUB2 (Ubuntu/Debian/Fedora/Arch),
+# or extlinux (Jetson, Raspberry Pi) and registers a boot entry that boots
+# into vstimd.target (no display manager, vstimd starts automatically).
+#
+# Safe to run multiple times — exits cleanly if the entry already exists.
+# Must be run as root (except with --dry-run).
+set -euo pipefail
+
+TITLE="Boot to vstimd"
+KARG="systemd.unit=vstimd.target"
+EXTLINUX_LABEL="vstimd"
+EXTLINUX_PATHS=(
+    /boot/extlinux/extlinux.conf
+    /boot/firmware/extlinux/extlinux.conf
+)
+
+DRY_RUN=0
+
+die()  { echo "vstimd-boot-entry: error: $*" >&2; exit 1; }
+info() { echo "vstimd-boot-entry: $*"; }
+
+# Run a command (or print it in dry-run mode).
+run_cmd() {
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "  would run: $*"
+    else
+        "$@"
+    fi
+}
+
+# ── grubby (Fedora / RHEL / AlmaLinux / Rocky) ───────────────────────────────
+
+try_grubby() {
+    command -v grubby >/dev/null 2>&1 || return 1
+
+    if [ "$DRY_RUN" -eq 0 ]; then
+        if grubby --info=ALL 2>/dev/null | grep -q "title=${TITLE}"; then
+            info "entry already present (grubby) — nothing to do"
+            return 0
+        fi
+        local kernel
+        kernel=$(grubby --default-kernel) || die "grubby --default-kernel failed"
+        info "detected bootloader: grubby (kernel: $kernel)"
+        grubby --copy-default --add-kernel="$kernel" --title="$TITLE" --args="$KARG"
+        info "boot entry added"
+    else
+        info "detected bootloader: grubby"
+        echo "  would run: grubby --copy-default --add-kernel=\$(grubby --default-kernel) \\"
+        echo "               --title='${TITLE}' --args='${KARG}'"
+    fi
+    return 0
+}
+
+# ── GRUB2 — copy-and-modify approach ─────────────────────────────────────────
+#
+# Parses the existing grub.cfg to clone the default menuentry, then appends
+# the systemd.unit= kernel argument.  The result is written to custom.cfg
+# which GRUB sources automatically at boot — no grub-probe, no UUID lookup,
+# no update-grub / grub2-mkconfig call required.
+
+try_grub_custom() {
+    local cfg="" cfg_dir=""
+    for p in /boot/grub/grub.cfg /boot/grub2/grub.cfg; do
+        [ -f "$p" ] && cfg=$p && cfg_dir=$(dirname "$p") && break
+    done
+    [ -n "$cfg" ] || return 1
+
+    local custom="$cfg_dir/custom.cfg"
+
+    if [ "$DRY_RUN" -eq 0 ] && grep -qF "$TITLE" "$custom" 2>/dev/null; then
+        info "entry already present ($custom) — nothing to do"
+        return 0
+    fi
+
+    info "detected bootloader: GRUB2 (will clone default entry from $(basename "$cfg"))"
+
+    # Extract the first menuentry block from grub.cfg using balanced-brace counting.
+    local entry
+    entry=$(awk '
+        /^menuentry / && !found { found=1; depth=0 }
+        found {
+            for (i = 1; i <= length($0); i++) {
+                c = substr($0, i, 1)
+                if (c == "{") depth++
+                else if (c == "}") depth--
+            }
+            print
+            if (depth <= 0) exit
+        }
+    ' "$cfg" 2>/dev/null) || true
+
+    if [ -z "$entry" ]; then
+        [ "$DRY_RUN" -eq 1 ] \
+            && { echo "  (cannot read $cfg without root — run as root to verify entry)"; return 0; } \
+            || die "no menuentry found in $cfg — cannot clone default entry"
+    fi
+
+    # Rewrite the title and append the kernel argument to the linux line.
+    local new_entry
+    new_entry=$(printf '%s\n' "$entry" \
+        | sed "s/^menuentry .*{$/menuentry '${TITLE}' {/" \
+        | sed "s/^\([[:space:]]*linux[^[:space:]]*[[:space:]].*\)/\1 ${KARG}/")
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "--- would write $custom ---"
+        printf '%s\n' "$new_entry"
+        echo "---"
+    else
+        printf '%s\n' "$new_entry" > "$custom"
+        info "boot entry written to $custom"
+    fi
+    return 0
+}
+
+# ── extlinux (Jetson, Raspberry Pi, embedded) ─────────────────────────────────
+
+try_extlinux() {
+    local conf=""
+    for p in "${EXTLINUX_PATHS[@]}"; do
+        [ -f "$p" ] && conf=$p && break
+    done
+    [ -n "$conf" ] || return 1
+
+    if [ "$DRY_RUN" -eq 0 ] && grep -q "LABEL ${EXTLINUX_LABEL}" "$conf" 2>/dev/null; then
+        info "entry already present ($conf) — nothing to do"
+        return 0
+    fi
+
+    local template
+    template=$(awk '
+        /^LABEL / && !found { found=1; block=$0; next }
+        found && /^LABEL /  { exit }
+        found               { block = block "\n" $0 }
+        END                 { print block }
+    ' "$conf")
+    [ -n "$template" ] || die "no LABEL block found in $conf"
+
+    local new_entry
+    new_entry=$(echo "$template" \
+        | sed "s/^LABEL .*/LABEL ${EXTLINUX_LABEL}/" \
+        | sed "s/MENU LABEL .*/MENU LABEL ${TITLE}/" \
+        | sed "s/\(APPEND.*\)/\1 ${KARG}/")
+
+    info "detected bootloader: extlinux ($conf)"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo "--- would append to $conf ---"
+        printf '\n%s\n' "$new_entry"
+        echo "---"
+    else
+        printf '\n%s\n' "$new_entry" >> "$conf"
+        info "boot entry appended to $conf"
+    fi
+    return 0
+}
+
+# ── Removal ───────────────────────────────────────────────────────────────────
+
+do_remove() {
+    local removed=0
+
+    if command -v grubby >/dev/null 2>&1; then
+        local kernel
+        kernel=$(grubby --info=ALL 2>/dev/null \
+            | awk -F= "/title=${TITLE}/{found=1} found && /^kernel=/{print \$2; exit}")
+        if [ -n "$kernel" ]; then
+            run_cmd grubby --remove-kernel="$kernel"
+            info "removed grubby entry"
+            removed=1
+        fi
+    fi
+
+    for p in /boot/grub/grub.cfg /boot/grub2/grub.cfg; do
+        if [ -f "$p" ]; then
+            local custom
+            custom="$(dirname "$p")/custom.cfg"
+            if [ -f "$custom" ] && grep -qF "$TITLE" "$custom" 2>/dev/null; then
+                if [ "$DRY_RUN" -eq 1 ]; then
+                    echo "  would delete $custom"
+                else
+                    rm -f "$custom"
+                fi
+                info "removed $custom"
+                removed=1
+            fi
+            break
+        fi
+    done
+
+    for p in "${EXTLINUX_PATHS[@]}"; do
+        if [ -f "$p" ] && grep -q "LABEL ${EXTLINUX_LABEL}" "$p" 2>/dev/null; then
+            if [ "$DRY_RUN" -eq 1 ]; then
+                echo "  would remove LABEL ${EXTLINUX_LABEL} block from $p"
+            else
+                awk "
+                    /^LABEL ${EXTLINUX_LABEL}\$/ { skip=1 }
+                    skip && /^LABEL / && !/^LABEL ${EXTLINUX_LABEL}\$/ { skip=0 }
+                    !skip
+                " "$p" > "${p}.tmp" && mv "${p}.tmp" "$p"
+            fi
+            info "removed entry from $p"
+            removed=1
+        fi
+    done
+
+    [ "$removed" -eq 1 ] || info "no boot entry found — nothing to remove"
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+    --dry-run|-n)
+        DRY_RUN=1
+        info "dry-run mode — no changes will be made"
+        ;;
+    --remove|-r)
+        [ "$(id -u)" -eq 0 ] || die "must be run as root"
+        do_remove
+        exit 0
+        ;;
+    --help|-h)
+        echo "Usage: vstimd-boot-entry [--dry-run | --remove]"
+        echo "  (no args)   detect bootloader and add 'Boot to vstimd' entry"
+        echo "  --dry-run   show what would be done without making any changes"
+        echo "  --remove    remove the boot entry"
+        exit 0
+        ;;
+    "") ;;
+    *) die "unknown argument '$1' (try --help)" ;;
+esac
+
+[ "$DRY_RUN" -eq 1 ] || [ "$(id -u)" -eq 0 ] || die "must be run as root"
+
+try_grubby      && exit 0
+try_grub_custom && exit 0
+try_extlinux    && exit 0
+
+echo "vstimd-boot-entry: no supported bootloader detected — add the entry manually." >&2
+echo "  See: /usr/share/doc/vstimd/deploy.md  (Boot to vstimd section)" >&2
+exit 1

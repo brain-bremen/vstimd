@@ -1,0 +1,11 @@
+/var/log/vstimd/vstimd.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    postrotate
+        systemctl kill -s HUP rsyslog.service 2>/dev/null || true
+    endscript
+}

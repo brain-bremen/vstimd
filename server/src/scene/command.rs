@@ -135,6 +135,7 @@ fn command_summary(req: &proto::Request) -> String {
         Some(request::Body::LoadConfig(c)) => format!("LoadConfig({:?})", c.name),
         Some(request::Body::UploadConfig(c)) => format!("UploadConfig({:?})", c.name),
         Some(request::Body::RetrieveConfig(_)) => "RetrieveConfig".into(),
+        Some(request::Body::Shutdown(_)) => "Shutdown".into(),
         None => "?".into(),
     }
 }
@@ -232,6 +233,10 @@ impl SceneState {
             request::Body::LoadConfig(cmd) => self.cmd_load_config(cmd, vtl),
             request::Body::UploadConfig(cmd) => self.cmd_upload_config(cmd, vtl),
             request::Body::RetrieveConfig(_) => self.cmd_retrieve_config(vtl.as_deref()),
+            request::Body::Shutdown(_) => {
+                crate::shutdown::request();
+                ok_ack()
+            }
             _ => err(
                 proto::ErrorCode::WrongTarget,
                 "command requires a stimulus handle (target.stimulus > 0)",
@@ -276,7 +281,8 @@ impl SceneState {
             | request::Body::ListConfigs(_)
             | request::Body::LoadConfig(_)
             | request::Body::UploadConfig(_)
-            | request::Body::RetrieveConfig(_) => err(
+            | request::Body::RetrieveConfig(_)
+            | request::Body::Shutdown(_) => err(
                 proto::ErrorCode::WrongTarget,
                 "system command must use target.system (not a stimulus handle)",
             ),

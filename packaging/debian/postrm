@@ -1,0 +1,23 @@
+#!/bin/bash
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    # Remove the "Boot to vstimd" bootloader entry if the script is still present.
+    if command -v vstimd-boot-entry >/dev/null 2>&1; then
+        vstimd-boot-entry --remove 2>&1 | sed 's/^/vstimd: /' || true
+    fi
+fi
+
+if [ "$1" = "purge" ]; then
+    # Remove the vstimd system user and its primary group on full purge.
+    # On plain remove (apt remove) the user is left in place so that
+    # locally created config files remain accessible.
+    if id -u vstimd > /dev/null 2>&1; then
+        deluser --system vstimd || true
+    fi
+    if getent group vstimd > /dev/null 2>&1; then
+        delgroup --system vstimd || true
+    fi
+fi
+
+#DEBHELPER#

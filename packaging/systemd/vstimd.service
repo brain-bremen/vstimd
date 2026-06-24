@@ -5,7 +5,8 @@ After=systemd-udev-settle.service network.target
 Wants=systemd-udev-settle.service
 
 [Service]
-Type=simple
+Type=notify
+User=root
 ExecStart=/usr/bin/vstimd
 Restart=on-failure
 RestartSec=2
@@ -15,17 +16,24 @@ TimeoutStopSec=5
 # Log level — override with e.g. RUST_LOG=debug for diagnostics.
 Environment=RUST_LOG=info
 
+# Prevent Vulkan from picking up a running Wayland/X11 session and trying
+# to use WSI instead of VK_KHR_display.
+UnsetEnvironment=DISPLAY WAYLAND_DISPLAY XDG_RUNTIME_DIR
+
 # VT / terminal — systemd restores KD_TEXT and hangs up the TTY on stop,
 # which avoids the black-screen-until-VT-switch issue on clean exit.
-TTYPath=/dev/tty1
+TTYPath=/dev/tty3
 StandardInput=tty
+StandardOutput=journal
+StandardError=journal
 TTYReset=yes
 TTYVHangup=yes
 
 # libinput reads /dev/input/event*  (needs 'input' group).
 # DRM/Vulkan opens /dev/dri/*       (needs 'video' or 'render' group).
-# See deploy/DEPLOY.md for per-platform group names.
-SupplementaryGroups=input video
+# TTYPath=/dev/ttyN with a non-root user requires 'tty' group.
+# See docs/deploy.md for per-platform group names.
+SupplementaryGroups=input video tty
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=vstimd.target

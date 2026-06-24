@@ -2,6 +2,7 @@
 name = "vstimd"
 version = "0.1.0"
 edition = "2024"
+description = "Visual stimulus display server for neuroscience experiments"
 license = "AGPL-3.0-only"
 repository = "https://github.com/braemons/vstimd"
 
@@ -36,6 +37,7 @@ zeromq     = "0.4"
 drm             = "0.15"
 input           = "0.9"
 libc            = "0.2"
+sd-notify       = "0.4"
 wayland-backend = "=0.3.12"
 wayland-client  = "=0.31.12"
 wayland-sys     = "=0.31.8"
@@ -50,3 +52,25 @@ harness = false
 [build-dependencies]
 prost-build = "0.13"
 naga        = { version = "23", features = ["wgsl-in", "spv-out"] }
+
+[package.metadata.deb]
+maintainer        = "Joscha Schmiedt <joscha@schmiedt.dev>"
+depends           = "$auto, libvulkan1, adduser"
+recommends        = "vulkan-tools"
+section           = "science"
+priority          = "optional"
+extended-description = """\
+vstimd drives a display directly via VK_KHR_display without a compositor, \
+providing sub-millisecond frame timing for psychophysics experiments.\n\
+Communicates via ZMQ (port 5555) using a protobuf protocol. Supports \
+Jetson Orin Nano, Raspberry Pi 4/5, and desktop NVIDIA/AMD GPUs."""
+assets = [
+    ["target/release/vstimd",              "usr/bin/vstimd",                         "755"],
+    ["../packaging/sysusers/vstimd.conf",  "usr/lib/sysusers.d/vstimd.conf",         "644"],
+    ["../packaging/rsyslog/vstimd.conf",   "etc/rsyslog.d/10-vstimd.conf",           "644"],
+    ["../packaging/logrotate/vstimd",      "etc/logrotate.d/vstimd",                 "644"],
+]
+maintainer-scripts = "../packaging/debian/"
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "../packaging/systemd/"

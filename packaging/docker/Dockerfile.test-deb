@@ -1,0 +1,55 @@
+# Systemd integration test for vstimd .deb
+#
+# Runs systemd as PID 1 so we can exercise the full Type=notify lifecycle:
+#   dpkg -i vstimd.deb  →  systemctl start vstimd  →  systemctl stop vstimd
+#
+# Build (after building the .deb — see packaging/docker/Dockerfile.deb-builder or docs/deploy.md):
+#   cargo build --release
+#   docker build -f packaging/docker/Dockerfile.deb-builder -t vstimd-deb-builder .
+#   docker run --rm -v $(pwd)/packaging:/output vstimd-deb-builder
+#   docker build -f packaging/docker/Dockerfile.test-deb -t vstimd-test-deb .
+#
+# Run (requires privileged for systemd cgroup access):
+#   docker run --rm --privileged \
+#       --tmpfs /run --tmpfs /run/lock \
+#       -v /sys/fs/cgroup:/sys/fs/cgroup:rw --cgroupns=host \
+#       vstimd-test-deb
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV container=docker
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        systemd \
+        systemd-sysv \
+        dbus \
+        libvulkan1 \
+        netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create the 'input' group that vstimd's SupplementaryGroups= requires.
+# On real systems this is created by udev/systemd; minimal containers lack it.
+RUN groupadd -r input
+
+# Mask units that fail or are irrelevant inside a container.
+RUN systemctl mask \
+        systemd-machine-id-commit.service \
+        systemd-remount-fs.service \
+        systemd-udev-settle.service \
+        dev-hugepages.mount \
+        sys-fs-fuse-connections.mount \
+        systemd-networkd-wait-online.service
+
+COPY packaging/docker/test-service.sh /usr/local/bin/test-service.sh
+RUN chmod +x /usr/local/bin/test-service.sh
+
+# The .deb is produced by Dockerfile.deb-builder and output to packaging/.
+COPY packaging/vstimd_*.deb /pkg/vstimd.deb
+
+STOPSIGNAL SIGRTMIN+3
+
+COPY packaging/docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+CMD ["/entrypoint.sh"]

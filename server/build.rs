@@ -1,4 +1,12 @@
 fn main() {
+    let build_date = std::process::Command::new("date")
+        .arg("+%Y-%m-%d %H:%M")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_else(|| "unknown\n".to_string());
+    println!("cargo:rustc-env=VSTIMD_BUILD_DATE={}", build_date.trim());
+
     for proto in &[
         "../proto/vstimd/v1/vec2.proto",
         "../proto/vstimd/v1/color.proto",
@@ -21,6 +29,7 @@ fn main() {
     }
 
     prost_build::Config::new()
+        .protoc_arg("--experimental_allow_proto3_optional")
         .compile_protos(
             &[
                 "../proto/vstimd/v1/vec2.proto",

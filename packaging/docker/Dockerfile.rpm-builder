@@ -1,0 +1,106 @@
+# Multi-stage build: compile on Ubuntu (cross-compilation tooling available),
+# package on AlmaLinux 9 (rpmbuild + systemd macros).
+#
+# Usage (x86_64, AlmaLinux 9):
+#   docker build -f packaging/docker/Dockerfile.rpm-builder -t vstimd-rpm-builder .
+#   docker run --rm -v $(pwd)/dist:/output vstimd-rpm-builder
+#
+# Cross-compile for aarch64 (Jetson / Raspberry Pi):
+#   docker build -f packaging/docker/Dockerfile.rpm-builder \
+#     --build-arg RUST_TARGET=aarch64-unknown-linux-gnu \
+#     --build-arg RPM_ARCH=aarch64 \
+#     -t vstimd-rpm-builder-arm64 .
+
+ARG BUILD_IMAGE=ubuntu:22.04
+ARG PACK_IMAGE=almalinux:9
+
+# ── Stage 1: cross-compile ────────────────────────────────────────────────────
+FROM ${BUILD_IMAGE} AS builder
+
+ARG RUST_TARGET=x86_64-unknown-linux-gnu
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CARGO_HOME=/usr/local/cargo
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV PATH=/usr/local/cargo/bin:$PATH
+ENV PKG_CONFIG_ALLOW_CROSS=1
+ENV PKG_CONFIG_AARCH64_UNKNOWN_LINUX_GNU=/usr/local/bin/aarch64-linux-gnu-pkg-config
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates \
+        build-essential pkg-config \
+        libinput-dev libudev-dev libdrm-dev libwayland-dev \
+        protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+# arm64 cross-compilation setup (no-op for native amd64 builds).
+RUN if [ "${RUST_TARGET}" = "aarch64-unknown-linux-gnu" ]; then \
+        dpkg --add-architecture arm64 && \
+        sed -i 's/^deb /deb [arch=amd64] /g' /etc/apt/sources.list && \
+        printf "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse\n\
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse\n\
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse\n" \
+            >> /etc/apt/sources.list && \
+        apt-get update && apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu \
+            libinput-dev:arm64 libudev-dev:arm64 libdrm-dev:arm64 libwayland-dev:arm64 && \
+        rm -rf /var/lib/apt/lists/* && \
+        mkdir -p ${CARGO_HOME} && \
+        printf '[target.aarch64-unknown-linux-gnu]\nlinker = "aarch64-linux-gnu-gcc"\n' \
+            >> ${CARGO_HOME}/config.toml && \
+        printf '#!/bin/sh\nexec env PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig pkg-config "$@"\n' \
+            > /usr/local/bin/aarch64-linux-gnu-pkg-config && \
+        chmod +x /usr/local/bin/aarch64-linux-gnu-pkg-config; \
+    fi
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable \
+    && rustup target add ${RUST_TARGET}
+
+WORKDIR /src
+
+COPY Cargo.toml Cargo.lock ./
+COPY server/ server/
+COPY vtl/ vtl/
+COPY proto/ proto/
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git \
+    --mount=type=cache,target=/src/target,id=cargo-target-${RUST_TARGET} \
+    cargo build --release --target ${RUST_TARGET} && \
+    cp target/${RUST_TARGET}/release/vstimd /vstimd && \
+    grep '^version' server/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/' > /version
+
+# ── Stage 2: package ──────────────────────────────────────────────────────────
+FROM ${PACK_IMAGE} AS packager
+
+ARG RPM_ARCH=x86_64
+
+RUN dnf install -y rpm-build systemd-rpm-macros \
+    && dnf clean all
+
+# /build acts as %{_builddir} so %install paths resolve correctly.
+WORKDIR /build
+
+COPY packaging/systemd/  packaging/systemd/
+COPY packaging/sysusers/ packaging/sysusers/
+COPY packaging/rpm/vstimd.spec /root/rpmbuild/SPECS/vstimd.spec
+
+COPY --from=builder /vstimd  target/release/vstimd
+COPY --from=builder /version /version
+
+RUN chmod 0755 target/release/vstimd
+
+RUN mkdir -p /root/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+
+RUN VERSION=$(cat /version) && \
+    rpmbuild -bb \
+        --define "_topdir /root/rpmbuild" \
+        --define "_builddir /build" \
+        --define "pkg_version $VERSION" \
+        --target ${RPM_ARCH} \
+        /root/rpmbuild/SPECS/vstimd.spec
+
+RUN mkdir -p /out && find /root/rpmbuild/RPMS -name '*.rpm' -exec cp {} /out/ \;
+
+CMD ["bash", "-c", "cp /out/*.rpm /output/ && echo 'RPM copied to /output/'"]

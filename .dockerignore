@@ -1,0 +1,14 @@
+target/
+.git/
+client/
+extern/
+docs/
+dev/
+tools/
+# Built artifacts — excluded from build context except when needed by Dockerfile.test-deb.
+# The .deb is explicitly included via the negation below.
+packaging/*.rpm
+packaging/*.changes
+packaging/*.buildinfo
+packaging/*.ddeb
+log.txt

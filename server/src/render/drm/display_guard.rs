@@ -120,30 +120,39 @@ impl DisplayGuard {
                 });
             }
 
+            // Keep this card even if no CRTCs are active (e.g. early boot
+            // without a display manager).  Opening the card and releasing DRM
+            // master here is what triggers nvidia-modeset to probe connected
+            // displays; without this, vkGetPhysicalDeviceDisplayPropertiesKHR
+            // returns ERROR_UNKNOWN on bare-metal boot.
             if saved.is_empty() {
-                continue;
-            }
+                log::info!(
+                    "vstimd: display controller at {path} \
+                     (no active CRTCs — nothing to save/restore)"
+                );
+            } else {
+                log::info!(
+                    "vstimd: display controller at {path} \
+                     ({} active CRTC(s) saved)",
+                    saved.len()
+                );
 
-            log::info!(
-                "vstimd: display controller at {path} \
-                 ({} active CRTC(s) saved)",
-                saved.len()
-            );
-
-            // Disable VRR (Variable Refresh Rate / G-Sync) on all active CRTCs
-            // and connectors before handing the display to Vulkan.
-            //
-            // When nvidia-modeset sees a VRR-capable display it tries to set up
-            // a "VRR Rgline active session" during VK_KHR_display surface
-            // creation. On JetPack 6.x this allocation fails
-            // ("nvRmApiAlloc(memory) failed for vrr 0x22"), which corrupts the
-            // GPU presentation semaphore pathway and causes a PBDMA semaphore
-            // acquire timeout ~4 s later → ERROR_DEVICE_LOST.
-            // Explicitly setting VRR_ENABLED = 0 on the CRTC and "Adaptive Sync"
-            // / "vrr_capable" to 0 on the connector suppresses the attempt.
-            for out in &saved {
-                disable_vrr_on_crtc(&card, out.crtc_handle);
-                disable_vrr_on_connector(&card, out.connector_handle);
+                // Disable VRR (Variable Refresh Rate / G-Sync) on all active
+                // CRTCs and connectors before handing the display to Vulkan.
+                //
+                // When nvidia-modeset sees a VRR-capable display it tries to
+                // set up a "VRR Rgline active session" during VK_KHR_display
+                // surface creation. On JetPack 6.x this allocation fails
+                // ("nvRmApiAlloc(memory) failed for vrr 0x22"), which corrupts
+                // the GPU presentation semaphore pathway and causes a PBDMA
+                // semaphore acquire timeout ~4 s later → ERROR_DEVICE_LOST.
+                // Explicitly setting VRR_ENABLED = 0 on the CRTC and
+                // "Adaptive Sync" / "vrr_capable" to 0 on the connector
+                // suppresses the attempt.
+                for out in &saved {
+                    disable_vrr_on_crtc(&card, out.crtc_handle);
+                    disable_vrr_on_connector(&card, out.connector_handle);
+                }
             }
 
             // Release master so Vulkan (VK_KHR_display) can take it.
@@ -217,6 +226,10 @@ fn disable_vrr_on_connector(card: &Card, conn: drm::control::connector::Handle) 
 
 impl Drop for DisplayGuard {
     fn drop(&mut self) {
+        if self.saved.is_empty() {
+            return;
+        }
+
         // Re-acquire master so we can reprogram the CRTCs.
         if let Err(e) = self.card.acquire_master_lock() {
             log::warn!("vstimd: acquire_master_lock: {e} (attempting set_crtc anyway)");
