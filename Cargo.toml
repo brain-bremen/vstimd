@@ -1,3 +1,3 @@
 [workspace]
-members = ["server", "vtl", "jetsond-daqd"]
+members = ["server", "vtl"]
 resolver = "2"
