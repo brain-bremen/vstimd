@@ -1,0 +1,172 @@
+# /etc/braemons/gpiochip-daqd/gpiochip-daqd.toml
+# Jetson GPIO ↔ VTL trigger-line bridge configuration.
+#
+# VTL bit numbering convention (Jetson Orin Nano 40-pin header):
+#
+#   vtl_bit  ==  40-pin header pin number
+#
+# Inputs (bank 0) and outputs (bank 0) are completely independent VTL arrays,
+# so the same bit number can appear in both without conflict.
+#
+# Header pin → GPIO line offset mapping (gpiochip0 = tegra234-gpio):
+#
+#   pin  7 → line 144    pin 12 → line  50    pin 19 → line 135    pin 26 → line 137
+#   pin 11 → line 112    pin 13 → line  85    pin 21 → line 134    pin 29 → line 105
+#                        pin 16 → line 126    pin 22 → line 123    pin 31 → line 106
+#                        pin 18 → line 125    pin 23 → line 133    pin 32 → line  41
+#                                             pin 24 → line 136    pin 33 → line  43
+#                                                                   pin 36 → line  53
+#                                                                   pin 37 → line 124
+#                                                                   pin 38 → line  52
+#                                                                   pin 40 → line  51
+#
+# Outputs: header pins 36–40 (last 4 GPIO pins before end-of-header)
+# Inputs:  header pins 7–33  (remaining GPIO pins)
+
+[vtl]
+shm_name = "/vstimd_vtl"
+
+[gpio]
+chip = "/dev/gpiochip0"
+
+# ── Output lines (vtl_bit = header pin number) ────────────────────────────────
+# vstimd writes output_state; this daemon drives these pins to match (~1 kHz).
+
+[[outputs]]
+name      = "out_pin36"
+vtl_bank  = 0
+vtl_bit   = 36
+gpio_line = 53          # header pin 36, pad PI.02 (UART1_CTS)
+
+[[outputs]]
+name      = "out_pin37"
+vtl_bank  = 0
+vtl_bit   = 37
+gpio_line = 124         # header pin 37, pad PY.02 (SPI1_MOSI)
+
+[[outputs]]
+name      = "out_pin38"
+vtl_bank  = 0
+vtl_bit   = 38
+gpio_line = 52          # header pin 38, pad PI.01 (I2S0_SDIN)
+
+[[outputs]]
+name      = "out_pin40"
+vtl_bank  = 0
+vtl_bit   = 40
+gpio_line = 51          # header pin 40, pad PI.00 (I2S0_SDOUT)
+
+# ── Input lines (vtl_bit = header pin number) ─────────────────────────────────
+# Kernel edge-event blocking — no busy-wait.
+
+[[inputs]]
+name      = "in_pin7"
+vtl_bank  = 0
+vtl_bit   = 7
+gpio_line = 144         # header pin 7,  pad PAC.06 (Audio MCLK)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin11"
+vtl_bank  = 0
+vtl_bit   = 11
+gpio_line = 112         # header pin 11, pad PR.04  (UART1_RTS)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin12"
+vtl_bank  = 0
+vtl_bit   = 12
+gpio_line = 50          # header pin 12, pad PH.07  (I2S0_SCLK)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin13"
+vtl_bank  = 0
+vtl_bit   = 13
+gpio_line = 85          # header pin 13, pad PN.01  (SPI1_SCK)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin16"
+vtl_bank  = 0
+vtl_bit   = 16
+gpio_line = 126         # header pin 16, pad PY.04  (SPI1_CS1)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin18"
+vtl_bank  = 0
+vtl_bit   = 18
+gpio_line = 125         # header pin 18, pad PY.03  (SPI1_CS0)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin19"
+vtl_bank  = 0
+vtl_bit   = 19
+gpio_line = 135         # header pin 19, pad PZ.05  (SPI0_MOSI)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin21"
+vtl_bank  = 0
+vtl_bit   = 21
+gpio_line = 134         # header pin 21, pad PZ.04  (SPI0_MISO)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin22"
+vtl_bank  = 0
+vtl_bit   = 22
+gpio_line = 123         # header pin 22, pad PY.01  (SPI1_MISO)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin23"
+vtl_bank  = 0
+vtl_bit   = 23
+gpio_line = 133         # header pin 23, pad PZ.03  (SPI0_SCK)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin24"
+vtl_bank  = 0
+vtl_bit   = 24
+gpio_line = 136         # header pin 24, pad PZ.06  (SPI0_CS0)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin26"
+vtl_bank  = 0
+vtl_bit   = 26
+gpio_line = 137         # header pin 26, pad PZ.07  (SPI0_CS1)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin29"
+vtl_bank  = 0
+vtl_bit   = 29
+gpio_line = 105         # header pin 29, pad PQ.05  (GPIO01)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin31"
+vtl_bank  = 0
+vtl_bit   = 31
+gpio_line = 106         # header pin 31, pad PQ.06  (GPIO11)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin32"
+vtl_bank  = 0
+vtl_bit   = 32
+gpio_line = 41          # header pin 32, pad PG.06  (GPIO07/PWM)
+edge      = "both"
+
+[[inputs]]
+name      = "in_pin33"
+vtl_bank  = 0
+vtl_bit   = 33
+gpio_line = 43          # header pin 33, pad PH.00  (GPIO13/PWM)
+edge      = "both"

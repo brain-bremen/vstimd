@@ -21,8 +21,8 @@ mod hw {
     use std::time::Duration;
 
     use gpio_cdev::{Chip, EventRequestFlags, LineRequestFlags};
-    use jetson_daqd::bridge;
-    use jetson_daqd::config::{Edge, InputLine, OutputLine};
+    use gpiochip_daqd::bridge;
+    use gpiochip_daqd::config::{Edge, InputLine, OutputLine};
     use vtl::VtlOwner;
 
     fn env_loopback() -> (String, u32, u32) {

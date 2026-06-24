@@ -8,7 +8,7 @@ use vtl::{VtlClient, VtlSegment};
 
 use crate::config::{Edge, InputLine, OutputLine};
 
-const CONSUMER: &str = "jetson-daqd";
+const CONSUMER: &str = "gpiochip-daqd";
 
 /// SCHED_FIFO priority for the output polling thread (timing-critical).
 pub const PRIO_OUTPUT: i32 = 60;

@@ -8,7 +8,7 @@ BindsTo=vstimd.service
 
 [Service]
 Type=notify
-ExecStart=/usr/bin/jetson-daqd
+ExecStart=/usr/bin/gpiochip-daqd
 Restart=on-failure
 RestartSec=2s
 
@@ -19,7 +19,7 @@ SupplementaryGroups=gpio
 # Logging — forward to rsyslog via journal.
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=jetson-daqd
+SyslogIdentifier=gpiochip-daqd
 
 # Real-time scheduling: set SCHED_FIFO before exec so all threads inherit it.
 # The Rust code then raises per-thread priorities (output=60, input=50).

@@ -7,22 +7,46 @@ use anyhow::{Context, Result};
 use log::{error, info};
 use vtl::VtlOwner;
 
-const CONFIG_PATH: &str = "/etc/braemons/jetson-daqd/jetson-daqd.toml";
+const DEFAULT_CONFIG_PATH: &str = "/etc/braemons/gpiochip-daqd/gpiochip-daqd.toml";
 const OUTPUT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 const VTL_OPEN_ATTEMPTS: u32 = 30;
 
+struct Args {
+    config: String,
+    standalone: bool,
+}
+
+fn parse_args() -> Result<Args> {
+    let mut args = std::env::args().skip(1);
+    let mut config = DEFAULT_CONFIG_PATH.to_string();
+    let mut standalone = false;
+
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--standalone" => standalone = true,
+            "-c" | "--config" => {
+                config = args.next()
+                    .ok_or_else(|| anyhow::anyhow!("{arg} requires a path argument"))?;
+            }
+            other => anyhow::bail!("unknown argument: {other}\nUsage: gpiochip-daqd [-c <config>] [--standalone]"),
+        }
+    }
+
+    Ok(Args { config, standalone })
+}
+
 fn main() -> Result<()> {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let standalone = std::env::args().any(|a| a == "--standalone");
+    let Args { config: config_path, standalone } = parse_args()?;
 
-    let raw = fs::read_to_string(CONFIG_PATH)
-        .with_context(|| format!("read config {CONFIG_PATH}"))?;
+    let raw = fs::read_to_string(&config_path)
+        .with_context(|| format!("read config {config_path}"))?;
     let cfg: config::Config =
-        toml::from_str(&raw).with_context(|| format!("parse config {CONFIG_PATH}"))?;
+        toml::from_str(&raw).with_context(|| format!("parse config {config_path}"))?;
 
     info!(
-        "jetson-daqd: VTL={} chip={} poll={}ms  ({} output(s), {} input(s)){}",
+        "gpiochip-daqd: VTL={} chip={} poll={}ms  ({} output(s), {} input(s)){}",
         cfg.vtl.shm_name,
         cfg.gpio.chip,
         OUTPUT_POLL_INTERVAL.as_millis(),
@@ -45,7 +69,7 @@ fn main() -> Result<()> {
 
     let config::Config { vtl: vtl_cfg, gpio, outputs, inputs } = cfg;
 
-    // In standalone mode create the VTL segment ourselves so jetson-daqd
+    // In standalone mode create the VTL segment ourselves so gpiochip-daqd
     // can run without vstimd (e.g. for GPIO loopback testing).
     // _owner must stay alive until main returns — dropping it unlinks the shm.
     let _owner: Option<VtlOwner> = if standalone {
