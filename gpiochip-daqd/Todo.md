@@ -83,22 +83,13 @@ Config addition needed (once implemented):
 pull = "down"   # "up" | "down" | "none" (default: "none")
 ```
 
-### Output latency: replace polling with semaphore
-Currently the output loop sleeps on a fixed interval, giving ~1ms worst-case
-latency. A process-shared POSIX semaphore in the VTL segment would drop this
-to ~50µs (scheduler wakeup time), with zero CPU between changes.
-
-Design:
-- Add `sem_t output_sem` (pshared=1) to the VTL shared memory layout
-- `VtlOwner::create`: call `sem_init(&seg.output_sem, 1, 0)`
-- `VtlOwner::drop`: call `sem_destroy`
-- `VtlSegment`: expose `signal_output()` → `sem_post` and `wait_output()` → `sem_wait`
-- vstimd: call `signal_output()` after every `output_state` write
-- gpiochip-daqd: replace `thread::sleep` loop with `wait_output()` → drive pins
-
-With SCHED_FIFO priority 60, gpiochip-daqd preempts vstimd immediately on
-`sem_post`. Semaphore counts prevent missed signals if vstimd posts faster
-than daqd drains.
+### ~~Output latency: replace polling with semaphore~~ ✓ Done
+A process-shared POSIX semaphore (`output_sem`) lives in the VTL segment at
+`OUTPUT_SEM_OFFSET`.  `VtlSegment` exposes `signal_output()` / `wait_output()`
+/ `try_wait_output()`.  vstimd calls `write_outputs_immediate()` (write +
+`sem_post`) at every output change; gpiochip-daqd blocks on `wait_output()`
+instead of sleeping.  Round-trip latency drops from ~1 ms to ~50 µs with
+SCHED_FIFO priority 60.
 
 ### Per-line GPIO chip
 All lines must currently share the same `[gpio] chip`.  On some boards, pins

@@ -38,7 +38,8 @@ pub fn set_thread_realtime(priority: i32) {
 #[cfg(not(target_os = "linux"))]
 pub fn set_thread_realtime(_priority: i32) {}
 
-/// Drives GPIO output pins from VTL `output_state` on a fixed interval.
+/// Drives GPIO output pins from VTL `output_state`, waking on each
+/// `signal_output` posted by vstimd instead of sleeping on a fixed interval.
 ///
 /// Runs forever (or until a GPIO error). Intended for the main thread after
 /// input watchers have been spawned.
@@ -46,14 +47,13 @@ pub fn run_output_loop(
     chip_path: &str,
     outputs: &[OutputLine],
     vtl: &VtlSegment,
-    interval: Duration,
 ) -> Result<()> {
     set_thread_realtime(PRIO_OUTPUT);
 
     if outputs.is_empty() {
         info!("no output lines configured, output loop idle");
         loop {
-            thread::sleep(Duration::from_secs(60));
+            vtl.wait_output(); // sleep until vstimd posts (or forever in standalone)
         }
     }
 
@@ -80,6 +80,11 @@ pub fn run_output_loop(
     let mut prev = vec![0u8; handles.len()];
 
     loop {
+        // Block until vstimd writes new output state and posts the semaphore.
+        // The semaphore count absorbs bursts: if vstimd signals twice before we
+        // wake, we drain both writes in one pass (no lost updates).
+        vtl.wait_output();
+
         for (i, (out, handle)) in outputs.iter().zip(handles.iter()).enumerate() {
             let level = ((vtl.output_state(out.vtl_bank as usize) >> out.vtl_bit) & 1) as u8;
             if level != prev[i] {
@@ -93,7 +98,6 @@ pub fn run_output_loop(
                 );
             }
         }
-        thread::sleep(interval);
     }
 }
 

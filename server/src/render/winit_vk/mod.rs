@@ -231,14 +231,17 @@ impl State {
             .show_overlay
             .then(|| self.egui_winit.take_egui_input(&self.window));
 
-        // [A] Commit previous frame's animation outputs; poll inputs.
-        // Note: in winit mode the vkWaitForPresentKHR confirmation lives inside
-        // render_frame(), so this poll fires at the top of the render loop rather
-        // than at the true vblank boundary.  DRM mode gets exact vblank alignment.
+        // [A] Raise vblank trigger; commit previous frame's animation outputs;
+        //     poll inputs.  In winit mode this fires at the top of the render
+        //     function rather than at the true vblank boundary (vkWaitForPresentKHR
+        //     lives inside render_frame()).  DRM mode gets exact vblank alignment.
         if let Some(vtl) = &self.vtl {
             let (input_edges, output_snapshot) = {
                 let mut v = vtl.lock().unwrap();
-                v.write_outputs(&self.pending_outputs);
+                let mask = v.vblank_mask();
+                let state: [u64; vtl::MAX_BANKS] =
+                    std::array::from_fn(|i| self.pending_outputs[i] | mask[i]);
+                v.write_outputs_immediate(&state);
                 let edges = v.poll();
                 let snap  = v.output_snapshot();
                 (edges, snap)
@@ -255,7 +258,10 @@ impl State {
         let sys_info = self.sys_info();
         let (tick, platform_output) = self.rs.render_one_frame(None, egui_raw_input, &sys_info, self.vtl.as_deref());
 
-        // pending_outputs is already saved for commit at next [A].
+        // [C] Commit current frame's animation outputs; lower vblank trigger.
+        if let Some(vtl) = &self.vtl {
+            vtl.lock().unwrap().write_outputs_immediate(&self.pending_outputs);
+        }
 
         // 3. Forward egui platform output (cursor changes, clipboard, etc.).
         if let Some(po) = platform_output {

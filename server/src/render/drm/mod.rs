@@ -383,11 +383,18 @@ impl DrmRenderState {
                 log::info!("vstimd: vblank clock: {}", self.sys_info().clock_source.as_str());
             }
 
-            // [A] Commit previous frame's animation outputs; poll inputs.
+            // [A] Raise vblank trigger; commit previous frame's animation
+            //     outputs; poll inputs.  This fires immediately after the vblank
+            //     wait, aligning output state with display scan-out.
             if let Some(vtl) = &self.vtl {
                 let (input_edges, output_snapshot) = {
                     let mut v = vtl.lock().unwrap();
-                    v.write_outputs(&self.pending_outputs);
+                    // Write prev-frame animation outputs with vblank bit ORed in,
+                    // then signal gpiochip-daqd in a single sem_post.
+                    let mask = v.vblank_mask();
+                    let state: [u64; vtl::MAX_BANKS] =
+                        std::array::from_fn(|i| self.pending_outputs[i] | mask[i]);
+                    v.write_outputs_immediate(&state);
                     let edges = v.poll();
                     let snap  = v.output_snapshot();
                     (edges, snap)
@@ -410,7 +417,13 @@ impl DrmRenderState {
             let sys_info = self.sys_info();
             self.rs.render_one_frame(screen_clock, egui_raw_input, &sys_info, self.vtl.as_deref());
 
-            // pending_outputs is already saved for commit at next [A].
+            // [C] Commit current frame's animation outputs and lower the vblank
+            //     trigger.  Writing pending_outputs (without the vblank mask)
+            //     clears the trigger bit that was raised at [A].  One sem_post
+            //     wakes gpiochip-daqd to apply the new output state.
+            if let Some(vtl) = &self.vtl {
+                vtl.lock().unwrap().write_outputs_immediate(&self.pending_outputs);
+            }
         }
         // When the loop exits, `self` is consumed and fields drop in
         // declaration order: `rs` (Vulkan teardown) → `input` → `drm_vblank`

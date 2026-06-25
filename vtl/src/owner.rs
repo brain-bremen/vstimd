@@ -100,6 +100,17 @@ impl VtlOwner {
                 std::ptr::write_volatile(&mut (*h).num_output_banks, num_output_banks);
             }
 
+            // Initialise the process-shared output semaphore (pshared=1, value=0).
+            // Placed in the shm so gpiochip-daqd can call sem_wait on its mapping.
+            if unsafe { libc::sem_init(seg.output_sem_ptr(), 1, 0) } != 0 {
+                let err = io::Error::last_os_error();
+                unsafe {
+                    libc::munmap(ptr, SHM_SIZE);
+                    libc::shm_unlink(name.as_ptr());
+                }
+                return Err(err);
+            }
+
             Ok(Self { seg, name })
         }
     }
@@ -116,6 +127,7 @@ impl Drop for VtlOwner {
     fn drop(&mut self) {
         #[cfg(unix)]
         unsafe {
+            libc::sem_destroy(self.seg.output_sem_ptr());
             libc::munmap(self.seg.ptr as *mut libc::c_void, self.seg.size);
             libc::shm_unlink(self.name.as_ptr());
         }

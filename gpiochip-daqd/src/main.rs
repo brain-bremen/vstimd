@@ -1,14 +1,13 @@
 mod bridge;
 mod config;
 
-use std::{fs, time::Duration};
+use std::fs;
 
 use anyhow::{Context, Result};
 use log::{error, info};
 use vtl::VtlOwner;
 
 const DEFAULT_CONFIG_PATH: &str = "/etc/braemons/gpiochip-daqd/gpiochip-daqd.toml";
-const OUTPUT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 const VTL_OPEN_ATTEMPTS: u32 = 30;
 
 struct Args {
@@ -104,8 +103,9 @@ fn main() -> Result<()> {
     #[cfg(target_os = "linux")]
     sd_notify::notify(false, &[sd_notify::NotifyState::Ready])?;
 
-    // Output loop on the main thread — runs until GPIO error.
-    if let Err(e) = bridge::run_output_loop(&gpio.chip, &outputs, &vtl, OUTPUT_POLL_INTERVAL) {
+    // Output loop on the main thread — blocks on the VTL output semaphore
+    // instead of polling, giving ~50µs response latency (SCHED_FIFO priority).
+    if let Err(e) = bridge::run_output_loop(&gpio.chip, &outputs, &vtl) {
         error!("output loop error: {e:#}");
         return Err(e);
     }

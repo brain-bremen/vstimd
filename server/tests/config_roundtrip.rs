@@ -90,6 +90,7 @@ fn roundtrip_vtl_names() {
             VtlNameEntry { name: "stim_onset".into(), bank: 0, bit: 0, direction: Direction::Output },
             VtlNameEntry { name: "trial_start".into(), bank: 0, bit: 1, direction: Direction::Input },
         ],
+        ..Default::default()
     };
     let json = retrieve_config_json(&scene, &vtl).unwrap();
     let (_loaded, io) = parse_config_json(&json).unwrap();

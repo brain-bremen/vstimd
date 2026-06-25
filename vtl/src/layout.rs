@@ -12,7 +12,10 @@ pub const NAMES_OFFSET: usize = 128;
 // Named table: 64-byte prefix + 256 × 60-byte entries = 15424 bytes
 // 128 + 15424 = 15552 → round up to 4096 boundary → 16384
 pub const STATE_OFFSET: usize = 0x4000;
-pub const SHM_SIZE: usize = 0x5000; // 5 pages, covers state section
+// Process-shared output semaphore: placed after the state section (160 bytes)
+// at a cache-line-aligned offset.  sem_t is 32 bytes on 64-bit Linux.
+pub const OUTPUT_SEM_OFFSET: usize = STATE_OFFSET + 256;
+pub const SHM_SIZE: usize = 0x5000; // 5 pages, covers state section + semaphore
 
 /// Direction of a VTL line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

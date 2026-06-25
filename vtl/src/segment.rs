@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 
 use crate::layout::{
     Direction, VtlHeader, VtlLineEntry, VtlNamesSection, VtlStateSection,
-    MAX_BANKS, MAX_NAMED_LINES, NAMES_OFFSET, STATE_OFFSET,
+    MAX_BANKS, MAX_NAMED_LINES, NAMES_OFFSET, OUTPUT_SEM_OFFSET, STATE_OFFSET,
 };
 
 /// Raw access to a VTL shared memory segment.
@@ -39,6 +39,53 @@ impl VtlSegment {
 
     fn state(&self) -> &VtlStateSection {
         unsafe { &*(self.ptr.add(STATE_OFFSET) as *const VtlStateSection) }
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn output_sem_ptr(&self) -> *mut libc::sem_t {
+        unsafe { self.ptr.add(OUTPUT_SEM_OFFSET) as *mut libc::sem_t }
+    }
+
+    // ── Output semaphore ──────────────────────────────────────────────────────
+
+    /// Signal the output semaphore, waking one `wait_output` caller.
+    ///
+    /// Called by the VTL owner (vstimd) after each output-state write so that
+    /// gpiochip-daqd wakes immediately instead of on the next polling interval.
+    pub fn signal_output(&self) {
+        #[cfg(unix)]
+        unsafe { libc::sem_post(self.output_sem_ptr()); }
+    }
+
+    /// Block until the output semaphore is signaled.
+    ///
+    /// Called by gpiochip-daqd in its output loop.  Returns immediately if a
+    /// signal is already pending (the semaphore count is > 0).  Retries
+    /// automatically on `EINTR`.  On non-Unix platforms this is a no-op.
+    pub fn wait_output(&self) {
+        #[cfg(unix)]
+        loop {
+            let ret = unsafe { libc::sem_wait(self.output_sem_ptr()) };
+            if ret == 0 {
+                break;
+            }
+            if std::io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) {
+                break;
+            }
+        }
+    }
+
+    /// Non-blocking variant of `wait_output`.
+    ///
+    /// Returns `true` if a signal was pending (and consumed), `false` if not.
+    /// Always returns `false` on non-Unix platforms.
+    pub fn try_wait_output(&self) -> bool {
+        #[cfg(unix)]
+        {
+            unsafe { libc::sem_trywait(self.output_sem_ptr()) == 0 }
+        }
+        #[cfg(not(unix))]
+        false
     }
 
     // ── Input state ───────────────────────────────────────────────────────────

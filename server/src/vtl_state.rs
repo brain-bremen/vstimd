@@ -151,6 +151,12 @@ pub struct VtlNameEntry {
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct VtlConfig {
     pub names: Vec<VtlNameEntry>,
+    /// Output bit that the render loop drives HIGH at the start of each frame
+    /// (immediately after the vblank wait) and LOW once the GPU work for that
+    /// frame has been submitted.  The pulse width is vstimd's per-frame compute
+    /// time.  Optional — omit to disable the vblank trigger.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub vblank_vtl: Option<VtlBit>,
 }
 
 #[derive(Default, Clone)]
@@ -218,18 +224,52 @@ impl VtlState {
         snapshot
     }
 
-    /// Write output lines to shm.  Called twice per frame:
-    ///   [A]  write_outputs(output_pending_prev | vblank_mask)
-    ///        Commits previous frame's animation outputs + raises vblank trigger.
-    ///   [C]  write_outputs(output_pending_prev)
-    ///        Clears the vblank trigger; animation outputs unchanged.
-    /// The vblank trigger pulse width ([A]→[C]) represents vstimd's active
-    /// compute time for the frame.
+    /// Write output lines to shm and immediately signal gpiochip-daqd.
+    ///
+    /// Use for time-critical writes: the vblank trigger at [A] and the
+    /// animation-output commit at [C].  A single `sem_post` is emitted after
+    /// all banks are written, so daqd wakes up only once per call even when
+    /// multiple banks are updated.
+    pub fn write_outputs_immediate(&self, state: &[u64; MAX_BANKS]) {
+        let n = self.owner.num_output_banks() as usize;
+        for (bank, &val) in state.iter().enumerate().take(n.min(MAX_BANKS)) {
+            self.owner.set_output_state(bank, val);
+        }
+        self.owner.signal_output();
+    }
+
+    /// Write output lines to shm without signaling.
+    ///
+    /// Use when outputs will be flushed later via `flush_outputs`, or in paths
+    /// (null renderer, tests) where the semaphore signal is not needed.
     pub fn write_outputs(&self, state: &[u64; MAX_BANKS]) {
         let n = self.owner.num_output_banks() as usize;
         for (bank, &val) in state.iter().enumerate().take(n.min(MAX_BANKS)) {
             self.owner.set_output_state(bank, val);
         }
+    }
+
+    /// Signal gpiochip-daqd that outputs have been updated.
+    ///
+    /// Pair with `write_outputs` when you want to batch multiple bank writes
+    /// and emit a single notification afterwards.
+    pub fn flush_outputs(&self) {
+        self.owner.signal_output();
+    }
+
+    /// Returns a bitmask array with the vblank trigger bit set (if configured).
+    ///
+    /// OR this into the state passed to `write_outputs_immediate` at [A] to
+    /// raise the vblank trigger.  The bit is absent from the state written at
+    /// [C], so the trigger goes LOW automatically.
+    pub fn vblank_mask(&self) -> [u64; MAX_BANKS] {
+        let mut mask = [0u64; MAX_BANKS];
+        if let Some(vb) = self.config.vblank_vtl {
+            if vb.bank < MAX_BANKS {
+                mask[vb.bank] |= 1u64 << vb.bit;
+            }
+        }
+        mask
     }
 
     pub fn sync_names_to_shm(&self) {

@@ -289,3 +289,88 @@ fn named_line_ordering_write_before_publish() {
     .join()
     .unwrap();
 }
+
+// ── Output semaphore ──────────────────────────────────────────────────────────
+
+#[cfg(unix)]
+#[test]
+fn signal_wakes_wait_output() {
+    use std::sync::{Arc, Barrier};
+    use std::thread;
+
+    let name = unique_name();
+    let owner = Arc::new(VtlOwner::create(&name, 1, 1).expect("create"));
+
+    let barrier = Arc::new(Barrier::new(2));
+    let b_waiter = Arc::clone(&barrier);
+    let client = VtlClient::open(&name).expect("open client");
+
+    let waiter = thread::spawn(move || {
+        b_waiter.wait(); // ready to wait
+        client.wait_output(); // blocks until signaled
+    });
+
+    barrier.wait(); // let the waiter block first
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    owner.signal_output();
+
+    waiter.join().expect("wait_output returned");
+}
+
+#[cfg(unix)]
+#[test]
+fn try_wait_output_returns_false_when_no_signal() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+    assert!(!owner.try_wait_output(), "semaphore should start at 0");
+}
+
+#[cfg(unix)]
+#[test]
+fn try_wait_output_consumes_signal() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+    owner.signal_output();
+    assert!(owner.try_wait_output(),  "first try should succeed");
+    assert!(!owner.try_wait_output(), "second try should fail (count now 0)");
+}
+
+#[cfg(unix)]
+#[test]
+fn semaphore_count_absorbs_burst() {
+    use std::sync::Arc;
+    use std::thread;
+
+    let name = unique_name();
+    let owner = Arc::new(VtlOwner::create(&name, 1, 1).expect("create"));
+    let client = VtlClient::open(&name).expect("open client");
+
+    // Post 3 times before the consumer wakes.
+    owner.signal_output();
+    owner.signal_output();
+    owner.signal_output();
+
+    // Each wait_output call consumes one count — no signals are lost.
+    let consumer = thread::spawn(move || {
+        client.wait_output();
+        client.wait_output();
+        client.wait_output();
+        // A fourth call would block — verify count is now 0.
+        assert!(!client.try_wait_output());
+    });
+    consumer.join().expect("consumer drained all signals");
+}
+
+#[cfg(unix)]
+#[test]
+fn client_wait_output_signaled_by_owner() {
+    let name = unique_name();
+    let owner = VtlOwner::create(&name, 1, 1).expect("create");
+
+    owner.set_output_state(0, 0b1010);
+    owner.signal_output();
+
+    let client = VtlClient::open(&name).expect("open client");
+    client.wait_output(); // must not block
+    assert_eq!(client.output_state(0), 0b1010);
+}
