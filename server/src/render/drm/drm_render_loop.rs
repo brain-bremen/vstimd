@@ -374,7 +374,7 @@ impl DrmRenderLoopData {
             // present.  The fence is collected at the top of the next iteration.
             // This two-phase register→collect pattern avoids double-blocking with
             // the FIFO vkAcquireNextImageKHR (which also syncs to the display).
-            self.vblank.register(self.rs.frame_index);
+            self.vblank.register(self.rs.frame_index as u64);
 
             // 4. Render: build overlay UI, tessellate scene, record Vulkan
             //    commands, submit to GPU, present to display.
