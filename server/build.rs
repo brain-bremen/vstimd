@@ -33,11 +33,11 @@ fn main() {
         .compile_protos(
             &[
                 "../proto/vstimd/v1/vec2.proto",
-        "../proto/vstimd/v1/color.proto",
+                "../proto/vstimd/v1/color.proto",
                 "../proto/vstimd/v1/stimuli/stimulus_type.proto",
-        "../proto/vstimd/v1/stimuli/shapes.proto",
-        "../proto/vstimd/v1/stimuli/query.proto",
-        "../proto/vstimd/v1/stimuli/rect.proto",
+                "../proto/vstimd/v1/stimuli/shapes.proto",
+                "../proto/vstimd/v1/stimuli/query.proto",
+                "../proto/vstimd/v1/stimuli/rect.proto",
                 "../proto/vstimd/v1/stimuli/circle.proto",
                 "../proto/vstimd/v1/stimuli/ellipse.proto",
                 "../proto/vstimd/v1/stimuli/grating.proto",
@@ -56,7 +56,7 @@ fn main() {
     compile_shader("shaders/solid.wgsl", "solid.spv");
     compile_shader("shaders/grating.wgsl", "grating.spv");
     compile_shader("shaders/text.wgsl", "text.spv");
-    compile_shader("src/render/vk/egui/shaders.wgsl", "egui.spv");
+    compile_shader("shaders/egui.wgsl", "egui.spv");
 }
 
 fn compile_shader(wgsl_path: &str, output_name: &str) {
