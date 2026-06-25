@@ -7,15 +7,14 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::log_buffer::LogBuffer;
-use crate::render::BenchmarkState;
 use crate::render::MetricsSampler;
 use crate::render::RenderState;
 use crate::render::system_info::ClockSource;
-use crate::render::vk::{GlyphAtlas, SceneCache, VkEguiRenderer, VkGratingPipeline, VkPipeline, VkTextPipeline};
-use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
-use crate::render::{FileBrowser, RenderTarget, StimulusDisplayInfo, SystemInfo, WindowMode, query_local_ip};
+use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, WindowMode, query_local_ip};
+use crate::render::{SceneRenderer, TextRenderer, UiRenderer};
+use crate::render::render_frame;
 use crate::scene::SceneState;
-use crate::timing::{FramePhases, FrameStats};
+use crate::timing::FrameTiming;
 use crate::vtl_state::VtlState;
 extern crate vtl;
 
@@ -65,6 +64,9 @@ struct WinitRenderLoopData {
     /// Animation output bits accumulated this frame; committed at [A] next frame.
     pending_outputs: [u64; vtl::MAX_BANKS],
     egui_winit: egui_winit::State,
+    log_buffer: LogBuffer,
+    metrics: MetricsSampler,
+    local_ip: String,
     // ── Window comes after all borrowers ─────────────────────────────────────
     window: Arc<Window>,
     refresh_hz: f64,
@@ -87,32 +89,11 @@ impl WinitRenderLoopData {
         // the screen clock.
         log::info!("vstimd: present mode: FIFO");
 
-        let wf_mode = if ctx.supports_wireframe {
-            ash::vk::PolygonMode::LINE
-        } else {
-            ash::vk::PolygonMode::FILL
-        };
-        let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, ash::vk::PolygonMode::FILL);
-        let grating_pipeline = VkGratingPipeline::new(
-            &ctx.device,
-            &ctx.instance,
-            ctx.physical_device,
-            ctx.render_pass,
-            ash::vk::PolygonMode::FILL,
-        );
-        let wireframe_pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, wf_mode);
-        let wireframe_grating = VkGratingPipeline::new(
-            &ctx.device,
-            &ctx.instance,
-            ctx.physical_device,
-            ctx.render_pass,
-            wf_mode,
-        );
+        // Build sub-renderers before ctx moves into RenderState.
+        let config_dir = scene.read().unwrap().runtime.config_dir.clone();
+        let scene_renderer = SceneRenderer::new(&ctx, scene);
+        let text = TextRenderer::new(&ctx);
 
-        ctx.set_debug_name(pipeline.pipeline, "solid_pipeline");
-        ctx.set_debug_name(grating_pipeline.pipeline, "grating_pipeline");
-        ctx.set_debug_name(wireframe_pipeline.pipeline, "solid_wireframe_pipeline");
-        ctx.set_debug_name(wireframe_grating.pipeline, "grating_wireframe_pipeline");
         ctx.set_debug_name(ctx.render_pass, "render_pass");
         ctx.set_debug_name(ctx.egui_render_pass, "egui_render_pass");
         for (i, frame) in ctx.frames.iter().enumerate() {
@@ -122,18 +103,13 @@ impl WinitRenderLoopData {
             ctx.set_debug_name(*img, &format!("swapchain[{i}]"));
         }
 
-        let scene_cache = SceneCache::new(&ctx.instance, ctx.physical_device);
-        let egui_renderer = VkEguiRenderer::new(
-            &ctx.device,
-            &ctx.instance,
-            ctx.physical_device,
-            ctx.egui_render_pass,
-        );
-
-        let egui_ctx = egui::Context::default();
+        let ui = UiRenderer::new(&ctx, config_dir);
+        // egui::Context is Arc-based; clone gives egui_winit a handle to the
+        // same context so it can read/write egui state (e.g. zoom factor).
+        let egui_ctx = ui.egui_ctx.clone();
         let viewport_id = egui_ctx.viewport_id();
         let egui_winit = egui_winit::State::new(
-            egui_ctx.clone(),
+            egui_ctx,
             viewport_id,
             event_loop,
             Some(window.scale_factor() as f32),
@@ -161,37 +137,12 @@ impl WinitRenderLoopData {
             );
         }
 
-        let glyph_atlas = GlyphAtlas::new(&ctx.device, &ctx.instance, ctx.physical_device);
-        let text_pipeline = VkTextPipeline::new(
-            &ctx.device,
-            ctx.render_pass,
-            glyph_atlas.descriptor_set_layout,
-        );
-        let config_dir = scene.read().unwrap().runtime.config_dir.clone();
         let rs = RenderState {
-            frame_stats: FrameStats::new(hz),
+            scene_renderer,
+            text,
+            ui: Some(ui),
+            timing: FrameTiming::new(hz),
             ctx,
-            pipeline,
-            grating_pipeline,
-            wireframe_pipeline,
-            wireframe_grating,
-            wireframe: false,
-            scene_cache,
-            glyph_atlas,
-            text_pipeline,
-            font_system: TextFontSystem::new(),
-            swash_cache: TextSwashCache::new(),
-            egui_renderer,
-            egui_ctx,
-            scene,
-            last_phases: FramePhases::default(),
-            frame_index: 0,
-            show_overlay: false,
-            benchmark: BenchmarkState::new(),
-            local_ip: query_local_ip(),
-            log_buffer,
-            metrics: MetricsSampler::new(),
-            file_browser: FileBrowser::new(config_dir),
         };
 
         Self {
@@ -199,6 +150,9 @@ impl WinitRenderLoopData {
             vtl,
             pending_outputs: [0; vtl::MAX_BANKS],
             egui_winit,
+            log_buffer,
+            metrics: MetricsSampler::new(),
+            local_ip: query_local_ip(),
             window,
             refresh_hz: hz,
             window_mode,
@@ -216,11 +170,10 @@ impl WinitRenderLoopData {
                 mode_index: None,
             },
             backend: RenderTarget::Desktop(self.window_mode),
-            local_ip: self.rs.local_ip.clone(),
-            hostname: String::new(),
+            local_ip: self.local_ip.clone(),
             gpu_name: String::new(),
             hardware_model: self.hardware_model.clone(),
-            wireframe: self.rs.ctx.supports_wireframe.then_some(self.rs.wireframe),
+            wireframe: self.rs.ctx.supports_wireframe.then_some(self.rs.scene_renderer.wireframe),
             // VK_GOOGLE_display_timing alone does not mean we're using display
             // timestamps yet — report GpuCompletion until present_wait is active.
             clock_source: if self.rs.ctx.present_wait.is_some() {
@@ -246,10 +199,10 @@ impl WinitRenderLoopData {
         // description of the frame timeline.
 
         // 1. Collect egui input (via winit event integration, if overlay is on).
-        let egui_raw_input = self
-            .rs
-            .show_overlay
-            .then(|| self.egui_winit.take_egui_input(&self.window));
+        let egui_raw_input = self.rs.ui
+            .as_ref()
+            .filter(|ui| ui.show_overlay)
+            .map(|_| self.egui_winit.take_egui_input(&self.window));
 
         // [A] Commit previous frame's animation outputs; poll inputs.
         // Note: in winit mode the vkWaitForPresentKHR confirmation lives inside
@@ -264,7 +217,7 @@ impl WinitRenderLoopData {
                 (edges, snap)
             };
             self.pending_outputs = [0; vtl::MAX_BANKS];
-            self.rs.scene.write().unwrap().advance_animations(
+            self.rs.scene_renderer.scene.write().unwrap().advance_animations(
                 &input_edges, &output_snapshot, &mut self.pending_outputs,
             );
         }
@@ -273,7 +226,16 @@ impl WinitRenderLoopData {
         //    submit to GPU, present to display.
         //    The frame prepared here will become visible at the next vblank.
         let sys_info = self.sys_info();
-        let (tick, platform_output) = self.rs.render_one_frame(None, egui_raw_input, &sys_info, self.vtl.as_deref());
+        let metrics = self.metrics.sample();
+        let (tick, platform_output) = render_frame(
+            &mut self.rs,
+            None,
+            egui_raw_input,
+            &sys_info,
+            self.vtl.as_deref(),
+            &self.log_buffer,
+            metrics,
+        );
 
         // pending_outputs is already saved for commit at next [A].
 
@@ -435,12 +397,14 @@ impl ApplicationHandler for WinitEventHandler {
                 KeyCode::Escape => event_loop.exit(),
                 KeyCode::F1 => {
                     if let Some(data) = &mut self.data {
-                        data.rs.show_overlay = !data.rs.show_overlay;
+                        if let Some(ui) = &mut data.rs.ui {
+                            ui.show_overlay = !ui.show_overlay;
+                        }
                     }
                 }
                 KeyCode::F2 => {
                     if let Some(data) = &self.data {
-                        let mut sc = data.rs.scene.write().expect("scene lock");
+                        let mut sc = data.rs.scene_renderer.scene.write().expect("scene lock");
                         sc.photodiode.enabled = !sc.photodiode.enabled;
                         sc.photodiode.flicker = true;
                         sc.photodiode.lit = false;
@@ -450,16 +414,16 @@ impl ApplicationHandler for WinitEventHandler {
                     if let Some(data) = &mut self.data
                         && data.rs.ctx.supports_wireframe
                     {
-                        data.rs.wireframe = !data.rs.wireframe;
+                        data.rs.scene_renderer.wireframe = !data.rs.scene_renderer.wireframe;
                         log::info!(
                             "vstimd: wireframe {}",
-                            if data.rs.wireframe { "ON" } else { "OFF" }
+                            if data.rs.scene_renderer.wireframe { "ON" } else { "OFF" }
                         );
                     }
                 }
                 KeyCode::KeyD => {
                     if let Some(data) = &self.data {
-                        crate::render::spawn_demo_stimuli(&data.rs.scene);
+                        crate::render::spawn_demo_stimuli(&data.rs.scene_renderer.scene);
                     }
                 }
                 KeyCode::F11 => self.toggle_fullscreen(event_loop),

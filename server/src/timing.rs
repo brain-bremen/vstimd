@@ -1,5 +1,25 @@
 const FRAME_HISTORY_SIZE: usize = 120;
 
+/// Per-render-loop timing bookkeeping: aggregated frame statistics, last
+/// per-phase breakdown, and the swapchain frame index.
+pub struct FrameTiming {
+    pub stats: FrameStats,
+    pub last_phases: FramePhases,
+    /// Swapchain slot index (cycles 0..swapchain_len); distinct from the global
+    /// frame counter inside `FrameStats`.
+    pub frame_index: usize,
+}
+
+impl FrameTiming {
+    pub fn new(refresh_hz: f64) -> Self {
+        Self {
+            stats: FrameStats::new(refresh_hz),
+            last_phases: FramePhases::default(),
+            frame_index: 0,
+        }
+    }
+}
+
 /// Timing information for one successfully presented frame.
 ///
 /// Returned from `render_frame` on every successful present.

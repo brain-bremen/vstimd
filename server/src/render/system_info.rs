@@ -31,7 +31,6 @@ pub struct SystemInfo {
     pub display: StimulusDisplayInfo,
     pub backend: RenderTarget,
     pub local_ip: String,
-    pub hostname: String,
     pub gpu_name: String,
     pub hardware_model: String,
     /// Some(true/false) when wireframe toggle is supported; None on DRM or unsupported GPU.

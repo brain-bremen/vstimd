@@ -21,6 +21,7 @@ pub struct OverlayArgs<'a> {
     pub frame_stats: &'a mut FrameStats,
     pub last_phases: FramePhases,
     pub sys: &'a SystemInfo,
+    pub hostname: &'a str,
     pub metrics: &'a SystemMetrics,
     pub log_buffer: &'a LogBuffer,
     pub bench: &'a mut BenchmarkState,
@@ -28,7 +29,7 @@ pub struct OverlayArgs<'a> {
 }
 
 pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
-    let OverlayArgs { scene, vtl, frame_stats, last_phases, sys, metrics, log_buffer, bench, file_browser } = args;
+    let OverlayArgs { scene, vtl, frame_stats, last_phases, sys, hostname, metrics, log_buffer, bench, file_browser } = args;
     let last_phases = *last_phases;
     egui::Window::new("System").show(ctx, |ui| {
         ui.label(format!("HW: {}", sys.hardware_model));
@@ -39,7 +40,7 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
             "Screen: {}×{}@{:.3} Hz{}",
             sys.display.width_px, sys.display.height_px, sys.display.refresh_hz, mode_suffix,
         ));
-        ui.label(format!("Host: {}  IP: {}", sys.hostname, sys.local_ip));
+        ui.label(format!("Host: {}  IP: {}", hostname, sys.local_ip));
         ui.label(format!("Backend: {:?}", sys.backend));
         let (clock_label, clock_color) = match sys.clock_source {
             ClockSource::DrmVblank        => ("Clock: DRM vblank",                     egui::Color32::from_rgb(80, 200, 80)),

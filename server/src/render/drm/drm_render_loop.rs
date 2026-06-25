@@ -2,16 +2,13 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use crate::log_buffer::LogBuffer;
 use crate::render::AppKey;
-use crate::render::BenchmarkState;
 use crate::render::MetricsSampler;
 use crate::render::RenderState;
-use crate::render::vk::{
-    GlyphAtlas, SceneCache, VkEguiRenderer, VkGratingPipeline, VkPipeline, VkTextPipeline,
-};
-use crate::render::{FileBrowser, RenderTarget, StimulusDisplayInfo, SystemInfo, query_local_ip};
+use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, query_local_ip};
+use crate::render::{SceneRenderer, TextRenderer, UiRenderer};
+use crate::render::render_frame;
 use crate::scene::SceneState;
-use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache};
-use crate::timing::{FramePhases, FrameStats};
+use crate::timing::FrameTiming;
 use crate::vtl_state::VtlState;
 extern crate vtl;
 
@@ -53,6 +50,9 @@ struct DrmRenderLoopData {
     vblank: DrmVblankState,
     display_info: StimulusDisplayInfo,
     hardware_model: String,
+    local_ip: String,
+    log_buffer: LogBuffer,
+    metrics: MetricsSampler,
     /// Holds the CRTC snapshot; dropped before `vt_guard` to restore the
     /// console framebuffer before KD_TEXT is re-enabled.
     #[allow(dead_code)]
@@ -147,32 +147,12 @@ impl DrmRenderLoopData {
 
         // Initialise Vulkan — VK_KHR_display acquires DRM master internally.
         let (ctx, display_info, vk_display) = super::drm_init::init();
-        let wf_mode = if ctx.supports_wireframe {
-            ash::vk::PolygonMode::LINE
-        } else {
-            ash::vk::PolygonMode::FILL
-        };
-        let pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, ash::vk::PolygonMode::FILL);
-        let grating_pipeline = VkGratingPipeline::new(
-            &ctx.device,
-            &ctx.instance,
-            ctx.physical_device,
-            ctx.render_pass,
-            ash::vk::PolygonMode::FILL,
-        );
-        let wireframe_pipeline = VkPipeline::new(&ctx.device, ctx.render_pass, wf_mode);
-        let wireframe_grating = VkGratingPipeline::new(
-            &ctx.device,
-            &ctx.instance,
-            ctx.physical_device,
-            ctx.render_pass,
-            wf_mode,
-        );
 
-        ctx.set_debug_name(pipeline.pipeline, "solid_pipeline");
-        ctx.set_debug_name(grating_pipeline.pipeline, "grating_pipeline");
-        ctx.set_debug_name(wireframe_pipeline.pipeline, "solid_wireframe_pipeline");
-        ctx.set_debug_name(wireframe_grating.pipeline, "grating_wireframe_pipeline");
+        // Build scene + text sub-renderers first (before ctx moves).
+        let config_dir = scene.read().unwrap().runtime.config_dir.clone();
+        let scene_renderer = SceneRenderer::new(&ctx, scene);
+        let text = TextRenderer::new(&ctx);
+
         ctx.set_debug_name(ctx.render_pass, "render_pass");
         ctx.set_debug_name(ctx.egui_render_pass, "egui_render_pass");
         for (i, frame) in ctx.frames.iter().enumerate() {
@@ -182,20 +162,7 @@ impl DrmRenderLoopData {
             ctx.set_debug_name(*img, &format!("swapchain[{i}]"));
         }
 
-        let egui_renderer = VkEguiRenderer::new(
-            &ctx.device,
-            &ctx.instance,
-            ctx.physical_device,
-            ctx.egui_render_pass,
-        );
-
-        let scene_cache = SceneCache::new(&ctx.instance, ctx.physical_device);
-        let glyph_atlas = GlyphAtlas::new(&ctx.device, &ctx.instance, ctx.physical_device);
-        let text_pipeline = VkTextPipeline::new(
-            &ctx.device,
-            ctx.render_pass,
-            glyph_atlas.descriptor_set_layout,
-        );
+        let ui = UiRenderer::new(&ctx, config_dir);
 
         // Build vblank state before ctx moves into RenderState.
         let vk_vblank = ctx
@@ -204,31 +171,12 @@ impl DrmRenderLoopData {
             .map(|loader| VkVblank::new(ctx.device.clone(), loader.clone(), vk_display));
         let vblank = DrmVblankState::new(ctx.device.clone(), drm_vblank, vk_vblank);
 
-        let config_dir = scene.read().unwrap().runtime.config_dir.clone();
         let rs = RenderState {
-            frame_stats: FrameStats::new(display_info.refresh_hz),
+            scene_renderer,
+            text,
+            ui: Some(ui),
+            timing: FrameTiming::new(display_info.refresh_hz),
             ctx,
-            pipeline,
-            grating_pipeline,
-            wireframe_pipeline,
-            wireframe_grating,
-            wireframe: false,
-            scene_cache,
-            glyph_atlas,
-            text_pipeline,
-            font_system: TextFontSystem::new(),
-            swash_cache: TextSwashCache::new(),
-            egui_renderer,
-            egui_ctx: egui::Context::default(),
-            scene,
-            last_phases: FramePhases::default(),
-            frame_index: 0,
-            show_overlay: false,
-            benchmark: BenchmarkState::new(),
-            local_ip: query_local_ip(),
-            log_buffer,
-            metrics: MetricsSampler::new(),
-            file_browser: FileBrowser::new(config_dir),
         };
 
         Self {
@@ -239,6 +187,9 @@ impl DrmRenderLoopData {
             vblank,
             display_info,
             hardware_model,
+            local_ip: query_local_ip(),
+            log_buffer,
+            metrics: MetricsSampler::new(),
             display_guard,
             vt_guard,
             suspended: false,
@@ -249,8 +200,7 @@ impl DrmRenderLoopData {
         SystemInfo {
             display: self.display_info.clone(),
             backend: RenderTarget::Drm,
-            local_ip: self.rs.local_ip.clone(),
-            hostname: String::new(),
+            local_ip: self.local_ip.clone(),
             gpu_name: String::new(),
             hardware_model: self.hardware_model.clone(),
             wireframe: None,
@@ -312,20 +262,27 @@ impl DrmRenderLoopData {
                 match key {
                     AppKey::Escape => return,
                     AppKey::SwitchVt(n) => self.vt_guard.switch_to(n),
-                    AppKey::D => crate::render::spawn_demo_stimuli(&self.rs.scene),
-                    AppKey::F1 => self.rs.show_overlay = !self.rs.show_overlay,
+                    AppKey::D => {
+                        crate::render::spawn_demo_stimuli(&self.rs.scene_renderer.scene);
+                    }
+                    AppKey::F1 => {
+                        if let Some(ui) = &mut self.rs.ui {
+                            ui.show_overlay = !ui.show_overlay;
+                        }
+                    }
                     AppKey::F2 => {
-                        let mut sc = self.rs.scene.write().expect("scene lock");
+                        let mut sc = self.rs.scene_renderer.scene.write().expect("scene lock");
                         sc.photodiode.enabled = !sc.photodiode.enabled;
                         sc.photodiode.flicker = true;
                         sc.photodiode.lit = false;
                     }
                     AppKey::F3 => {
                         if self.rs.ctx.supports_wireframe {
-                            self.rs.wireframe = !self.rs.wireframe;
+                            self.rs.scene_renderer.wireframe =
+                                !self.rs.scene_renderer.wireframe;
                             log::info!(
                                 "vstimd: wireframe {}",
-                                if self.rs.wireframe { "ON" } else { "OFF" }
+                                if self.rs.scene_renderer.wireframe { "ON" } else { "OFF" }
                             );
                         }
                     }
@@ -333,10 +290,10 @@ impl DrmRenderLoopData {
             }
 
             // 2. Build egui raw input (DRM: screen rect + libinput nav keys).
-            let egui_raw_input = self
-                .rs
-                .show_overlay
-                .then(|| self.build_egui_raw_input(nav_events));
+            let egui_raw_input = self.rs.ui
+                .as_ref()
+                .filter(|ui| ui.show_overlay)
+                .map(|_| self.build_egui_raw_input(nav_events));
 
             // 3. Block on vblank: DRM ioctl path blocks here directly; VK path
             //    collects the FIRST_PIXEL_OUT fence registered at end of last frame.
@@ -345,7 +302,7 @@ impl DrmRenderLoopData {
 
             // Log the settled clock source once, after frame 1 (when the VK
             // fence has been collected for the first time).
-            if !clock_logged && self.rs.frame_index > 0 {
+            if !clock_logged && self.rs.timing.frame_index > 0 {
                 clock_logged = true;
                 log::info!(
                     "vstimd: vblank clock: {}",
@@ -363,7 +320,7 @@ impl DrmRenderLoopData {
                     (edges, snap)
                 };
                 self.pending_outputs = [0; vtl::MAX_BANKS];
-                self.rs.scene.write().unwrap().advance_animations(
+                self.rs.scene_renderer.scene.write().unwrap().advance_animations(
                     &input_edges,
                     &output_snapshot,
                     &mut self.pending_outputs,
@@ -374,14 +331,22 @@ impl DrmRenderLoopData {
             // present.  The fence is collected at the top of the next iteration.
             // This two-phase register→collect pattern avoids double-blocking with
             // the FIFO vkAcquireNextImageKHR (which also syncs to the display).
-            self.vblank.register(self.rs.frame_index as u64);
+            self.vblank.register(self.rs.timing.frame_index as u64);
 
             // 4. Render: build overlay UI, tessellate scene, record Vulkan
             //    commands, submit to GPU, present to display.
             //    The frame prepared here will become visible at the next vblank.
             let sys_info = self.sys_info();
-            self.rs
-                .render_one_frame(screen_clock, egui_raw_input, &sys_info, self.vtl.as_deref());
+            let metrics = self.metrics.sample();
+            render_frame(
+                &mut self.rs,
+                screen_clock,
+                egui_raw_input,
+                &sys_info,
+                self.vtl.as_deref(),
+                &self.log_buffer,
+                metrics,
+            );
 
             // pending_outputs is already saved for commit at next [A].
         }

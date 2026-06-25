@@ -1,7 +1,6 @@
 pub mod buffers;
 pub mod cache;
 pub mod egui;
-pub mod frame;
 pub mod vk_context;
 pub mod vk_mesh;
 pub mod vk_render_pipeline;
@@ -11,7 +10,6 @@ pub mod vk_text_pipeline;
 pub use crate::scene::stimulus::grating::VkGratingPipeline;
 pub use cache::SceneCache;
 pub use egui::VkEguiRenderer;
-pub use frame::{EguiFrameData, render_frame};
 pub use vk_context::{VkContext, build_context};
 pub use vk_mesh::VkMesh;
 pub use vk_render_pipeline::VkPipeline;
