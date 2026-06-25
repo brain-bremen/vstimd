@@ -14,10 +14,13 @@ RPM_BUILDER_IMAGE ?= vstimd-rpm-builder
 VERSION  := $(shell grep '^version' server/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
 REVISION ?= 1
 
-DEB_AMD64 := $(DIST_DIR)/vstimd_$(VERSION)-$(REVISION)_amd64.deb
-DEB_ARM64 := $(DIST_DIR)/vstimd_$(VERSION)-$(REVISION)_arm64.deb
-RPM_AMD64 := $(DIST_DIR)/vstimd-$(VERSION)-$(REVISION).x86_64.rpm
-RPM_ARM64 := $(DIST_DIR)/vstimd-$(VERSION)-$(REVISION).aarch64.rpm
+# Must match [package.metadata.deb] name in server/Cargo.toml
+DEB_NAME  := braemons-vstimd
+
+DEB_AMD64 := $(DIST_DIR)/$(DEB_NAME)_$(VERSION)-$(REVISION)_amd64.deb
+DEB_ARM64 := $(DIST_DIR)/$(DEB_NAME)_$(VERSION)-$(REVISION)_arm64.deb
+RPM_AMD64 := $(DIST_DIR)/$(DEB_NAME)-$(VERSION)-$(REVISION).x86_64.rpm
+RPM_ARM64 := $(DIST_DIR)/$(DEB_NAME)-$(VERSION)-$(REVISION).aarch64.rpm
 
 RUST_SRCS     := Cargo.toml Cargo.lock $(shell find server/src vtl/src proto -type f 2>/dev/null)
 PKG_SRCS      := $(shell find packaging -type f)
