@@ -4,20 +4,18 @@ use ash::vk;
 
 use crate::render::tess::{self, tessellate_photodiode};
 use crate::render::vk::scene_cache::SceneCache;
-use crate::scene::stimulus::text::{
-    TextFontSystem, TextSwashCache, layout_and_rasterize,
-};
+use crate::scene::stimulus::text::{TextFontSystem, TextSwashCache, layout_and_rasterize};
 use crate::scene::stimulus::{DrawMode, Stimulus};
 
 const PHOTODIODE_HANDLE: u32 = u32::MAX;
 use crate::scene::SceneState;
 use crate::timing::{FramePhases, FrameStats, FrameTick};
 
-use super::context::VkContext;
 use super::egui::VkEguiRenderer;
-use super::pipeline::VkPipeline;
-use super::text_atlas::GlyphAtlas;
-use super::text_pipeline::{TextPushConstants, TextVertex, VkTextPipeline};
+use super::vk_context::VkContext;
+use super::vk_render_pipeline::VkPipeline;
+use super::vk_text_atlas::GlyphAtlas;
+use super::vk_text_pipeline::{TextPushConstants, TextVertex, VkTextPipeline};
 use crate::scene::stimulus::grating::{
     VkGratingPipeline, build_grating_push_constants, grating_phase_inc,
 };
@@ -100,7 +98,6 @@ pub fn render_frame(
         sc.runtime.frame_count += 1;
         let _ = sc.runtime.frame_notifier.send(sc.runtime.frame_count);
 
-
         sc.runtime.screen_size = Some(screen_size);
         sc.runtime.frame_rate = fps;
         if sc.runtime.last_uploaded_size != screen_size {
@@ -109,9 +106,18 @@ pub fn render_frame(
                 entry.stimulus.flags_mut().mark_dirty();
             }
         }
-        scene_cache.solid.fill_meshes.retain(|h, _| *h == PHOTODIODE_HANDLE || sc.stimuli.contains_key(h));
-        scene_cache.solid.stroke_meshes.retain(|h, _| sc.stimuli.contains_key(h));
-        scene_cache.text.meshes.retain(|h, _| sc.stimuli.contains_key(h));
+        scene_cache
+            .solid
+            .fill_meshes
+            .retain(|h, _| *h == PHOTODIODE_HANDLE || sc.stimuli.contains_key(h));
+        scene_cache
+            .solid
+            .stroke_meshes
+            .retain(|h, _| sc.stimuli.contains_key(h));
+        scene_cache
+            .text
+            .meshes
+            .retain(|h, _| sc.stimuli.contains_key(h));
 
         let handles: Vec<u32> = sc.stimuli.keys().copied().collect();
         for handle in handles {
@@ -129,7 +135,9 @@ pub fn render_frame(
             // Text: lay out, rasterize into atlas, build glyph quads.
             if matches!(sc.stimuli[&handle].stimulus, Stimulus::Text(_)) {
                 let (skip, glyphs) = {
-                    let Stimulus::Text(text) = &sc.stimuli[&handle].stimulus else { unreachable!() };
+                    let Stimulus::Text(text) = &sc.stimuli[&handle].stimulus else {
+                        unreachable!()
+                    };
                     let has_mesh = scene_cache.text.meshes.contains_key(&handle);
                     if !text.flags.dirty && (text.flags.is_visible() == has_mesh) {
                         (true, vec![])
@@ -147,10 +155,11 @@ pub fn render_frame(
                     let half_w = screen_w * 0.5;
                     let half_h = screen_h * 0.5;
                     let mut verts: Vec<TextVertex> = Vec::new();
-                    let mut idxs:  Vec<u32>       = Vec::new();
+                    let mut idxs: Vec<u32> = Vec::new();
                     for g in &glyphs {
-                        let ae = glyph_atlas.lookup(g.key)
-                            .or_else(|| glyph_atlas.insert(g.key, &g.bitmap, g.bitmap_width, g.bitmap_height));
+                        let ae = glyph_atlas.lookup(g.key).or_else(|| {
+                            glyph_atlas.insert(g.key, &g.bitmap, g.bitmap_width, g.bitmap_height)
+                        });
                         let Some(e) = ae else { continue };
                         let x0 = g.screen_x / half_w - 1.0;
                         let y0 = 1.0 - g.screen_y / half_h;
@@ -158,14 +167,38 @@ pub fn render_frame(
                         let y1 = 1.0 - (g.screen_y + e.pixel_h as f32) / half_h;
                         let base = verts.len() as u32;
                         verts.extend_from_slice(&[
-                            TextVertex { position: [x0, y0], uv: [e.u0, e.v0] },
-                            TextVertex { position: [x1, y0], uv: [e.u1, e.v0] },
-                            TextVertex { position: [x1, y1], uv: [e.u1, e.v1] },
-                            TextVertex { position: [x0, y1], uv: [e.u0, e.v1] },
+                            TextVertex {
+                                position: [x0, y0],
+                                uv: [e.u0, e.v0],
+                            },
+                            TextVertex {
+                                position: [x1, y0],
+                                uv: [e.u1, e.v0],
+                            },
+                            TextVertex {
+                                position: [x1, y1],
+                                uv: [e.u1, e.v1],
+                            },
+                            TextVertex {
+                                position: [x0, y1],
+                                uv: [e.u0, e.v1],
+                            },
                         ]);
-                        idxs.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
+                        idxs.extend_from_slice(&[
+                            base,
+                            base + 1,
+                            base + 2,
+                            base,
+                            base + 2,
+                            base + 3,
+                        ]);
                     }
-                    scene_cache.text.upload(handle, &ctx.device, bytemuck::cast_slice(&verts), &idxs);
+                    scene_cache.text.upload(
+                        handle,
+                        &ctx.device,
+                        bytemuck::cast_slice(&verts),
+                        &idxs,
+                    );
                     sc.stimuli[&handle].stimulus.flags_mut().dirty = false;
                 }
                 continue;
@@ -173,7 +206,9 @@ pub fn render_frame(
 
             // Shapes: lyon tessellation.
             let entry = &sc.stimuli[&handle];
-            let Stimulus::Shape(shape) = &entry.stimulus else { continue };
+            let Stimulus::Shape(shape) = &entry.stimulus else {
+                continue;
+            };
             let has_mesh = scene_cache.solid.fill_meshes.contains_key(&handle)
                 || scene_cache.solid.stroke_meshes.contains_key(&handle);
             if !shape.flags().dirty && (shape.flags().is_visible() == has_mesh) {
@@ -186,9 +221,12 @@ pub fn render_frame(
                 tess.fill.0.len(),
                 tess.stroke.0.len(),
             );
-            scene_cache.solid.upload(handle, &ctx.device,
-                (&tess.fill.0,   &tess.fill.1),
-                (&tess.stroke.0, &tess.stroke.1));
+            scene_cache.solid.upload(
+                handle,
+                &ctx.device,
+                (&tess.fill.0, &tess.fill.1),
+                (&tess.stroke.0, &tess.stroke.1),
+            );
             sc.stimuli[&handle].stimulus.flags_mut().dirty = false;
         }
 
@@ -201,14 +239,21 @@ pub fn render_frame(
                     || screen_size != scene_cache.photodiode.screen_size));
         if geometry_changed {
             let (pd_verts, pd_idxs) = tessellate_photodiode(pd, screen_size);
-            scene_cache.solid.upload(PHOTODIODE_HANDLE, &ctx.device, (&pd_verts, &pd_idxs), (&[], &[]));
-            scene_cache.photodiode.enabled     = pd.enabled;
-            scene_cache.photodiode.lit         = pd.enabled.then_some(pd.lit);
-            scene_cache.photodiode.position    = pd.position;
+            scene_cache.solid.upload(
+                PHOTODIODE_HANDLE,
+                &ctx.device,
+                (&pd_verts, &pd_idxs),
+                (&[], &[]),
+            );
+            scene_cache.photodiode.enabled = pd.enabled;
+            scene_cache.photodiode.lit = pd.enabled.then_some(pd.lit);
+            scene_cache.photodiode.position = pd.position;
             scene_cache.photodiode.screen_size = screen_size;
         } else if pd.enabled && scene_cache.photodiode.lit != Some(pd.lit) {
             let (pd_verts, _) = tessellate_photodiode(pd, screen_size);
-            scene_cache.solid.overwrite_fill_vertices(PHOTODIODE_HANDLE, &ctx.device, &pd_verts);
+            scene_cache
+                .solid
+                .overwrite_fill_vertices(PHOTODIODE_HANDLE, &ctx.device, &pd_verts);
             scene_cache.photodiode.lit = Some(pd.lit);
         }
     } // write lock dropped — ZMQ thread can run
@@ -251,7 +296,9 @@ pub fn render_frame(
 
         let bg = {
             let sc = scene.read().expect("scene lock poisoned");
-            vk::ClearColorValue { float32: sc.background.live.into() }
+            vk::ClearColorValue {
+                float32: sc.background.live.into(),
+            }
         };
 
         let render_area = vk::Rect2D {
@@ -265,20 +312,29 @@ pub fn render_frame(
             .render_area(render_area)
             .clear_values(std::slice::from_ref(&clear_value));
 
-        ctx.device.cmd_begin_render_pass(cb, &rp_info, vk::SubpassContents::INLINE);
+        ctx.device
+            .cmd_begin_render_pass(cb, &rp_info, vk::SubpassContents::INLINE);
 
         let sc = scene.read().expect("scene lock poisoned");
         let screen_w = ctx.extent.width as f32;
         let screen_h = ctx.extent.height as f32;
 
         let viewport = vk::Viewport {
-            x: 0.0, y: 0.0,
-            width: screen_w, height: screen_h,
-            min_depth: 0.0, max_depth: 1.0,
+            x: 0.0,
+            y: 0.0,
+            width: screen_w,
+            height: screen_h,
+            min_depth: 0.0,
+            max_depth: 1.0,
         };
 
         #[derive(PartialEq)]
-        enum Bound { None, Solid, Grating, Text }
+        enum Bound {
+            None,
+            Solid,
+            Grating,
+            Text,
+        }
         let mut bound = Bound::None;
         let quad = &grating_pipeline.quad;
 
@@ -291,84 +347,158 @@ pub fn render_frame(
 
             if let Stimulus::Grating(s) = stim {
                 if bound != Bound::Grating {
-                    ctx.device.cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, grating_pipeline.pipeline);
-                    ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
-                    ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
-                    ctx.device.cmd_bind_vertex_buffers(cb, 0, &[quad.vertex_buffer], &[0]);
-                    ctx.device.cmd_bind_index_buffer(cb, quad.index_buffer, 0, vk::IndexType::UINT32);
+                    ctx.device.cmd_bind_pipeline(
+                        cb,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        grating_pipeline.pipeline,
+                    );
+                    ctx.device
+                        .cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+                    ctx.device
+                        .cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+                    ctx.device
+                        .cmd_bind_vertex_buffers(cb, 0, &[quad.vertex_buffer], &[0]);
+                    ctx.device.cmd_bind_index_buffer(
+                        cb,
+                        quad.index_buffer,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
                     bound = Bound::Grating;
                 }
                 let pc = build_grating_push_constants(s, screen_w, screen_h);
                 ctx.device.cmd_push_constants(
-                    cb, grating_pipeline.layout,
+                    cb,
+                    grating_pipeline.layout,
                     vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    0, bytemuck::bytes_of(&pc),
+                    0,
+                    bytemuck::bytes_of(&pc),
                 );
-                ctx.device.cmd_draw_indexed(cb, quad.index_count, 1, 0, 0, 0);
-
+                ctx.device
+                    .cmd_draw_indexed(cb, quad.index_count, 1, 0, 0, 0);
             } else if let Stimulus::Text(t) = stim {
                 if bound != Bound::Text {
-                    ctx.device.cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, text_pipeline.pipeline);
-                    ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
-                    ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+                    ctx.device.cmd_bind_pipeline(
+                        cb,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        text_pipeline.pipeline,
+                    );
+                    ctx.device
+                        .cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+                    ctx.device
+                        .cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
                     ctx.device.cmd_bind_descriptor_sets(
-                        cb, vk::PipelineBindPoint::GRAPHICS,
-                        text_pipeline.layout, 0,
-                        &[glyph_atlas.descriptor_set], &[],
+                        cb,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        text_pipeline.layout,
+                        0,
+                        &[glyph_atlas.descriptor_set],
+                        &[],
                     );
                     bound = Bound::Text;
                 }
                 ctx.device.cmd_push_constants(
-                    cb, text_pipeline.layout,
+                    cb,
+                    text_pipeline.layout,
                     vk::ShaderStageFlags::FRAGMENT,
-                    0, bytemuck::bytes_of(&TextPushConstants { color: t.params.live.color.into() }),
+                    0,
+                    bytemuck::bytes_of(&TextPushConstants {
+                        color: t.params.live.color.into(),
+                    }),
                 );
                 if let Some(mesh) = scene_cache.text.meshes.get(h).filter(|m| m.index_count > 0) {
-                    ctx.device.cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
-                    ctx.device.cmd_bind_index_buffer(cb, mesh.index_buffer, 0, vk::IndexType::UINT32);
-                    ctx.device.cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
+                    ctx.device
+                        .cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
+                    ctx.device.cmd_bind_index_buffer(
+                        cb,
+                        mesh.index_buffer,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+                    ctx.device
+                        .cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
                 }
-
             } else {
                 let draw_mode = match stim {
                     Stimulus::Shape(s) => s.appearance().live.draw_mode,
-                    _                  => DrawMode::Fill,
+                    _ => DrawMode::Fill,
                 };
-                let draw_fill   = matches!(draw_mode, DrawMode::Fill | DrawMode::FillAndStroke);
+                let draw_fill = matches!(draw_mode, DrawMode::Fill | DrawMode::FillAndStroke);
                 let draw_stroke = matches!(draw_mode, DrawMode::Stroke | DrawMode::FillAndStroke);
 
                 if (draw_fill || draw_stroke) && bound != Bound::Solid {
-                    ctx.device.cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
-                    ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
-                    ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+                    ctx.device.cmd_bind_pipeline(
+                        cb,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        pipeline.pipeline,
+                    );
+                    ctx.device
+                        .cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+                    ctx.device
+                        .cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
                     bound = Bound::Solid;
                 }
                 if draw_fill
-                    && let Some(mesh) = scene_cache.solid.fill_meshes.get(h).filter(|m| m.index_count > 0)
+                    && let Some(mesh) = scene_cache
+                        .solid
+                        .fill_meshes
+                        .get(h)
+                        .filter(|m| m.index_count > 0)
                 {
-                    ctx.device.cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
-                    ctx.device.cmd_bind_index_buffer(cb, mesh.index_buffer, 0, vk::IndexType::UINT32);
-                    ctx.device.cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
+                    ctx.device
+                        .cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
+                    ctx.device.cmd_bind_index_buffer(
+                        cb,
+                        mesh.index_buffer,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+                    ctx.device
+                        .cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
                 }
                 if draw_stroke
-                    && let Some(mesh) = scene_cache.solid.stroke_meshes.get(h).filter(|m| m.index_count > 0)
+                    && let Some(mesh) = scene_cache
+                        .solid
+                        .stroke_meshes
+                        .get(h)
+                        .filter(|m| m.index_count > 0)
                 {
-                    ctx.device.cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
-                    ctx.device.cmd_bind_index_buffer(cb, mesh.index_buffer, 0, vk::IndexType::UINT32);
-                    ctx.device.cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
+                    ctx.device
+                        .cmd_bind_vertex_buffers(cb, 0, &[mesh.vertex_buffer], &[0]);
+                    ctx.device.cmd_bind_index_buffer(
+                        cb,
+                        mesh.index_buffer,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+                    ctx.device
+                        .cmd_draw_indexed(cb, mesh.index_count, 1, 0, 0, 0);
                 }
             }
         }
 
         // Photodiode drawn on top, always solid.
-        if let Some(m) = scene_cache.solid.fill_meshes.get(&PHOTODIODE_HANDLE).filter(|m| m.index_count > 0) {
+        if let Some(m) = scene_cache
+            .solid
+            .fill_meshes
+            .get(&PHOTODIODE_HANDLE)
+            .filter(|m| m.index_count > 0)
+        {
             if bound != Bound::Solid {
-                ctx.device.cmd_bind_pipeline(cb, vk::PipelineBindPoint::GRAPHICS, pipeline.pipeline);
-                ctx.device.cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
-                ctx.device.cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
+                ctx.device.cmd_bind_pipeline(
+                    cb,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline.pipeline,
+                );
+                ctx.device
+                    .cmd_set_viewport(cb, 0, std::slice::from_ref(&viewport));
+                ctx.device
+                    .cmd_set_scissor(cb, 0, std::slice::from_ref(&render_area));
             }
-            ctx.device.cmd_bind_vertex_buffers(cb, 0, &[m.vertex_buffer], &[0]);
-            ctx.device.cmd_bind_index_buffer(cb, m.index_buffer, 0, vk::IndexType::UINT32);
+            ctx.device
+                .cmd_bind_vertex_buffers(cb, 0, &[m.vertex_buffer], &[0]);
+            ctx.device
+                .cmd_bind_index_buffer(cb, m.index_buffer, 0, vk::IndexType::UINT32);
             ctx.device.cmd_draw_indexed(cb, m.index_count, 1, 0, 0, 0);
         }
         ctx.cmd_end_label(cb);
@@ -378,7 +508,10 @@ pub fn render_frame(
         // -- Optional egui overlay pass ---------------------------------------
         if let (Some(renderer), Some(data)) = (egui_renderer.as_mut(), egui_data.as_ref()) {
             renderer.update_textures(
-                &ctx.device, ctx.graphics_queue, ctx.command_pool, data.textures_delta,
+                &ctx.device,
+                ctx.graphics_queue,
+                ctx.command_pool,
+                data.textures_delta,
             );
             renderer.upload_meshes(&ctx.device, data.primitives, data.pixels_per_point);
 
@@ -386,28 +519,36 @@ pub fn render_frame(
                 .render_pass(ctx.egui_render_pass)
                 .framebuffer(ctx.framebuffers[image_index as usize])
                 .render_area(render_area);
-            ctx.device.cmd_begin_render_pass(cb, &egui_rp_info, vk::SubpassContents::INLINE);
+            ctx.device
+                .cmd_begin_render_pass(cb, &egui_rp_info, vk::SubpassContents::INLINE);
 
             ctx.cmd_begin_label(cb, "egui overlay", [0.5, 0.9, 0.3, 1.0]);
             renderer.paint(
-                &ctx.device, cb, data.primitives,
-                (ctx.extent.width, ctx.extent.height), data.pixels_per_point,
+                &ctx.device,
+                cb,
+                data.primitives,
+                (ctx.extent.width, ctx.extent.height),
+                data.pixels_per_point,
             );
             ctx.cmd_end_label(cb);
 
             ctx.device.cmd_end_render_pass(cb);
         }
 
-        ctx.device.end_command_buffer(cb).expect("end_command_buffer");
+        ctx.device
+            .end_command_buffer(cb)
+            .expect("end_command_buffer");
     }
     let record_us = t_record_start.elapsed().as_micros() as u32;
 
     // -- Submit ---------------------------------------------------------------
     let t_submit_start = std::time::Instant::now();
     unsafe {
-        ctx.device.reset_fences(&[frame.in_flight]).expect("fence reset");
+        ctx.device
+            .reset_fences(&[frame.in_flight])
+            .expect("fence reset");
     }
-    let wait_sems   = [frame.image_available];
+    let wait_sems = [frame.image_available];
     let signal_sems = [frame.render_done];
     let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
     let cbs = [cb];
@@ -424,7 +565,11 @@ pub fn render_frame(
             log::error!(
                 "vstimd: queue_submit failed: {e} \
                  [frame={} tess={}µs fence={}µs acquire={}µs record={}µs]",
-                this_present_id, tessellate_us, fence_us, acquire_us, record_us
+                this_present_id,
+                tessellate_us,
+                fence_us,
+                acquire_us,
+                record_us
             );
             std::process::exit(1);
         }
@@ -433,9 +578,9 @@ pub fn render_frame(
     // -- Present --------------------------------------------------------------
     let present_ids = [this_present_id];
     let mut present_id_ext = vk::PresentIdKHR::default().present_ids(&present_ids);
-    let swapchains         = [ctx.swapchain];
-    let image_indices_arr  = [image_index];
-    let mut present_info   = vk::PresentInfoKHR::default()
+    let swapchains = [ctx.swapchain];
+    let image_indices_arr = [image_index];
+    let mut present_info = vk::PresentInfoKHR::default()
         .wait_semaphores(&signal_sems)
         .swapchains(&swapchains)
         .image_indices(&image_indices_arr);
@@ -443,7 +588,8 @@ pub fn render_frame(
         present_info = present_info.push_next(&mut present_id_ext);
     }
     let present_ok = unsafe {
-        ctx.swapchain_loader.queue_present(ctx.graphics_queue, &present_info)
+        ctx.swapchain_loader
+            .queue_present(ctx.graphics_queue, &present_info)
     };
     match present_ok {
         Ok(_) | Err(vk::Result::SUBOPTIMAL_KHR) => {}
@@ -462,8 +608,13 @@ pub fn render_frame(
         log::warn!(
             "vstimd: {} dropped frame(s) before frame {} \
              [tess={}µs fence={}µs acquire={}µs record={}µs submit={}µs]",
-            dropped_frames, this_present_id,
-            tessellate_us, fence_us, acquire_us, record_us, submit_us
+            dropped_frames,
+            this_present_id,
+            tessellate_us,
+            fence_us,
+            acquire_us,
+            record_us,
+            submit_us
         );
     }
     *frame_index = frame_index.wrapping_add(1);
@@ -474,7 +625,11 @@ pub fn render_frame(
         vblank_time,
         dropped_frames,
         phases: FramePhases {
-            tessellate_us, fence_us, acquire_us, record_us, submit_us,
+            tessellate_us,
+            fence_us,
+            acquire_us,
+            record_us,
+            submit_us,
         },
     })
 }

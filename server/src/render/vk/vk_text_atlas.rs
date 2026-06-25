@@ -66,8 +66,7 @@ impl GlyphAtlas {
         instance: &ash::Instance,
         physical_device: vk::PhysicalDevice,
     ) -> Self {
-        let mem_props =
-            unsafe { instance.get_physical_device_memory_properties(physical_device) };
+        let mem_props = unsafe { instance.get_physical_device_memory_properties(physical_device) };
 
         let image = create_atlas_image(device);
         let image_memory = alloc_bind_device_local(device, &mem_props, image);
@@ -177,12 +176,7 @@ impl GlyphAtlas {
     /// Uses a one-time command buffer submission so it can be called outside the
     /// main frame loop (e.g., during the tessellation phase before recording draw
     /// commands).  No-op when the atlas has not changed since the last call.
-    pub fn flush(
-        &mut self,
-        device: &ash::Device,
-        queue: vk::Queue,
-        command_pool: vk::CommandPool,
-    ) {
+    pub fn flush(&mut self, device: &ash::Device, queue: vk::Queue, command_pool: vk::CommandPool) {
         if !self.dirty {
             return;
         }
@@ -192,7 +186,8 @@ impl GlyphAtlas {
             // Copy cpu_pixels → staging buffer.
             let ptr = device
                 .map_memory(self.staging_memory, 0, size, vk::MemoryMapFlags::empty())
-                .expect("GlyphAtlas: failed to map staging buffer") as *mut u8;
+                .expect("GlyphAtlas: failed to map staging buffer")
+                as *mut u8;
             std::ptr::copy_nonoverlapping(self.cpu_pixels.as_ptr(), ptr, ATLAS_BYTES);
             device.unmap_memory(self.staging_memory);
 
@@ -319,7 +314,9 @@ fn find_memory_type(
     (0..mem_props.memory_type_count)
         .find(|&i| {
             (filter & (1 << i)) != 0
-                && mem_props.memory_types[i as usize].property_flags.contains(flags)
+                && mem_props.memory_types[i as usize]
+                    .property_flags
+                    .contains(flags)
         })
         .expect("GlyphAtlas: no suitable memory type")
 }
@@ -328,7 +325,11 @@ fn create_atlas_image(device: &ash::Device) -> vk::Image {
     let info = vk::ImageCreateInfo::default()
         .image_type(vk::ImageType::TYPE_2D)
         .format(vk::Format::R8_UNORM)
-        .extent(vk::Extent3D { width: ATLAS_SIZE, height: ATLAS_SIZE, depth: 1 })
+        .extent(vk::Extent3D {
+            width: ATLAS_SIZE,
+            height: ATLAS_SIZE,
+            depth: 1,
+        })
         .mip_levels(1)
         .array_layers(1)
         .samples(vk::SampleCountFlags::TYPE_1)
@@ -349,7 +350,11 @@ fn alloc_bind_device_local(
     image: vk::Image,
 ) -> vk::DeviceMemory {
     let reqs = unsafe { device.get_image_memory_requirements(image) };
-    let mem_type = find_memory_type(mem_props, reqs.memory_type_bits, vk::MemoryPropertyFlags::DEVICE_LOCAL);
+    let mem_type = find_memory_type(
+        mem_props,
+        reqs.memory_type_bits,
+        vk::MemoryPropertyFlags::DEVICE_LOCAL,
+    );
     let mem = unsafe {
         device
             .allocate_memory(
@@ -447,10 +452,20 @@ fn create_descriptor_set(
     device: &ash::Device,
     sampler: vk::Sampler,
     view: vk::ImageView,
-) -> (vk::DescriptorPool, vk::DescriptorSetLayout, vk::DescriptorSet) {
+) -> (
+    vk::DescriptorPool,
+    vk::DescriptorSetLayout,
+    vk::DescriptorSet,
+) {
     let pool_sizes = [
-        vk::DescriptorPoolSize { ty: vk::DescriptorType::SAMPLER, descriptor_count: 1 },
-        vk::DescriptorPoolSize { ty: vk::DescriptorType::SAMPLED_IMAGE, descriptor_count: 1 },
+        vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::SAMPLER,
+            descriptor_count: 1,
+        },
+        vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::SAMPLED_IMAGE,
+            descriptor_count: 1,
+        },
     ];
     let pool = unsafe {
         device
@@ -496,8 +511,7 @@ fn create_descriptor_set(
     };
 
     // Write sampler + image view into the set.
-    let sampler_info =
-        vk::DescriptorImageInfo::default().sampler(sampler);
+    let sampler_info = vk::DescriptorImageInfo::default().sampler(sampler);
     let image_info = vk::DescriptorImageInfo::default()
         .image_view(view)
         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
@@ -550,13 +564,19 @@ fn end_and_submit_one_time_cb(
     cb: vk::CommandBuffer,
 ) {
     unsafe {
-        device.end_command_buffer(cb).expect("GlyphAtlas: end_command_buffer failed");
+        device
+            .end_command_buffer(cb)
+            .expect("GlyphAtlas: end_command_buffer failed");
         let fence = device
             .create_fence(&vk::FenceCreateInfo::default(), None)
             .expect("GlyphAtlas: create_fence failed");
         let cbs = [cb];
         device
-            .queue_submit(queue, &[vk::SubmitInfo::default().command_buffers(&cbs)], fence)
+            .queue_submit(
+                queue,
+                &[vk::SubmitInfo::default().command_buffers(&cbs)],
+                fence,
+            )
             .expect("GlyphAtlas: queue_submit failed");
         device
             .wait_for_fences(&[fence], true, u64::MAX)

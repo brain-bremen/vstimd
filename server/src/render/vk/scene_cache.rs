@@ -1,7 +1,7 @@
 use ash::vk;
 
 use super::buffers::{PhotodiodeCache, SolidMeshCache};
-use super::text_pipeline::TextMeshCache;
+use super::vk_text_pipeline::TextMeshCache;
 
 /// Unified GPU-side cache for all stimulus types.
 ///
@@ -10,16 +10,16 @@ use super::text_pipeline::TextMeshCache;
 /// stimulus category; new categories (3-D meshes, video frames, …) add a
 /// field here.
 pub struct SceneCache {
-    pub solid:      SolidMeshCache,
-    pub text:       TextMeshCache,
+    pub solid: SolidMeshCache,
+    pub text: TextMeshCache,
     pub photodiode: PhotodiodeCache,
 }
 
 impl SceneCache {
     pub fn new(instance: &ash::Instance, physical_device: vk::PhysicalDevice) -> Self {
         Self {
-            solid:      SolidMeshCache::new(instance, physical_device),
-            text:       TextMeshCache::new(instance, physical_device),
+            solid: SolidMeshCache::new(instance, physical_device),
+            text: TextMeshCache::new(instance, physical_device),
             photodiode: PhotodiodeCache::default(),
         }
     }

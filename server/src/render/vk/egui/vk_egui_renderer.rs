@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use ash::vk;
 
-use super::pipeline::VkEguiPipeline;
+use super::vk_egui_pipeline::VkEguiPipeline;
 
 /// Vulkan texture for egui (font atlas or user image)
 struct VkEguiTexture {
@@ -159,8 +159,7 @@ impl VkEguiRenderer {
             egui::ImageData::Color(color_img) => {
                 let width = color_img.width() as u32;
                 let height = color_img.height() as u32;
-                let pixels: Vec<u8> =
-                    color_img.pixels.iter().flat_map(|c| c.to_array()).collect();
+                let pixels: Vec<u8> = color_img.pixels.iter().flat_map(|c| c.to_array()).collect();
                 (width, height, pixels)
             }
         }
@@ -653,7 +652,9 @@ impl VkEguiRenderer {
             let cmd_buffer = device.allocate_command_buffers(&cmd_info).unwrap()[0];
             let begin_info = vk::CommandBufferBeginInfo::default()
                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-            device.begin_command_buffer(cmd_buffer, &begin_info).unwrap();
+            device
+                .begin_command_buffer(cmd_buffer, &begin_info)
+                .unwrap();
 
             let subresource = vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,

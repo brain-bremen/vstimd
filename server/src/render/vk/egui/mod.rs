@@ -1,4 +1,4 @@
-mod pipeline;
-mod renderer;
+mod vk_egui_pipeline;
+mod vk_egui_renderer;
 
-pub use renderer::VkEguiRenderer;
+pub use vk_egui_renderer::VkEguiRenderer;

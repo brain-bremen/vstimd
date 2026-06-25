@@ -1,7 +1,7 @@
 use ash::vk;
 
-use crate::render::vk::{VkContext, build_context};
 use crate::render::StimulusDisplayInfo;
+use crate::render::vk::{VkContext, build_context};
 
 /// Initialise Vulkan for bare-metal display via `VK_KHR_display`.
 ///
@@ -53,12 +53,16 @@ pub fn init() -> (VkContext, StimulusDisplayInfo, vk::DisplayKHR) {
         match unsafe { entry.create_instance(&info, None) } {
             Ok(inst) => (inst, true),
             Err(vk::Result::ERROR_EXTENSION_NOT_PRESENT) => {
-                log::debug!("vstimd: VK_EXT_debug_utils not accepted at vkCreateInstance — disabling");
+                log::debug!(
+                    "vstimd: VK_EXT_debug_utils not accepted at vkCreateInstance — disabling"
+                );
                 let info_bare = vk::InstanceCreateInfo::default()
                     .application_info(&app_info)
                     .enabled_extension_names(&base_exts);
                 let inst = unsafe {
-                    entry.create_instance(&info_bare, None).expect("failed to create Vulkan instance")
+                    entry
+                        .create_instance(&info_bare, None)
+                        .expect("failed to create Vulkan instance")
                 };
                 (inst, false)
             }
@@ -71,7 +75,9 @@ pub fn init() -> (VkContext, StimulusDisplayInfo, vk::DisplayKHR) {
             .application_info(&app_info)
             .enabled_extension_names(&base_exts);
         let inst = unsafe {
-            entry.create_instance(&info, None).expect("failed to create Vulkan instance")
+            entry
+                .create_instance(&info, None)
+                .expect("failed to create Vulkan instance")
         };
         (inst, false)
     };
@@ -191,7 +197,11 @@ fn pick_mode(modes: &[vk::DisplayModePropertiesKHR]) -> (usize, vk::DisplayModeP
                 let hz = m.parameters.refresh_rate;
                 log::info!(
                     "vstimd: using display mode {} (VSTIMD_DISPLAY_MODE): {}×{}  {}.{:03} Hz",
-                    i, w, h, hz / 1000, hz % 1000
+                    i,
+                    w,
+                    h,
+                    hz / 1000,
+                    hz % 1000
                 );
                 return (i, modes[i]);
             }
@@ -199,9 +209,9 @@ fn pick_mode(modes: &[vk::DisplayModePropertiesKHR]) -> (usize, vk::DisplayModeP
                 "vstimd: VSTIMD_DISPLAY_MODE={i} out of range (0..{}), using auto-select",
                 modes.len()
             ),
-            Err(_) => log::warn!(
-                "vstimd: VSTIMD_DISPLAY_MODE={s:?} is not a number, using auto-select"
-            ),
+            Err(_) => {
+                log::warn!("vstimd: VSTIMD_DISPLAY_MODE={s:?} is not a number, using auto-select")
+            }
         }
     }
 
@@ -217,7 +227,10 @@ fn pick_mode(modes: &[vk::DisplayModePropertiesKHR]) -> (usize, vk::DisplayModeP
     let hz = best.parameters.refresh_rate;
     log::info!(
         "vstimd: auto-selected display mode {}×{}  {}.{:03} Hz",
-        w, h, hz / 1000, hz % 1000
+        w,
+        h,
+        hz / 1000,
+        hz % 1000
     );
     (best_idx, *best)
 }
