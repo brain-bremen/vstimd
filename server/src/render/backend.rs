@@ -11,6 +11,4 @@ pub struct BackendData {
     pub host_info: HostInfo,
 }
 
-pub trait RenderBackend {
-    fn run(self, on_ready: impl FnOnce());
-}
+

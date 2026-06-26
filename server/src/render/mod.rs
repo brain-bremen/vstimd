@@ -1,5 +1,8 @@
 pub mod backend;
-pub use backend::{BackendData, RenderBackend};
+pub use backend::BackendData;
+
+pub mod null_backend;
+pub use null_backend::NullBackend;
 
 pub mod app_keys;
 pub use app_keys::AppKey;

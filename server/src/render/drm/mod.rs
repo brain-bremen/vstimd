@@ -5,4 +5,4 @@ mod drm_render_loop;
 mod drm_vblank;
 mod drm_virtual_terminal;
 
-pub use drm_render_loop::run_render_loop;
+pub use drm_render_loop::DrmBackend;

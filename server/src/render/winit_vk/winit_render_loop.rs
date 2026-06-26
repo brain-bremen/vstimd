@@ -29,24 +29,31 @@ extern crate vtl;
 // frames overwrite each other) — the exact opposite of what we want. FIFO is
 // guaranteed to be available on every Vulkan implementation.
 
-// ── Public entry point ────────────────────────────────────────────────────────
+// ── Public backend ────────────────────────────────────────────────────────────
 
-/// Create the winit event loop and window, call `on_ready` (for ZMQ bind +
-/// systemd notify), then run until the window is closed or shutdown is requested.
-pub fn run_render_loop(
+pub struct WinitBackend {
     data: BackendData,
     window_mode: WindowMode,
     log_buffer: LogBuffer,
-    on_ready: impl FnOnce(),
-) {
-    let event_loop = winit::event_loop::EventLoop::new().unwrap_or_else(|e| {
-        log::error!("vstimd: failed to create event loop: {e}");
-        std::process::exit(1);
-    });
-    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-    let mut handler = WinitEventHandler::new(data, window_mode, log_buffer);
-    on_ready();
-    event_loop.run_app(&mut handler).unwrap();
+}
+
+impl WinitBackend {
+    pub fn new(data: BackendData, window_mode: WindowMode, log_buffer: LogBuffer) -> Self {
+        Self { data, window_mode, log_buffer }
+    }
+}
+
+impl WinitBackend {
+    pub fn run(self, on_ready: impl FnOnce()) {
+        let event_loop = winit::event_loop::EventLoop::new().unwrap_or_else(|e| {
+            log::error!("vstimd: failed to create event loop: {e}");
+            std::process::exit(1);
+        });
+        event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+        let mut handler = WinitEventHandler::new(self.data, self.window_mode, self.log_buffer);
+        on_ready();
+        event_loop.run_app(&mut handler).unwrap();
+    }
 }
 
 // ── Per-window render data ────────────────────────────────────────────────────

@@ -17,18 +17,25 @@ use super::drm_keyboard_input::InputState;
 use super::drm_vblank::{DrmVblank, DrmVblankState, VkVblank};
 use super::drm_virtual_terminal::DrmVtGuard;
 
-// ── Public entry point ────────────────────────────────────────────────────────
+// ── Public backend ────────────────────────────────────────────────────────────
 
-/// Initialise the DRM/Vulkan backend, call `on_ready` (for ZMQ bind + systemd
-/// notify), then run the render loop until shutdown is requested.
-pub fn run_render_loop(
+pub struct DrmBackend {
     data: BackendData,
     log_buffer: LogBuffer,
-    on_ready: impl FnOnce(),
-) {
-    let data = DrmRenderLoopData::new(data, log_buffer);
-    on_ready();
-    data.run_loop();
+}
+
+impl DrmBackend {
+    pub fn new(data: BackendData, log_buffer: LogBuffer) -> Self {
+        Self { data, log_buffer }
+    }
+}
+
+impl DrmBackend {
+    pub fn run(self, on_ready: impl FnOnce()) {
+        let data = DrmRenderLoopData::new(self.data, self.log_buffer);
+        on_ready();
+        data.run_loop();
+    }
 }
 
 // ── DrmRenderLoopData ─────────────────────────────────────────────────────────

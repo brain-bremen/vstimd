@@ -1,10 +1,10 @@
 use std::sync::{Arc, Mutex, RwLock};
 
 #[cfg(target_os = "linux")]
-use vstimd::render::drm::run_render_loop as run_drm_render_loop;
-use vstimd::render::{BackendData, HostInfo, RenderTarget, WindowMode};
+use vstimd::render::drm::DrmBackend;
+use vstimd::render::{BackendData, HostInfo, NullBackend, RenderTarget, WindowMode};
 use vstimd::render::{query_hardware_model, query_hostname, query_local_ip};
-use vstimd::render::winit_vk::run_render_loop as run_winit_render_loop;
+use vstimd::render::winit_vk::WinitBackend;
 use vstimd::scene::SceneState;
 use vstimd::vtl_state::VtlState;
 
@@ -82,65 +82,26 @@ fn main() {
     // init which can take several seconds on DRM).
     install_signal_handlers();
 
+    let data = BackendData { scene, vtl, host_info };
+    let zmq_port = args.zmq_port;
+    let on_ready = move || {
+        if wait_zmq_bound(&zmq_bound, zmq_port) {
+            notify_ready();
+        }
+    };
+
     match args.render_target {
         #[cfg(target_os = "linux")]
-        RenderTarget::Drm => {
-            let data = BackendData { scene, vtl, host_info };
-            run_drm_render_loop(data, log_buffer, || {
-                if wait_zmq_bound(&zmq_bound, args.zmq_port) {
-                    notify_ready();
-                }
-            });
-        }
+        RenderTarget::Drm => DrmBackend::new(data, log_buffer).run(on_ready),
         #[cfg(not(target_os = "linux"))]
         RenderTarget::Drm => {
             log::error!("DRM/console mode is only available on Linux");
             std::process::exit(1);
         }
         RenderTarget::Desktop(window_mode) => {
-            let data = BackendData { scene, vtl, host_info };
-            run_winit_render_loop(data, window_mode, log_buffer, || {
-                if wait_zmq_bound(&zmq_bound, args.zmq_port) {
-                    notify_ready();
-                }
-            });
+            WinitBackend::new(data, window_mode, log_buffer).run(on_ready);
         }
-        RenderTarget::Null => {
-            log::info!("vstimd: null renderer — ZMQ server + animation loop running, no display");
-
-            if wait_zmq_bound(&zmq_bound, args.zmq_port) {
-                notify_ready();
-            }
-
-            let frame_period = {
-                let s = scene.read().unwrap();
-                std::time::Duration::from_secs_f32(1.0 / s.runtime.frame_rate)
-            };
-            let mut output_pending = [0u64; vtl::MAX_BANKS];
-            loop {
-                if vstimd::shutdown::is_requested() {
-                    break;
-                }
-                let t0 = std::time::Instant::now();
-                let edges = vtl
-                    .as_ref()
-                    .and_then(|v| v.lock().ok().map(|mut g| g.poll()))
-                    .unwrap_or_default();
-                {
-                    let mut s = scene.write().unwrap();
-                    if s.runtime.pending_flip {
-                        s.apply_flip();
-                    }
-                    s.runtime.frame_count += 1;
-                    let _ = s.runtime.frame_notifier.send(s.runtime.frame_count);
-                    let output_snapshot = [0u64; vtl::MAX_BANKS];
-                    s.advance_animations(&edges, &output_snapshot, &mut output_pending);
-                }
-                if let Some(remaining) = frame_period.checked_sub(t0.elapsed()) {
-                    std::thread::sleep(remaining);
-                }
-            }
-        }
+        RenderTarget::Null => NullBackend::new(data).run(on_ready),
     }
 
     // Signal the ZMQ thread to exit and wait for it to finish.  This ensures
