@@ -65,8 +65,6 @@ struct WinitRenderLoopData {
     // that become dangling once the window is destroyed.
     rs: RenderState,
     vtl: Option<Arc<Mutex<VtlState>>>,
-    /// Animation output bits accumulated this frame; committed at [A] next frame.
-    pending_outputs: [u64; vtl::MAX_BANKS],
     egui_winit: egui_winit::State,
     // ── Window comes after all borrowers ─────────────────────────────────────
     window: Arc<Window>,
@@ -165,7 +163,6 @@ impl WinitRenderLoopData {
         Self {
             rs,
             vtl,
-            pending_outputs: [0; vtl::MAX_BANKS],
             egui_winit,
             window,
         }
@@ -191,22 +188,23 @@ impl WinitRenderLoopData {
             .filter(|ui| ui.show_overlay)
             .map(|_| self.egui_winit.take_egui_input(&self.window));
 
-        // [A] Commit previous frame's animation outputs; poll inputs.
+        // [A] Commit staged outputs; poll inputs; advance animations.
         // Note: in winit mode the vkWaitForPresentKHR confirmation lives inside
         // render_frame(), so this poll fires at the top of the render loop rather
         // than at the true vblank boundary.  DRM mode gets exact vblank alignment.
         if let Some(vtl) = &self.vtl {
-            let (input_edges, output_snapshot) = {
+            let (input_edges, output_snapshot, mut staged) = {
                 let mut v = vtl.lock().unwrap();
-                v.write_outputs(&self.pending_outputs);
+                v.commit_staged();
                 let edges = v.poll();
                 let snap  = v.output_snapshot();
-                (edges, snap)
+                let staged = v.staged;
+                (edges, snap, staged)
             };
-            self.pending_outputs = [0; vtl::MAX_BANKS];
             self.rs.scene_renderer.scene.write().unwrap().advance_animations(
-                &input_edges, &output_snapshot, &mut self.pending_outputs,
+                &input_edges, &output_snapshot, &mut staged,
             );
+            vtl.lock().unwrap().staged = staged;
         }
 
         // 2. Render: build overlay UI, tessellate scene, record Vulkan commands,
@@ -219,7 +217,6 @@ impl WinitRenderLoopData {
             self.vtl.as_deref(),
         );
 
-        // pending_outputs is already saved for commit at next [A].
 
         // 3. Forward egui platform output (cursor changes, clipboard, etc.).
         if let Some(po) = platform_output {

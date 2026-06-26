@@ -33,6 +33,9 @@ def server_address(request: pytest.FixtureRequest) -> str:
 @pytest.fixture(scope="session")
 def conn(server_address: str) -> Connection:
     c = Connection(server_address)
+    # Clear any VTL names left over from a previous failed run.
+    for line in c.vtl.list_lines():
+        c.vtl.set_line_name(bank=line.bank, bit=line.bit, direction=line.direction, name="")
     yield c
     c.close()
 

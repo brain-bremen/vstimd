@@ -169,6 +169,9 @@ pub struct VtlState {
     pub config:  VtlConfig,
     /// Vblank trigger bit from rig-config; None disables the trigger.
     pub vblank_vtl: Option<VtlBit>,
+    /// Persistent output state committed to shm at [A] each frame.
+    /// Animations and ZMQ commands both write here; never reset between frames.
+    pub staged:  [u64; MAX_BANKS],
     owner:       VtlOwner,
     prev_input:  [u64; MAX_BANKS],
     prev_output: [u64; MAX_BANKS],
@@ -188,6 +191,7 @@ impl VtlState {
         Self {
             config: VtlConfig::default(),
             vblank_vtl: None,
+            staged:      [0; MAX_BANKS],
             owner,
             prev_input:  [0; MAX_BANKS],
             prev_output: [0; MAX_BANKS],
@@ -196,6 +200,34 @@ impl VtlState {
 
     pub fn owner(&self) -> &VtlOwner {
         &self.owner
+    }
+
+    /// Commit `staged` to shm and signal gpiochip-daqd.
+    /// Called at [A] once per frame from the render thread.
+    pub fn commit_staged(&self) {
+        let n = self.owner.num_output_banks() as usize;
+        for (bank, &val) in self.staged.iter().enumerate().take(n.min(MAX_BANKS)) {
+            self.owner.set_output_state(bank, val);
+        }
+        self.owner.signal_output();
+    }
+
+    /// Set or clear a single bit in `staged` and write through to shm immediately
+    /// so that `list_lines` sees the updated value without waiting for the next [A].
+    pub fn set_staged_bit(&mut self, bank: usize, bit: u8, high: bool) {
+        let mask = 1u64 << bit;
+        if high {
+            self.staged[bank] |= mask;
+        } else {
+            self.staged[bank] &= !mask;
+        }
+        self.owner.set_output_state(bank, self.staged[bank]);
+    }
+
+    /// Write a full bank into `staged` and through to shm immediately.
+    pub fn set_staged_bank(&mut self, bank: usize, value: u64) {
+        self.staged[bank] = value;
+        self.owner.set_output_state(bank, value);
     }
 
     /// Drain input latches and return edges seen since the last call.
@@ -231,44 +263,7 @@ impl VtlState {
         snapshot
     }
 
-    /// Write output lines to shm and immediately signal gpiochip-daqd.
-    ///
-    /// Use for time-critical writes: the vblank trigger at [A] and the
-    /// animation-output commit at [C].  A single `sem_post` is emitted after
-    /// all banks are written, so daqd wakes up only once per call even when
-    /// multiple banks are updated.
-    pub fn write_outputs_immediate(&self, state: &[u64; MAX_BANKS]) {
-        let n = self.owner.num_output_banks() as usize;
-        for (bank, &val) in state.iter().enumerate().take(n.min(MAX_BANKS)) {
-            self.owner.set_output_state(bank, val);
-        }
-        self.owner.signal_output();
-    }
-
-    /// Write output lines to shm without signaling.
-    ///
-    /// Use when outputs will be flushed later via `flush_outputs`, or in paths
-    /// (null renderer, tests) where the semaphore signal is not needed.
-    pub fn write_outputs(&self, state: &[u64; MAX_BANKS]) {
-        let n = self.owner.num_output_banks() as usize;
-        for (bank, &val) in state.iter().enumerate().take(n.min(MAX_BANKS)) {
-            self.owner.set_output_state(bank, val);
-        }
-    }
-
-    /// Signal gpiochip-daqd that outputs have been updated.
-    ///
-    /// Pair with `write_outputs` when you want to batch multiple bank writes
-    /// and emit a single notification afterwards.
-    pub fn flush_outputs(&self) {
-        self.owner.signal_output();
-    }
-
     /// Returns a bitmask array with the vblank trigger bit set (if configured).
-    ///
-    /// OR this into the state passed to `write_outputs_immediate` at [A] to
-    /// raise the vblank trigger.  The bit is absent from the state written at
-    /// [C], so the trigger goes LOW automatically.
     pub fn vblank_mask(&self) -> [u64; MAX_BANKS] {
         let mut mask = [0u64; MAX_BANKS];
         if let Some(vb) = self.vblank_vtl {

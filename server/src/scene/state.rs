@@ -157,8 +157,9 @@ impl SceneState {
     /// thread at [S] (after output commit and input poll).
     ///
     /// `input_edges`     — rising/falling/current input lines from `VtlState::poll()`
-    /// `output_snapshot` — frozen output_state read at [S] for trigger detection
-    /// `output_pending`  — accumulator for this frame's output changes (committed at [A] next frame)
+    /// `output_snapshot` — frozen output_state read at [S] for output-line trigger detection
+    /// `output_pending`  — `VtlState::staged` passed by value; animations set/clear bits directly;
+    ///                     written back to staged after all animations have run
     pub fn advance_animations(
         &mut self,
         input_edges: &crate::vtl_state::VtlEdges,

@@ -219,9 +219,9 @@ impl SceneState {
             request::Body::ToggleInputVirtualTriggerLine(cmd) => self.cmd_toggle_input_virtual_trigger_line(cmd, vtl.as_deref()),
             request::Body::ClearInputVirtualTriggerLineLatches(cmd) => self.cmd_clear_input_virtual_trigger_line_latches(cmd, vtl.as_deref()),
             request::Body::SetInputVirtualTriggerLineBank(cmd) => self.cmd_set_input_virtual_trigger_line_bank(cmd, vtl.as_deref()),
-            request::Body::SetOutputVirtualTriggerLine(cmd) => self.cmd_set_output_virtual_trigger_line(cmd, vtl.as_deref()),
-            request::Body::ToggleOutputVirtualTriggerLine(cmd) => self.cmd_toggle_output_virtual_trigger_line(cmd, vtl.as_deref()),
-            request::Body::SetOutputVirtualTriggerLineBank(cmd) => self.cmd_set_output_virtual_trigger_line_bank(cmd, vtl.as_deref()),
+            request::Body::SetOutputVirtualTriggerLine(cmd) => self.cmd_set_output_virtual_trigger_line(cmd, vtl),
+            request::Body::ToggleOutputVirtualTriggerLine(cmd) => self.cmd_toggle_output_virtual_trigger_line(cmd, vtl),
+            request::Body::SetOutputVirtualTriggerLineBank(cmd) => self.cmd_set_output_virtual_trigger_line_bank(cmd, vtl),
             request::Body::SwapDrawOrder(_) => err(proto::ErrorCode::NotSupported, "SwapDrawOrder not yet implemented"),
             request::Body::CreateAnimation(cmd) => self.cmd_create_animation(cmd, vtl.as_deref()),
             request::Body::ArmAnimation(cmd) => self.cmd_arm_animation(cmd),
@@ -1183,7 +1183,7 @@ impl SceneState {
     fn cmd_set_output_virtual_trigger_line(
         &self,
         cmd: proto::SetOutputVirtualTriggerLineRequest,
-        vtl: Option<&VtlState>,
+        vtl: Option<&mut VtlState>,
     ) -> proto::Response {
         let Some(vtl) = vtl else {
             return err(proto::ErrorCode::NotSupported, "VTL shared memory not available");
@@ -1192,21 +1192,14 @@ impl SceneState {
             Ok(v) => v,
             Err(e) => return *e,
         };
-        let owner = vtl.owner();
-        let mask = 1u64 << bit;
-        let prev = owner.output_state(bank);
-        if cmd.value {
-            owner.set_output_state(bank, prev | mask);
-        } else {
-            owner.set_output_state(bank, prev & !mask);
-        }
+        vtl.set_staged_bit(bank, bit, cmd.value);
         ok_ack()
     }
 
     fn cmd_toggle_output_virtual_trigger_line(
         &self,
         cmd: proto::ToggleOutputVirtualTriggerLineRequest,
-        vtl: Option<&VtlState>,
+        vtl: Option<&mut VtlState>,
     ) -> proto::Response {
         let Some(vtl) = vtl else {
             return err(proto::ErrorCode::NotSupported, "VTL shared memory not available");
@@ -1215,15 +1208,8 @@ impl SceneState {
             Ok(v) => v,
             Err(e) => return *e,
         };
-        let owner = vtl.owner();
-        let mask = 1u64 << bit;
-        let prev = owner.output_state(bank);
-        let high = prev & mask == 0; // will be high after toggle
-        if high {
-            owner.set_output_state(bank, prev | mask);
-        } else {
-            owner.set_output_state(bank, prev & !mask);
-        }
+        let high = (vtl.staged[bank] >> bit) & 1 == 0; // will be high after toggle
+        vtl.set_staged_bit(bank, bit, high);
         ok_body(proto::response::Body::VirtualTriggerLineState(
             proto::VirtualTriggerLineStateResponse { high },
         ))
@@ -1232,7 +1218,7 @@ impl SceneState {
     fn cmd_set_output_virtual_trigger_line_bank(
         &self,
         cmd: proto::SetOutputVirtualTriggerLineBankRequest,
-        vtl: Option<&VtlState>,
+        vtl: Option<&mut VtlState>,
     ) -> proto::Response {
         let Some(vtl) = vtl else {
             return err(proto::ErrorCode::NotSupported, "VTL shared memory not available");
@@ -1240,8 +1226,7 @@ impl SceneState {
         if cmd.bank >= vtl::MAX_BANKS as u32 {
             return err(proto::ErrorCode::InvalidArgument, "bank out of range");
         }
-        let owner = vtl.owner();
-        owner.set_output_state(cmd.bank as usize, cmd.value);
+        vtl.set_staged_bank(cmd.bank as usize, cmd.value);
         ok_ack()
     }
 
