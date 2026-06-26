@@ -1,4 +1,3 @@
-use super::display_info::StimulusDisplayInfo;
 use super::RenderTarget;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,14 +26,19 @@ impl ClockSource {
     }
 }
 
-pub struct SystemInfo {
-    pub display: StimulusDisplayInfo,
-    pub backend: RenderTarget,
-    pub local_ip: String,
-    pub gpu_name: String,
+/// Static host facts collected in `main` before any Vulkan initialisation.
+pub struct HostInfo {
     pub hardware_model: String,
-    /// Some(true/false) when wireframe toggle is supported; None on DRM or unsupported GPU.
-    pub wireframe: Option<bool>,
+    pub hostname: String,
+    pub local_ip: String,
+    pub zmq_port: u16,
+}
+
+pub struct SystemInfo {
+    pub host: HostInfo,
+    pub gpu_name: String,
+    pub backend: RenderTarget,
+    pub supports_wireframe: bool,
     pub clock_source: ClockSource,
 }
 

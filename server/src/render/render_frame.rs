@@ -4,7 +4,6 @@ use ash::vk;
 
 use crate::render::overlay_ui::{OverlayArgs, build_overlay_ui};
 use crate::render::render_state::RenderState;
-use crate::render::system_info::SystemInfo;
 use crate::render::tess::{self, tessellate_photodiode};
 use crate::render::vk::{TextPushConstants, TextVertex};
 use crate::scene::photodiode::PHOTODIODE_HANDLE;
@@ -34,12 +33,13 @@ pub fn render_frame(
     rs: &mut RenderState,
     screen_clock: Option<std::time::Instant>,
     egui_raw_input: Option<egui::RawInput>,
-    sys_info: &SystemInfo,
     vtl: Option<&Mutex<VtlState>>,
 ) -> (Option<FrameTick>, Option<egui::PlatformOutput>) {
     // ── 1. Build egui overlay ─────────────────────────────────────────────────
     let mut egui_store: Option<EguiStore> = None;
     let mut platform_output: Option<egui::PlatformOutput> = None;
+
+    let wireframe = rs.ctx.supports_wireframe.then_some(rs.scene_renderer.wireframe);
 
     if let Some(ui) = &mut rs.ui
         && ui.show_overlay
@@ -48,7 +48,6 @@ pub fn render_frame(
         let phases = rs.timing.last_phases;
         let crate::render::ui_renderer::UiRenderer {
             ref mut egui_ctx,
-            ref hostname,
             ref mut benchmark,
             ref mut file_browser,
             ref mut metrics,
@@ -62,8 +61,9 @@ pub fn render_frame(
                 vtl,
                 frame_stats: &mut rs.timing.stats,
                 last_phases: phases,
-                sys: sys_info,
-                hostname,
+                sys: &rs.system_info,
+                display: &rs.display_info,
+                wireframe,
                 metrics: metrics_sample,
                 log_buffer,
                 bench: benchmark,

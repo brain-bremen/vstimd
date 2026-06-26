@@ -1,13 +1,14 @@
+use crate::render::display_info::StimulusDisplayInfo;
 use crate::render::scene_renderer::SceneRenderer;
+use crate::render::system_info::SystemInfo;
 use crate::render::text_renderer::TextRenderer;
 use crate::render::ui_renderer::UiRenderer;
 use crate::timing::FrameTiming;
 
 /// Vulkan rendering resources shared between the DRM and winit backends.
 ///
-/// Backend-specific state (input devices, window handle, vblank clock source,
-/// display geometry, local IP, log buffer, system metrics) lives in the
-/// embedding backend struct alongside this.
+/// `system_info` and `display_info` are written once at backend init and
+/// never mutated afterwards; no locking is needed.
 ///
 /// Field declaration order matters for `Drop`: `ctx` is declared last so
 /// Rust's automatic drop (which fires after our explicit `drop()`) frees
@@ -17,6 +18,8 @@ pub struct RenderState {
     pub text: TextRenderer,
     pub ui: Option<UiRenderer>,
     pub timing: FrameTiming,
+    pub system_info: SystemInfo,
+    pub display_info: StimulusDisplayInfo,
     pub ctx: crate::render::vk::VkContext,
 }
 

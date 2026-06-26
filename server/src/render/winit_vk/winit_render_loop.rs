@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
@@ -8,11 +8,11 @@ use winit::window::{Fullscreen, Window, WindowId};
 
 use crate::log_buffer::LogBuffer;
 use crate::render::RenderState;
-use crate::render::system_info::ClockSource;
-use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo, WindowMode};
+use crate::render::backend::BackendData;
+use crate::render::system_info::{ClockSource, SystemInfo};
+use crate::render::{RenderTarget, StimulusDisplayInfo, WindowMode};
 use crate::render::{SceneRenderer, TextRenderer, UiRenderer};
 use crate::render::render_frame;
-use crate::scene::SceneState;
 use crate::timing::FrameTiming;
 use crate::vtl_state::VtlState;
 extern crate vtl;
@@ -34,11 +34,9 @@ extern crate vtl;
 /// Create the winit event loop and window, call `on_ready` (for ZMQ bind +
 /// systemd notify), then run until the window is closed or shutdown is requested.
 pub fn run_render_loop(
-    scene: Arc<RwLock<SceneState>>,
-    vtl: Option<Arc<Mutex<VtlState>>>,
+    data: BackendData,
     window_mode: WindowMode,
     log_buffer: LogBuffer,
-    hardware_model: String,
     on_ready: impl FnOnce(),
 ) {
     let event_loop = winit::event_loop::EventLoop::new().unwrap_or_else(|e| {
@@ -46,7 +44,7 @@ pub fn run_render_loop(
         std::process::exit(1);
     });
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
-    let mut handler = WinitEventHandler::new(scene, vtl, window_mode, log_buffer, hardware_model);
+    let mut handler = WinitEventHandler::new(data, window_mode, log_buffer);
     on_ready();
     event_loop.run_app(&mut handler).unwrap();
 }
@@ -65,20 +63,17 @@ struct WinitRenderLoopData {
     egui_winit: egui_winit::State,
     // ── Window comes after all borrowers ─────────────────────────────────────
     window: Arc<Window>,
-    refresh_hz: f64,
-    window_mode: WindowMode,
 }
 
 impl WinitRenderLoopData {
     fn new(
         window: Arc<Window>,
-        scene: Arc<RwLock<SceneState>>,
-        vtl: Option<Arc<Mutex<VtlState>>>,
+        data: BackendData,
         event_loop: &ActiveEventLoop,
         window_mode: WindowMode,
         log_buffer: LogBuffer,
-        hardware_model: String,
     ) -> Self {
+        let BackendData { scene, vtl, host_info } = data;
         let ctx = super::winit_init::init(&window);
         // FIFO is set by build_context and never changed — the swapchain is
         // the screen clock.
@@ -98,7 +93,19 @@ impl WinitRenderLoopData {
             ctx.set_debug_name(*img, &format!("swapchain[{i}]"));
         }
 
-        let ui = UiRenderer::new(&ctx, config_dir, log_buffer, hardware_model);
+        let system_info = SystemInfo {
+            host: host_info,
+            gpu_name: String::new(),
+            backend: RenderTarget::Desktop(window_mode),
+            supports_wireframe: ctx.supports_wireframe,
+            clock_source: if ctx.present_wait.is_some() {
+                ClockSource::PresentWait
+            } else {
+                ClockSource::GpuCompletion
+            },
+        };
+
+        let ui = UiRenderer::new(&ctx, config_dir, log_buffer);
         // egui::Context is Arc-based; clone gives egui_winit a handle to the
         // same context so it can read/write egui state (e.g. zoom factor).
         let egui_ctx = ui.egui_ctx.clone();
@@ -132,11 +139,19 @@ impl WinitRenderLoopData {
             );
         }
 
+        let size = window.inner_size();
         let rs = RenderState {
             scene_renderer,
             text,
             ui: Some(ui),
             timing: FrameTiming::new(hz),
+            system_info,
+            display_info: StimulusDisplayInfo {
+                width_px: size.width,
+                height_px: size.height,
+                refresh_hz: hz,
+                mode_index: None,
+            },
             ctx,
         };
 
@@ -146,35 +161,6 @@ impl WinitRenderLoopData {
             pending_outputs: [0; vtl::MAX_BANKS],
             egui_winit,
             window,
-            refresh_hz: hz,
-            window_mode,
-        }
-    }
-
-    fn sys_info(&self) -> SystemInfo {
-        let size = self.window.inner_size();
-        let (hardware_model, local_ip) = self.rs.ui.as_ref()
-            .map(|ui| (ui.hardware_model.clone(), ui.local_ip.clone()))
-            .unwrap_or_default();
-        SystemInfo {
-            display: StimulusDisplayInfo {
-                width_px: size.width,
-                height_px: size.height,
-                refresh_hz: self.refresh_hz,
-                mode_index: None,
-            },
-            backend: RenderTarget::Desktop(self.window_mode),
-            local_ip,
-            gpu_name: String::new(),
-            hardware_model,
-            wireframe: self.rs.ctx.supports_wireframe.then_some(self.rs.scene_renderer.wireframe),
-            // VK_GOOGLE_display_timing alone does not mean we're using display
-            // timestamps yet — report GpuCompletion until present_wait is active.
-            clock_source: if self.rs.ctx.present_wait.is_some() {
-                ClockSource::PresentWait
-            } else {
-                ClockSource::GpuCompletion
-            },
         }
     }
 
@@ -219,12 +205,10 @@ impl WinitRenderLoopData {
         // 2. Render: build overlay UI, tessellate scene, record Vulkan commands,
         //    submit to GPU, present to display.
         //    The frame prepared here will become visible at the next vblank.
-        let sys_info = self.sys_info();
         let (tick, platform_output) = render_frame(
             &mut self.rs,
             None,
             egui_raw_input,
-            &sys_info,
             self.vtl.as_deref(),
         );
 
@@ -238,6 +222,8 @@ impl WinitRenderLoopData {
         // 4. Handle swapchain out of date (resize, monitor change, etc.).
         if tick.is_none() {
             let size = self.window.inner_size();
+            self.rs.display_info.width_px = size.width;
+            self.rs.display_info.height_px = size.height;
             self.rs.ctx.recreate_swapchain(ash::vk::Extent2D {
                 width: size.width.max(1),
                 height: size.height.max(1),
@@ -249,45 +235,35 @@ impl WinitRenderLoopData {
 // ── WinitEventHandler — winit ApplicationHandler ──────────────────────────────
 
 struct WinitEventHandler {
-    scene: Option<Arc<RwLock<SceneState>>>,
-    vtl: Option<Arc<Mutex<VtlState>>>,
+    backend_data: Option<BackendData>,
+    log_buffer: Option<LogBuffer>,
     window_mode: WindowMode,
-    data: Option<WinitRenderLoopData>,
+    render_data: Option<WinitRenderLoopData>,
     modifiers: winit::event::Modifiers,
     is_fullscreen: bool,
-    log_buffer: Option<LogBuffer>,
-    hardware_model: String,
 }
 
 impl WinitEventHandler {
-    fn new(
-        scene: Arc<RwLock<SceneState>>,
-        vtl: Option<Arc<Mutex<VtlState>>>,
-        window_mode: WindowMode,
-        log_buffer: LogBuffer,
-        hardware_model: String,
-    ) -> Self {
+    fn new(data: BackendData, window_mode: WindowMode, log_buffer: LogBuffer) -> Self {
         Self {
-            scene: Some(scene),
-            vtl,
             is_fullscreen: window_mode == WindowMode::Fullscreen,
-            window_mode,
-            data: None,
-            modifiers: winit::event::Modifiers::default(),
+            backend_data: Some(data),
             log_buffer: Some(log_buffer),
-            hardware_model,
+            window_mode,
+            render_data: None,
+            modifiers: winit::event::Modifiers::default(),
         }
     }
 
     fn toggle_fullscreen(&mut self, event_loop: &ActiveEventLoop) {
-        if self.data.is_none() {
+        if self.render_data.is_none() {
             return;
         }
 
         if self.is_fullscreen {
             // ── Leaving fullscreen → windowed ─────────────────────────────────
             // Present mode is already FIFO and does not change.
-            let data = self.data.as_ref().unwrap();
+            let data = self.render_data.as_ref().unwrap();
             data.window.set_fullscreen(None);
             if let WindowMode::Windowed { width, height } = self.window_mode {
                 let _ = data
@@ -301,14 +277,14 @@ impl WinitEventHandler {
             // Present mode stays FIFO throughout — the swapchain is the screen
             // clock and must not be decoupled from vblank.
             let monitor = {
-                let d = self.data.as_ref().unwrap();
+                let d = self.render_data.as_ref().unwrap();
                 d.window
                     .current_monitor()
                     .or_else(|| event_loop.primary_monitor())
                     .or_else(|| event_loop.available_monitors().next())
             };
 
-            let data = self.data.as_ref().unwrap();
+            let data = self.render_data.as_ref().unwrap();
             data.window
                 .set_fullscreen(Some(Fullscreen::Borderless(monitor)));
             self.is_fullscreen = true;
@@ -325,7 +301,7 @@ impl ApplicationHandler for WinitEventHandler {
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.data.is_none() {
+        if self.render_data.is_none() {
             let attrs = match self.window_mode {
                 WindowMode::Fullscreen => {
                     let monitor = event_loop
@@ -341,16 +317,14 @@ impl ApplicationHandler for WinitEventHandler {
                     .with_resizable(true),
             };
             let window = Arc::new(event_loop.create_window(attrs).unwrap());
-            let scene = self.scene.take().expect("scene already consumed");
+            let data = self.backend_data.take().expect("backend_data already consumed");
             let log_buffer = self.log_buffer.take().expect("log_buffer already consumed");
-            self.data = Some(WinitRenderLoopData::new(
+            self.render_data = Some(WinitRenderLoopData::new(
                 window,
-                scene,
-                self.vtl.clone(),
+                data,
                 event_loop,
                 self.window_mode,
                 log_buffer,
-                self.hardware_model.clone(),
             ));
         }
     }
@@ -358,7 +332,7 @@ impl ApplicationHandler for WinitEventHandler {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         // Forward all window events to egui first; it may consume input events
         // (e.g. keyboard when a text field is focused).
-        if let Some(data) = &mut self.data {
+        if let Some(data) = &mut self.render_data {
             let response = data.egui_winit.on_window_event(&data.window, &event);
             if response.consumed {
                 return;
@@ -368,7 +342,9 @@ impl ApplicationHandler for WinitEventHandler {
         match &event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                if let Some(data) = &mut self.data {
+                if let Some(data) = &mut self.render_data {
+                    data.rs.display_info.width_px = size.width;
+                    data.rs.display_info.height_px = size.height;
                     data.rs.ctx.recreate_swapchain(ash::vk::Extent2D {
                         width: size.width.max(1),
                         height: size.height.max(1),
@@ -387,14 +363,14 @@ impl ApplicationHandler for WinitEventHandler {
             } => match key {
                 KeyCode::Escape => event_loop.exit(),
                 KeyCode::F1 => {
-                    if let Some(data) = &mut self.data
+                    if let Some(data) = &mut self.render_data
                         && let Some(ui) = &mut data.rs.ui
                     {
                         ui.show_overlay = !ui.show_overlay;
                     }
                 }
                 KeyCode::F2 => {
-                    if let Some(data) = &self.data {
+                    if let Some(data) = &self.render_data {
                         let mut sc = data.rs.scene_renderer.scene.write().expect("scene lock");
                         sc.photodiode.enabled = !sc.photodiode.enabled;
                         sc.photodiode.flicker = true;
@@ -402,7 +378,7 @@ impl ApplicationHandler for WinitEventHandler {
                     }
                 }
                 KeyCode::F3 => {
-                    if let Some(data) = &mut self.data
+                    if let Some(data) = &mut self.render_data
                         && data.rs.ctx.supports_wireframe
                     {
                         data.rs.scene_renderer.wireframe = !data.rs.scene_renderer.wireframe;
@@ -413,7 +389,7 @@ impl ApplicationHandler for WinitEventHandler {
                     }
                 }
                 KeyCode::KeyD => {
-                    if let Some(data) = &self.data {
+                    if let Some(data) = &self.render_data {
                         crate::render::spawn_demo_stimuli(&data.rs.scene_renderer.scene);
                     }
                 }
@@ -424,7 +400,7 @@ impl ApplicationHandler for WinitEventHandler {
                 _ => {}
             },
             WindowEvent::RedrawRequested => {
-                if let Some(data) = &mut self.data {
+                if let Some(data) = &mut self.render_data {
                     data.render();
                     data.window.request_redraw();
                 }

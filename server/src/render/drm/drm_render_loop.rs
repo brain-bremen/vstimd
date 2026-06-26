@@ -1,12 +1,13 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use crate::log_buffer::LogBuffer;
 use crate::render::AppKey;
 use crate::render::RenderState;
-use crate::render::{RenderTarget, StimulusDisplayInfo, SystemInfo};
+use crate::render::backend::BackendData;
+use crate::render::system_info::SystemInfo;
+use crate::render::RenderTarget;
 use crate::render::{SceneRenderer, TextRenderer, UiRenderer};
 use crate::render::render_frame;
-use crate::scene::SceneState;
 use crate::timing::FrameTiming;
 use crate::vtl_state::VtlState;
 extern crate vtl;
@@ -21,13 +22,11 @@ use super::drm_virtual_terminal::DrmVtGuard;
 /// Initialise the DRM/Vulkan backend, call `on_ready` (for ZMQ bind + systemd
 /// notify), then run the render loop until shutdown is requested.
 pub fn run_render_loop(
-    scene: Arc<RwLock<SceneState>>,
-    vtl: Option<Arc<Mutex<VtlState>>>,
+    data: BackendData,
     log_buffer: LogBuffer,
-    hardware_model: String,
     on_ready: impl FnOnce(),
 ) {
-    let data = DrmRenderLoopData::new(scene, vtl, log_buffer, hardware_model);
+    let data = DrmRenderLoopData::new(data, log_buffer);
     on_ready();
     data.run_loop();
 }
@@ -47,7 +46,6 @@ struct DrmRenderLoopData {
     pending_outputs: [u64; vtl::MAX_BANKS],
     input: InputState,
     vblank: DrmVblankState,
-    display_info: StimulusDisplayInfo,
     /// Holds the CRTC snapshot; dropped before `vt_guard` to restore the
     /// console framebuffer before KD_TEXT is re-enabled.
     #[allow(dead_code)]
@@ -116,12 +114,8 @@ fn check_device_permissions() {
 }
 
 impl DrmRenderLoopData {
-    fn new(
-        scene: Arc<RwLock<SceneState>>,
-        vtl: Option<Arc<Mutex<VtlState>>>,
-        log_buffer: LogBuffer,
-        hardware_model: String,
-    ) -> Self {
+    fn new(data: BackendData, log_buffer: LogBuffer) -> Self {
+        let BackendData { scene, vtl, host_info } = data;
         check_device_permissions();
 
         // Snapshot display state first, while the current VT still has an
@@ -157,7 +151,7 @@ impl DrmRenderLoopData {
             ctx.set_debug_name(*img, &format!("swapchain[{i}]"));
         }
 
-        let ui = UiRenderer::new(&ctx, config_dir, log_buffer, hardware_model);
+        let ui = UiRenderer::new(&ctx, config_dir, log_buffer);
 
         // Build vblank state before ctx moves into RenderState.
         let vk_vblank = ctx
@@ -166,11 +160,21 @@ impl DrmRenderLoopData {
             .map(|loader| VkVblank::new(ctx.device.clone(), loader.clone(), vk_display));
         let vblank = DrmVblankState::new(ctx.device.clone(), drm_vblank, vk_vblank);
 
+        let system_info = SystemInfo {
+            host: host_info,
+            gpu_name: String::new(),
+            backend: RenderTarget::Drm,
+            supports_wireframe: ctx.supports_wireframe,
+            clock_source: vblank.clock_source(ctx.present_wait.is_some()),
+        };
+
         let rs = RenderState {
             scene_renderer,
             text,
             ui: Some(ui),
             timing: FrameTiming::new(display_info.refresh_hz),
+            system_info,
+            display_info,
             ctx,
         };
 
@@ -180,25 +184,9 @@ impl DrmRenderLoopData {
             pending_outputs: [0; vtl::MAX_BANKS],
             input: InputState::new(),
             vblank,
-            display_info,
             display_guard,
             vt_guard,
             suspended: false,
-        }
-    }
-
-    fn sys_info(&self) -> SystemInfo {
-        let (hardware_model, local_ip) = self.rs.ui.as_ref()
-            .map(|ui| (ui.hardware_model.clone(), ui.local_ip.clone()))
-            .unwrap_or_default();
-        SystemInfo {
-            display: self.display_info.clone(),
-            backend: RenderTarget::Drm,
-            local_ip,
-            gpu_name: String::new(),
-            hardware_model,
-            wireframe: None,
-            clock_source: self.vblank.clock_source(self.rs.ctx.present_wait.is_some()),
         }
     }
 
@@ -300,7 +288,7 @@ impl DrmRenderLoopData {
                 clock_logged = true;
                 log::info!(
                     "vstimd: vblank clock: {}",
-                    self.sys_info().clock_source.as_str()
+                    self.rs.system_info.clock_source.as_str()
                 );
             }
 
@@ -330,12 +318,10 @@ impl DrmRenderLoopData {
             // 4. Render: build overlay UI, tessellate scene, record Vulkan
             //    commands, submit to GPU, present to display.
             //    The frame prepared here will become visible at the next vblank.
-            let sys_info = self.sys_info();
             render_frame(
                 &mut self.rs,
                 screen_clock,
                 egui_raw_input,
-                &sys_info,
                 self.vtl.as_deref(),
             );
 

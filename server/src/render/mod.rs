@@ -1,3 +1,6 @@
+pub mod backend;
+pub use backend::{BackendData, RenderBackend};
+
 pub mod app_keys;
 pub use app_keys::AppKey;
 
@@ -11,7 +14,7 @@ pub mod render_target;
 pub use render_target::{RenderTarget, WindowMode};
 
 pub mod system_info;
-pub use system_info::{SystemInfo, query_hardware_model, query_hostname, query_local_ip};
+pub use system_info::{HostInfo, SystemInfo, query_hardware_model, query_hostname, query_local_ip};
 
 pub(crate) mod benchmark;
 pub(crate) mod system_metrics;

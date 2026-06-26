@@ -11,6 +11,7 @@ use crate::vtl_state::{VtlConfig, VtlState};
 
 pub use crate::render::system_info::{ClockSource, SystemInfo};
 use crate::render::benchmark::BenchmarkState;
+use crate::render::StimulusDisplayInfo;
 
 #[derive(Clone, Copy, PartialEq, Default)]
 enum BankFmt { #[default] Dec, Hex, Bin }
@@ -21,7 +22,8 @@ pub struct OverlayArgs<'a> {
     pub frame_stats: &'a mut FrameStats,
     pub last_phases: FramePhases,
     pub sys: &'a SystemInfo,
-    pub hostname: &'a str,
+    pub display: &'a StimulusDisplayInfo,
+    pub wireframe: Option<bool>,
     pub metrics: &'a SystemMetrics,
     pub log_buffer: &'a LogBuffer,
     pub bench: &'a mut BenchmarkState,
@@ -29,18 +31,18 @@ pub struct OverlayArgs<'a> {
 }
 
 pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
-    let OverlayArgs { scene, vtl, frame_stats, last_phases, sys, hostname, metrics, log_buffer, bench, file_browser } = args;
+    let OverlayArgs { scene, vtl, frame_stats, last_phases, sys, display, wireframe, metrics, log_buffer, bench, file_browser } = args;
     let last_phases = *last_phases;
     egui::Window::new("System").show(ctx, |ui| {
-        ui.label(format!("HW: {}", sys.hardware_model));
-        let mode_suffix = sys.display.mode_index
+        ui.label(format!("HW: {}", sys.host.hardware_model));
+        let mode_suffix = display.mode_index
             .map(|i| format!("  [mode {i}]"))
             .unwrap_or_default();
         ui.label(format!(
             "Screen: {}×{}@{:.3} Hz{}",
-            sys.display.width_px, sys.display.height_px, sys.display.refresh_hz, mode_suffix,
+            display.width_px, display.height_px, display.refresh_hz, mode_suffix,
         ));
-        ui.label(format!("Host: {}  IP: {}", hostname, sys.local_ip));
+        ui.label(format!("Host: {}  IP: {}  ZMQ: {}", sys.host.hostname, sys.host.local_ip, sys.host.zmq_port));
         ui.label(format!("Backend: {:?}", sys.backend));
         let (clock_label, clock_color) = match sys.clock_source {
             ClockSource::DrmVblank        => ("Clock: DRM vblank",                     egui::Color32::from_rgb(80, 200, 80)),
@@ -50,8 +52,8 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
             ClockSource::GpuCompletion => ("Clock: GPU-completion (inaccurate)",    egui::Color32::RED),
         };
         ui.colored_label(clock_color, clock_label);
-        if let Some(wf) = sys.wireframe {
-            ui.label(format!("Wireframe [F3]: {}", if wf { "ON" } else { "off" }));
+        if let Some(wf) = wireframe {
+            ui.label(format!("Wireframe [F3]: {}", if *wf { "ON" } else { "off" }));
         }
         ui.separator();
         ui.horizontal(|ui| {
@@ -265,7 +267,7 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
         } else {
             // 20 × 10 = 200 gratings, 300 frames (~5 s at 60 Hz)
             if ui.button("Run (200 gratings, 300 frames)").clicked() {
-                bench.start_grating_stress(scene, frame_stats, (sys.display.width_px, sys.display.height_px), 20, 10, 300);
+                bench.start_grating_stress(scene, frame_stats, (display.width_px, display.height_px), 20, 10, 300);
             }
             if let Some(r) = bench.last_result() {
                 ui.separator();

@@ -1,4 +1,6 @@
 pub mod buffers;
+pub mod vk_instance;
+pub use vk_instance::create_vk_instance;
 pub mod cache;
 pub mod egui;
 pub mod vk_context;

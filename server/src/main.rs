@@ -2,7 +2,8 @@ use std::sync::{Arc, Mutex, RwLock};
 
 #[cfg(target_os = "linux")]
 use vstimd::render::drm::run_render_loop as run_drm_render_loop;
-use vstimd::render::{RenderTarget, WindowMode, query_hardware_model};
+use vstimd::render::{BackendData, HostInfo, RenderTarget, WindowMode};
+use vstimd::render::{query_hardware_model, query_hostname, query_local_ip};
 use vstimd::render::winit_vk::run_render_loop as run_winit_render_loop;
 use vstimd::scene::SceneState;
 use vstimd::vtl_state::VtlState;
@@ -22,8 +23,13 @@ fn main() {
         env!("CARGO_PKG_VERSION"),
         env!("VSTIMD_BUILD_DATE"),
     );
-    let hardware_model = query_hardware_model();
-    log::info!("vstimd: hardware: {hardware_model}");
+    let host_info = HostInfo {
+        hardware_model: query_hardware_model(),
+        hostname: query_hostname(),
+        local_ip: query_local_ip(),
+        zmq_port: vstimd::ipc::DEFAULT_ZMQ_PORT,
+    };
+    log::info!("vstimd: hardware: {}", host_info.hardware_model);
 
     let config_dir = args
         .config_dir
@@ -79,7 +85,8 @@ fn main() {
     match args.render_target {
         #[cfg(target_os = "linux")]
         RenderTarget::Drm => {
-            run_drm_render_loop(scene, vtl, log_buffer, hardware_model, || {
+            let data = BackendData { scene, vtl, host_info };
+            run_drm_render_loop(data, log_buffer, || {
                 if wait_zmq_bound(&zmq_bound, args.zmq_port) {
                     notify_ready();
                 }
@@ -91,7 +98,8 @@ fn main() {
             std::process::exit(1);
         }
         RenderTarget::Desktop(window_mode) => {
-            run_winit_render_loop(scene, vtl, window_mode, log_buffer, hardware_model, || {
+            let data = BackendData { scene, vtl, host_info };
+            run_winit_render_loop(data, window_mode, log_buffer, || {
                 if wait_zmq_bound(&zmq_bound, args.zmq_port) {
                     notify_ready();
                 }

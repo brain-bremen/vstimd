@@ -1,7 +1,7 @@
 use ash::vk;
 
 use crate::render::StimulusDisplayInfo;
-use crate::render::vk::{VkContext, build_context};
+use crate::render::vk::{VkContext, build_context, create_vk_instance};
 
 /// Initialise Vulkan for bare-metal display via `VK_KHR_display`.
 ///
@@ -9,13 +9,11 @@ use crate::render::vk::{VkContext, build_context};
 /// and returns a fully-initialised `VkContext` plus the `VkDisplayKHR` handle
 /// (needed for `VK_EXT_display_control` vblank fences).
 pub fn init() -> (VkContext, StimulusDisplayInfo, vk::DisplayKHR) {
-    let entry = unsafe { ash::Entry::load().expect("failed to load libvulkan.so") };
-
-    let app_info = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_1);
-
-    // Check which optional instance extensions are available.
+    // VK_EXT_display_surface_counter is an instance extension required by
+    // VK_EXT_display_control (device).  Enable it when available.
     let available_inst_exts: std::collections::HashSet<String> = unsafe {
-        entry
+        ash::Entry::load()
+            .expect("failed to load libvulkan.so")
             .enumerate_instance_extension_properties(None)
             .unwrap_or_default()
             .into_iter()
@@ -26,15 +24,11 @@ pub fn init() -> (VkContext, StimulusDisplayInfo, vk::DisplayKHR) {
             })
             .collect()
     };
-    // VK_EXT_display_surface_counter is an instance extension required by
-    // VK_EXT_display_control (device).  Enable it when available.
     let use_display_surface_counter =
         available_inst_exts.contains("VK_EXT_display_surface_counter");
 
     // VK_KHR_display lets Vulkan enumerate and drive displays directly
     // without requiring a compositor.
-    // In debug builds, also attempt VK_EXT_debug_utils for RenderDoc labels.
-    // Fall back silently if the driver rejects it (e.g. RenderDoc hook injection).
     let mut base_exts = vec![
         ash::khr::surface::NAME.as_ptr(),
         ash::khr::display::NAME.as_ptr(),
@@ -43,44 +37,7 @@ pub fn init() -> (VkContext, StimulusDisplayInfo, vk::DisplayKHR) {
         base_exts.push(ash::ext::display_surface_counter::NAME.as_ptr());
     }
 
-    #[cfg(debug_assertions)]
-    let (instance, debug_utils_enabled) = {
-        let mut exts_with = base_exts.clone();
-        exts_with.push(ash::ext::debug_utils::NAME.as_ptr());
-        let info = vk::InstanceCreateInfo::default()
-            .application_info(&app_info)
-            .enabled_extension_names(&exts_with);
-        match unsafe { entry.create_instance(&info, None) } {
-            Ok(inst) => (inst, true),
-            Err(vk::Result::ERROR_EXTENSION_NOT_PRESENT) => {
-                log::debug!(
-                    "vstimd: VK_EXT_debug_utils not accepted at vkCreateInstance — disabling"
-                );
-                let info_bare = vk::InstanceCreateInfo::default()
-                    .application_info(&app_info)
-                    .enabled_extension_names(&base_exts);
-                let inst = unsafe {
-                    entry
-                        .create_instance(&info_bare, None)
-                        .expect("failed to create Vulkan instance")
-                };
-                (inst, false)
-            }
-            Err(e) => panic!("failed to create Vulkan instance: {e}"),
-        }
-    };
-    #[cfg(not(debug_assertions))]
-    let (instance, debug_utils_enabled) = {
-        let info = vk::InstanceCreateInfo::default()
-            .application_info(&app_info)
-            .enabled_extension_names(&base_exts);
-        let inst = unsafe {
-            entry
-                .create_instance(&info, None)
-                .expect("failed to create Vulkan instance")
-        };
-        (inst, false)
-    };
+    let (entry, instance, debug_utils_enabled) = create_vk_instance(&base_exts);
 
     let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
     let display_loader = ash::khr::display::Instance::new(&entry, &instance);
