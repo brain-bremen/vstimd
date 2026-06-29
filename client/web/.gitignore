@@ -1,0 +1,11 @@
+node_modules/
+dist/
+# Generated protobuf-es stubs (regenerate with `npm run gen`). Private — never
+# imported by user code; only the hand-written client wraps them.
+src/_proto/
+*.log
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.cache/

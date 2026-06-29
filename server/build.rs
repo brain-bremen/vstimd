@@ -24,6 +24,7 @@ fn main() {
         "../proto/vstimd/v1/vtl.proto",
         "../proto/vstimd/v1/animations.proto",
         "../proto/vstimd/v1/service.proto",
+        "../proto/vstimd/v1/snapshot.proto",
     ] {
         println!("cargo:rerun-if-changed={}", proto);
     }
@@ -48,6 +49,7 @@ fn main() {
                 "../proto/vstimd/v1/vtl.proto",
                 "../proto/vstimd/v1/animations.proto",
                 "../proto/vstimd/v1/service.proto",
+                "../proto/vstimd/v1/snapshot.proto",
             ],
             &["../proto/"],
         )

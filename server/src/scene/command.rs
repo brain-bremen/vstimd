@@ -923,6 +923,18 @@ impl SceneState {
             Some(e) => e,
             None => return err_not_found(handle),
         };
+        ok_body(proto::response::Body::StimulusInfo(
+            self.query_stimulus_response(handle, entry),
+        ))
+    }
+
+    /// Build the full per-stimulus query payload. Shared by `QueryStimulus` and
+    /// the web `SceneSnapshot` builder so both agree on geometry/appearance.
+    pub(crate) fn query_stimulus_response(
+        &self,
+        handle: u32,
+        entry: &StimulusEntry,
+    ) -> proto::QueryStimulusResponse {
         let stim = &entry.stimulus;
 
         let pos = stim.get_pos();
@@ -997,7 +1009,7 @@ impl SceneState {
             };
 
         let draw_order = self.config.stimuli.get_index_of(&handle).unwrap_or(0) as u32;
-        ok_body(proto::response::Body::StimulusInfo(proto::QueryStimulusResponse {
+        proto::QueryStimulusResponse {
             stimulus_type,
             enabled: stim.flags().enabled,
             anim_enabled: stim.flags().anim_enabled,
@@ -1012,7 +1024,54 @@ impl SceneState {
             id: entry.id.to_string(),
             name: entry.name.clone().unwrap_or_default(),
             draw_order,
-        }))
+            handle,
+        }
+    }
+
+    /// Build a complete scene snapshot for the web control surface in a single
+    /// pass. Takes `&self` so the web snapshot pump can hold only a read lock
+    /// (minimal contention with the render thread's write lock). All stimuli are
+    /// serialized in draw order; no per-stimulus dispatch.
+    pub fn build_snapshot(&self, vtl: Option<&VtlState>) -> proto::SceneSnapshot {
+        let server_info = match self.cmd_query_server_info().body {
+            Some(proto::response::Body::ServerInfo(s)) => Some(s),
+            _ => None,
+        };
+        let stimuli: Vec<proto::QueryStimulusResponse> = self
+            .config
+            .stimuli
+            .iter()
+            .map(|(h, e)| self.query_stimulus_response(*h, e))
+            .collect();
+        let animations = match self.cmd_list_animations().body {
+            Some(proto::response::Body::AnimationList(a)) => Some(a),
+            _ => None,
+        };
+        let vtl_lines = match self.cmd_list_virtual_trigger_lines(vtl).body {
+            Some(proto::response::Body::VirtualTriggerLineList(l)) => Some(l),
+            _ => None,
+        };
+        let command_log = self
+            .runtime
+            .command_log
+            .iter()
+            .map(|c| proto::CommandLogEntry {
+                handle: c.handle,
+                summary: c.summary.clone(),
+                code: c.response,
+                server_time_ns: (c.elapsed_ms * 1_000_000.0) as u64,
+            })
+            .collect();
+        proto::SceneSnapshot {
+            server_info,
+            stimuli,
+            animations,
+            vtl_lines,
+            vtl_state: None,
+            command_log,
+            frame_count: self.runtime.frame_count,
+            server_time_ns: self.runtime.server_start.elapsed().as_nanos() as u64,
+        }
     }
 
     // ── Virtual Trigger Line commands ─────────────────────────────────────────

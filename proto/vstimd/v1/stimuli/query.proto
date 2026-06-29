@@ -44,4 +44,5 @@ message QueryStimulusResponse {
   string name = 12; // human-readable label (empty if not set)
   bool anim_enabled = 13; // animation-level enable (set by animation system)
   uint32 draw_order = 14; // 0-based position in scene draw order (0 = drawn first / behind)
+  uint32 handle = 15; // server handle (map key). Set in snapshots; addresses mutations like SetPosition.
 }

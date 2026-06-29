@@ -1,0 +1,36 @@
+syntax = "proto3";
+package vstimd.v1;
+
+import "vstimd/v1/animations.proto";
+import "vstimd/v1/stimuli/query.proto";
+import "vstimd/v1/system.proto";
+import "vstimd/v1/vtl.proto";
+
+// ── Live scene snapshot (server → client state stream) ───────────────────────
+//
+// `SceneSnapshot` is a full, transport-agnostic view of the scene built from a
+// read lock. It reuses the existing query response messages, so it carries no
+// schema of its own. It is currently pushed on the embedded web server's
+// `/events` WebSocket (see dev/web-interface-plan.md), but could equally feed a
+// ZMQ PUB socket for non-browser subscribers without changes. Command traffic
+// uses ordinary `Request`/`Response` messages, so no envelope type is needed.
+
+// One IPC command-log entry, mirroring SceneState.runtime.command_log.
+message CommandLogEntry {
+  uint32 handle = 1;
+  string summary = 2;
+  int32 code = 3; // ErrorCode of the response
+  uint64 server_time_ns = 4;
+}
+
+// A full snapshot of the scene as observed under a read lock.
+message SceneSnapshot {
+  QueryServerInfoResponse server_info = 1; // size, frame_rate, background, backend, version
+  repeated QueryStimulusResponse stimuli = 2; // full geometry per stimulus, in draw order
+  ListAnimationsResponse animations = 3;
+  ListVirtualTriggerLinesResponse vtl_lines = 4;
+  VirtualTriggerLineStateResponse vtl_state = 5;
+  repeated CommandLogEntry command_log = 6;
+  uint64 frame_count = 7;
+  uint64 server_time_ns = 8;
+}

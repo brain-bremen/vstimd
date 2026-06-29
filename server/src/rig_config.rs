@@ -26,6 +26,34 @@ pub struct RigConfig {
     pub display: DisplayRigConfig,
     #[serde(default)]
     pub scheduling: SchedulingRigConfig,
+    #[serde(default)]
+    pub web: WebRigConfig,
+}
+
+/// Embedded web control surface (HTTP + WebSocket) settings.
+///
+/// The web server can also be compiled out entirely via the `web` Cargo feature
+/// (on by default). When the feature is disabled these fields are ignored.
+/// CLI flags (`--no-web`, `--web-port`) override these values.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct WebRigConfig {
+    /// Whether to start the web control surface. Default: true.
+    #[serde(default = "WebRigConfig::default_enabled")]
+    pub enabled: bool,
+    /// HTTP/WebSocket port. Default: 8080.
+    #[serde(default = "WebRigConfig::default_port")]
+    pub port: u16,
+}
+
+impl WebRigConfig {
+    fn default_enabled() -> bool { true }
+    fn default_port() -> u16 { 8080 }
+}
+
+impl Default for WebRigConfig {
+    fn default() -> Self {
+        Self { enabled: Self::default_enabled(), port: Self::default_port() }
+    }
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]

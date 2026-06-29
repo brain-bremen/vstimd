@@ -6,6 +6,16 @@ description = "Visual stimulus display server for neuroscience experiments"
 license = "AGPL-3.0-only"
 repository = "https://github.com/braemons/vstimd"
 
+[features]
+default = ["web"]
+# Embedded HTTP + WebSocket control surface for the browser UI. Disable with
+# `--no-default-features` to drop axum/futures-util and compile out src/web.
+web = ["dep:axum", "dep:futures-util", "tokio/net", "tokio/macros"]
+# Bake the built React UI (client/web/dist) into the binary and serve it at `/`.
+# Requires the frontend to be built first: `cd client/web && npm run build`.
+# Opt-in so a plain `cargo build` does not depend on the frontend being built.
+embed-ui = ["web", "dep:rust-embed"]
+
 [dependencies]
 ash        = "0.38"
 ash-window = "0.13"
@@ -32,6 +42,9 @@ sysinfo      = "0.30"
 tokio      = { version = "1", features = ["rt", "sync", "time"] }
 winit      = "=0.30.13"
 zeromq     = "0.4"
+axum         = { version = "0.8", features = ["ws"], optional = true }
+futures-util = { version = "0.3", optional = true }
+rust-embed   = { version = "8", features = ["mime-guess"], optional = true }
 
 # Linux-only dependencies for DRM/console mode and Wayland support
 [target.'cfg(target_os = "linux")'.dependencies]

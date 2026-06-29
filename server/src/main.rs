@@ -58,6 +58,20 @@ fn main() {
         config_dir.clone(),
     )));
 
+    // Seed display metrics from rig-config so headless/null mode reports a
+    // screen size and refresh rate (the GPU backends overwrite `screen_size`
+    // with the real swapchain extent in render_frame). Without this, the web
+    // UI map has no aspect ratio under `--null`.
+    {
+        let mut s = scene.write().expect("scene lock poisoned");
+        let w = rig.display.width.unwrap_or(1920);
+        let h = rig.display.height.unwrap_or(1080);
+        s.runtime.screen_size = Some((w, h));
+        if let Some(hz) = rig.display.refresh_hz {
+            s.runtime.frame_rate = hz as f32;
+        }
+    }
+
     // Create VTL shared memory on Linux using rig-config parameters.
     // The Arc<Mutex<>> lets both the ZMQ thread (software triggers, naming)
     // and the render backend (frame polling) access it safely.
@@ -111,6 +125,26 @@ fn main() {
         &format!("tcp://0.0.0.0:{}", args.zmq_port),
     );
 
+    // Embedded web control surface (HTTP + WebSocket). Shares the scene/vtl Arcs
+    // and reuses handle_request — no per-frame render cost. Compiled in only with
+    // the `web` Cargo feature; gated at runtime by rig-config `[web].enabled`
+    // (overridable by `--no-web` / `--web-port`).
+    #[cfg(feature = "web")]
+    let web = {
+        let enabled = args.web_enabled.unwrap_or(rig.web.enabled);
+        let port = args.web_port.unwrap_or(rig.web.port);
+        if enabled {
+            Some(vstimd::web::spawn_web_thread(
+                scene.clone(),
+                vtl.clone(),
+                &format!("0.0.0.0:{}", port),
+            ))
+        } else {
+            log::info!("vstimd: web control surface disabled");
+            None
+        }
+    };
+
     // Install signal handlers once, before any render path (including Vulkan
     // init which can take several seconds on DRM).
     install_signal_handlers();
@@ -137,6 +171,13 @@ fn main() {
         RenderTarget::Null => NullBackend::new(data).run(on_ready),
     }
 
+    // Signal the web thread to exit and wait for it to finish.
+    #[cfg(feature = "web")]
+    if let Some((web_thread, web_shutdown, _)) = web {
+        let _ = web_shutdown.send(());
+        web_thread.join().ok();
+    }
+
     // Signal the ZMQ thread to exit and wait for it to finish.  This ensures
     // the thread's Arc references are released — VtlOwner::drop runs shm_unlink
     // and the shm segment is cleaned up before the process exits.
@@ -150,6 +191,12 @@ struct Args {
     render_target: RenderTarget,
     verbose: bool,
     zmq_port: u16,
+    /// `Some(false)` if `--no-web` was passed; otherwise `None` (use rig-config).
+    #[cfg_attr(not(feature = "web"), allow(dead_code))]
+    web_enabled: Option<bool>,
+    /// `Some(p)` if `--web-port` was passed; otherwise `None` (use rig-config).
+    #[cfg_attr(not(feature = "web"), allow(dead_code))]
+    web_port: Option<u16>,
     rig_config: String,
     config_file: Option<std::path::PathBuf>,
     config_dir: Option<std::path::PathBuf>,
@@ -187,7 +234,9 @@ fn parse_args() -> Args {
     let mut explicit_windowed = false;
     let mut verbose = false;
     let mut null = false;
-    let zmq_port = vstimd::ipc::DEFAULT_ZMQ_PORT;
+    let mut zmq_port = vstimd::ipc::DEFAULT_ZMQ_PORT;
+    let mut web_enabled: Option<bool> = None;
+    let mut web_port: Option<u16> = None;
     let mut rig_config  = rig_config::DEFAULT_PATH.to_string();
     let mut config_file: Option<std::path::PathBuf> = None;
     let mut config_dir: Option<std::path::PathBuf> = None;
@@ -220,6 +269,20 @@ fn parse_args() -> Args {
             }
             "--config-dir" => {
                 config_dir = args.next().map(std::path::PathBuf::from);
+            }
+            "--zmq-port" => {
+                zmq_port = args.next().and_then(|s| s.parse::<u16>().ok()).unwrap_or_else(|| {
+                    eprintln!("vstimd: --zmq-port requires a numeric port argument");
+                    std::process::exit(1);
+                });
+            }
+            "--no-web" => web_enabled = Some(false),
+            "--web-port" => {
+                let p = args.next().and_then(|s| s.parse::<u16>().ok()).unwrap_or_else(|| {
+                    eprintln!("vstimd: --web-port requires a numeric port argument");
+                    std::process::exit(1);
+                });
+                web_port = Some(p);
             }
             "--help" | "-h" => {
                 print_usage();
@@ -254,6 +317,8 @@ fn parse_args() -> Args {
         render_target,
         verbose,
         zmq_port,
+        web_enabled,
+        web_port,
         rig_config,
         config_file,
         config_dir,
@@ -310,6 +375,9 @@ fn print_usage() {
     eprintln!("Options:");
     eprintln!("  -w, --windowed <WxH>      Start in windowed mode with size WxH (desktop only)");
     eprintln!("      --null                No rendering; ZMQ server only (also: VSTIMD_NULL=1)");
+    eprintln!("      --zmq-port <N>        ZMQ REP server port (default: 5555)");
+    eprintln!("      --no-web              Disable the embedded web control surface");
+    eprintln!("      --web-port <N>        Web UI HTTP/WebSocket port (default: 8080)");
     eprintln!("  -v, --verbose             Enable debug logging (overridden by RUST_LOG)");
     eprintln!("      --rig-config <path>   Rig config (default: {})", vstimd::rig_config::DEFAULT_PATH);
     eprintln!("      --config <path>       Load stim-config file at startup");
