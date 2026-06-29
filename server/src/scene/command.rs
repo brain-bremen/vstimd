@@ -1024,6 +1024,7 @@ impl SceneState {
             id: entry.id.to_string(),
             name: entry.name.clone().unwrap_or_default(),
             draw_order,
+            handle,
         }
     }
 
