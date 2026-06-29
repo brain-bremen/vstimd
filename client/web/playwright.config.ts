@@ -11,6 +11,14 @@ const VSTIMD_ZMQ_PORT = 5566;
 const UI_PORT = 4173;
 const REPO_ROOT = new URL("../..", import.meta.url).pathname;
 
+// Locally, `cargo run` builds + runs the server. In CI (where the binary is
+// downloaded as an artifact and the Rust toolchain may be absent), set
+// VSTIMD_BIN to the prebuilt binary to skip cargo entirely.
+const backendArgs = `--null --web-port ${VSTIMD_WEB_PORT} --zmq-port ${VSTIMD_ZMQ_PORT}`;
+const backendCommand = process.env.VSTIMD_BIN
+  ? `${process.env.VSTIMD_BIN} ${backendArgs}`
+  : `cargo run --release --bin vstimd -- ${backendArgs}`;
+
 export default defineConfig({
   testDir: "./playwright",
   timeout: 30_000,
@@ -18,7 +26,7 @@ export default defineConfig({
   use: { baseURL: `http://127.0.0.1:${UI_PORT}` },
   webServer: [
     {
-      command: `cargo run --release --bin vstimd -- --null --web-port ${VSTIMD_WEB_PORT} --zmq-port ${VSTIMD_ZMQ_PORT}`,
+      command: backendCommand,
       cwd: REPO_ROOT,
       url: `http://127.0.0.1:${VSTIMD_WEB_PORT}/`,
       reuseExistingServer: false,

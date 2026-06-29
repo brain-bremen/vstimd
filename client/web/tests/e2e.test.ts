@@ -21,6 +21,8 @@ const WEB_PORT = 8137; // dedicated test port; avoids clashing with a real serve
 const BASE_URL = `ws://127.0.0.1:${WEB_PORT}`;
 
 function serverBinary(): string {
+  // CI sets VSTIMD_BIN to the downloaded artifact (no Rust toolchain needed).
+  if (process.env.VSTIMD_BIN) return process.env.VSTIMD_BIN;
   for (const profile of ["release", "debug"]) {
     const bin = join(REPO_ROOT, "target", profile, "vstimd");
     if (existsSync(bin)) return bin;

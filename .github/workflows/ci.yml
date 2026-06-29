@@ -133,3 +133,90 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - run: make test-e2e-null
+
+  # ── Web client (TypeScript) ────────────────────────────────────────────────
+  # Typecheck + node WebSocket e2e against the prebuilt vstimd --null binary.
+  web-client:
+    runs-on: ubuntu-latest
+    needs: [rust]
+    defaults:
+      run:
+        working-directory: client/web
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install runtime libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libinput10 libudev1 libdrm2 libwayland-client0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vstimd
+          path: target/release/
+
+      - run: chmod +x target/release/vstimd
+        working-directory: ${{ github.workspace }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/web/package-lock.json
+
+      - run: npm ci
+      - run: npm run gen
+      - run: npx tsc --noEmit
+      - run: npm run test:e2e
+        env:
+          VSTIMD_BIN: ${{ github.workspace }}/target/release/vstimd
+
+  # Real-browser smoke test of the React UI (Playwright + Chromium).
+  web-browser-e2e:
+    runs-on: ubuntu-latest
+    needs: [rust]
+    defaults:
+      run:
+        working-directory: client/web
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install runtime libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libinput10 libudev1 libdrm2 libwayland-client0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vstimd
+          path: target/release/
+
+      - run: chmod +x target/release/vstimd
+        working-directory: ${{ github.workspace }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/web/package-lock.json
+
+      - run: npm ci
+      - run: npm run gen
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ui
+        env:
+          VSTIMD_BIN: ${{ github.workspace }}/target/release/vstimd
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: client/web/playwright-report/
