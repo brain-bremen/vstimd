@@ -105,6 +105,27 @@ describe("vstimd web client e2e (--null)", () => {
     expect(ours!.pos.y).toBeCloseTo(75, 3);
   });
 
+  it("applies size and orientation setters", async () => {
+    const handle = await conn.stimuli.shapes.createRect({ width: 100, height: 50, name: "sized" });
+    await conn.stimuli.setRectSize(handle, 240, 120);
+    await conn.stimuli.setOrientation(handle, 30);
+
+    const snap = await conn.nextSnapshot();
+    const ours = snap.stimuli.find((s) => s.name === "sized")!;
+    expect(ours.size.width).toBeCloseTo(240, 3);
+    expect(ours.size.height).toBeCloseTo(120, 3);
+    expect(ours.orientation).toBeCloseTo(30, 3);
+  });
+
+  it("creates a named ellipse with the expected size", async () => {
+    await conn.stimuli.shapes.createEllipse({ width: 160, height: 80, name: "ell" });
+    const snap = await conn.nextSnapshot();
+    const ell = snap.stimuli.find((s) => s.name === "ell")!;
+    expect(ell.kind).toBe("ellipse");
+    expect(ell.size.width).toBeCloseTo(160, 3);
+    expect(ell.size.height).toBeCloseTo(80, 3);
+  });
+
   it("round-trips a position update (RF-mapping style)", async () => {
     const handle = await conn.stimuli.shapes.createCircle({ radius: 20, name: "drag-me" });
     await conn.stimuli.setPosition(handle, { x: 333, y: -111 });
