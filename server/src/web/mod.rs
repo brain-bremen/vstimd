@@ -26,10 +26,12 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
-    response::{Html, IntoResponse},
+    response::IntoResponse,
     routing::get,
     Router,
 };
+#[cfg(not(feature = "embed-ui"))]
+use axum::response::Html;
 use futures_util::{SinkExt, StreamExt};
 use prost::Message as _;
 
@@ -117,11 +119,18 @@ async fn web_loop(
         });
     }
 
-    let app = Router::new()
-        .route("/", get(index))
-        .route("/ws", get(ws_command_upgrade))
-        .route("/events", get(ws_events_upgrade))
-        .with_state(state);
+    let app = {
+        let r = Router::new()
+            .route("/ws", get(ws_command_upgrade))
+            .route("/events", get(ws_events_upgrade));
+        // With `embed-ui`, serve the baked React bundle (SPA fallback). Without
+        // it, serve a small placeholder at `/`.
+        #[cfg(feature = "embed-ui")]
+        let r = r.fallback(static_handler);
+        #[cfg(not(feature = "embed-ui"))]
+        let r = r.route("/", get(index));
+        r.with_state(state)
+    };
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -142,9 +151,11 @@ async fn web_loop(
     }
 }
 
+#[cfg(not(feature = "embed-ui"))]
 async fn index() -> impl IntoResponse {
-    // Placeholder until the React bundle is embedded. The WebSocket API is the
-    // real surface and is what the e2e tests exercise.
+    // Placeholder when the UI is not embedded (build with `--features embed-ui`
+    // after `npm run build` to serve the real React app here). The WebSocket API
+    // is the real surface and is what the e2e tests exercise.
     Html(concat!(
         "<!doctype html><meta charset=utf-8><title>vstimd</title>",
         "<h1>vstimd web control surface</h1>",
@@ -237,4 +248,31 @@ async fn events_socket(socket: WebSocket, state: Arc<WebState>) {
     }
     push.abort();
     let _ = push.await;
+}
+
+// ── Embedded React bundle (feature = "embed-ui") ──────────────────────────────
+
+#[cfg(feature = "embed-ui")]
+#[derive(rust_embed::RustEmbed)]
+#[folder = "../client/web/dist"]
+struct Assets;
+
+/// Serve an embedded asset by path, falling back to index.html for SPA routes.
+#[cfg(feature = "embed-ui")]
+async fn static_handler(uri: axum::http::Uri) -> axum::response::Response {
+    use axum::http::{header, StatusCode};
+    let path = uri.path().trim_start_matches('/');
+    let path = if path.is_empty() { "index.html" } else { path };
+    if let Some(file) = Assets::get(path) {
+        return (
+            [(header::CONTENT_TYPE, file.metadata.mimetype())],
+            file.data,
+        )
+            .into_response();
+    }
+    // Unknown path → SPA fallback to index.html.
+    match Assets::get("index.html") {
+        Some(file) => ([(header::CONTENT_TYPE, "text/html")], file.data).into_response(),
+        None => (StatusCode::NOT_FOUND, "UI not embedded").into_response(),
+    }
 }
