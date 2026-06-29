@@ -46,10 +46,12 @@ React UI  ──uses──▶  client library (public API)  ──wraps──▶
 ## TODO (roughly in priority order)
 
 1. **Expand the client API** to full parity with the Python client / proto:
-   - stimuli: `createEllipse`, `createGrating`, `createText`; per-type setters
-     (grating sf/contrast/phase/drift…, text content/color, orientation, colors,
-     draw order, alpha).
-   - `conn.vtl` (list/name/set/toggle lines), `conn.animations`
+   - stimuli: DONE — `createEllipse`, grating (`conn.stimuli.grating`: create +
+     sf/contrast/phase/drift/opacity/waveform/mask/fore+backColor), text
+     (`conn.stimuli.text`: create/setText/setColor), and shape setters
+     (setOrientation, setRectSize/CircleRadius/EllipseSize, setFillColor, setAlpha).
+   - TODO: remaining generic setters (outlineColor/Width, drawMode, drawOrder),
+     and `conn.vtl` (list/name/set/toggle lines), `conn.animations`
      (create/arm/disarm/delete/list), `conn.config` (list/load/save/retrieve).
 2. **UI panels** to match the egui overlay: VTL, Animations, System
    (background/photodiode/deferred), Config (save/load), Log
