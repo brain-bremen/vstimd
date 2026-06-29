@@ -19,6 +19,29 @@ enum BankFmt { #[default] Dec, Hex, Bin }
 
 const FOCUS_STROKE: egui::Color32 = egui::Color32::from_rgb(90, 160, 255);
 
+/// One dark background color per panel slot (indices match `OverlayGroup::index()`).
+const PANEL_COLORS: [egui::Color32; 12] = [
+    egui::Color32::from_rgb(25, 28, 65),  // 0 Stimuli    — indigo
+    egui::Color32::from_rgb(15, 50, 50),  // 1 Log        — teal
+    egui::Color32::from_rgb(15, 55, 20),  // 2 VTL        — forest green
+    egui::Color32::from_rgb(60, 35, 12),  // 3 Animations — amber
+    egui::Color32::from_rgb(12, 30, 62),  // 4 System     — navy
+    egui::Color32::from_rgb(55, 20, 50),  // 5 Config     — magenta
+    egui::Color32::from_rgb(50, 50, 12),  // 6 Benchmarks — olive
+    egui::Color32::from_rgb(55, 18, 18),  // 7            — crimson
+    egui::Color32::from_rgb(15, 42, 35),  // 8            — sea green
+    egui::Color32::from_rgb(35, 15, 58),  // 9            — violet
+    egui::Color32::from_rgb(58, 35, 15),  // 10           — sienna
+    egui::Color32::from_rgb(25, 45, 15),  // 11           — moss
+];
+
+fn group_frame(group: OverlayGroup) -> egui::Frame {
+    egui::Frame::new()
+        .fill(PANEL_COLORS[group.index() % PANEL_COLORS.len()])
+        .inner_margin(egui::Margin::same(8))
+        .stroke(egui::Stroke::new(1.0, egui::Color32::from_gray(55)))
+}
+
 pub struct OverlayArgs<'a> {
     pub scene: &'a Arc<RwLock<SceneState>>,
     pub vtl: Option<&'a Mutex<VtlState>>,
@@ -32,41 +55,40 @@ pub struct OverlayArgs<'a> {
     pub overlay: &'a mut OverlayState,
 }
 
-/// Render one floating group window if it is visible, with a focus accent and a
-/// stable id (so the title text can change without egui relocating the window).
-///
-/// `col_x` is the horizontal position for this panel's default placement,
-/// computed as the count of visible panels to the left × column width.
-fn group_window(
-    ctx: &egui::Context,
+/// Render the title bar and content of one group inside a `Panel::left` that
+/// the caller already opened. Paints a focus-accent border when `is_focused`.
+fn group_panel_header(
+    ui: &mut egui::Ui,
     group: OverlayGroup,
-    visible: &mut bool,
     is_focused: bool,
     want_focus: bool,
-    col_x: f32,
+    closed: &mut bool,
     add: impl FnOnce(&mut egui::Ui, bool),
 ) {
-    if !*visible {
-        return;
-    }
-    let title = format!(
-        "{}{} [{}]",
-        if is_focused { "▶ " } else { "" },
-        group.title(),
-        group.fkey_label(),
-    );
-    let mut open = true;
-    let mut window = egui::Window::new(title)
-        .id(egui::Id::new(("ovl_group", group.index())))
-        .default_pos(egui::pos2(col_x, 5.0))
-        .default_width(310.0)
-        .open(&mut open);
     if is_focused {
-        let frame = egui::Frame::window(&ctx.global_style()).stroke(egui::Stroke::new(2.0, FOCUS_STROKE));
-        window = window.frame(frame);
+        ui.painter().rect_stroke(
+            ui.max_rect(),
+            egui::CornerRadius::ZERO,
+            egui::Stroke::new(2.0, FOCUS_STROKE),
+            egui::StrokeKind::Inside,
+        );
     }
-    window.show(ctx, |ui| add(ui, want_focus));
-    *visible &= open;
+    ui.horizontal(|ui| {
+        if is_focused {
+            ui.label(egui::RichText::new("▶").color(FOCUS_STROKE));
+        }
+        ui.label(
+            egui::RichText::new(format!("{} [{}]", group.title(), group.fkey_label()))
+                .strong(),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.small_button("x").clicked() {
+                *closed = true;
+            }
+        });
+    });
+    ui.separator();
+    add(ui, want_focus);
 }
 
 pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
@@ -75,34 +97,14 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
     } = args;
     let last_phases = *last_phases;
 
-    // Tick the benchmark every frame so it can detect completion.
     overlay.benchmark.tick(scene, frame_stats);
 
     let focused = overlay.focused;
     let focus_now = overlay.pending_focus;
     overlay.pending_focus = false;
 
-    // Compute column x positions for each group based on how many groups with a
-    // lower index are currently visible. This keeps open panels side by side
-    // without gaps from hidden groups. The positions are "default" only — egui
-    // remembers where the user dragged a panel and uses that on subsequent shows.
-    const COL_WIDTH: f32 = 320.0;
-    const COL_MARGIN: f32 = 5.0;
-    let col_x: [f32; 7] = {
-        let mut next = 0usize;
-        std::array::from_fn(|i| {
-            if overlay.visible[i] {
-                let x = next as f32 * COL_WIDTH + COL_MARGIN;
-                next += 1;
-                x
-            } else {
-                0.0
-            }
-        })
-    };
-
     let OverlayState {
-        master_visible: _,
+        master_visible,
         visible,
         focused: _,
         pending_focus: _,
@@ -114,278 +116,344 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
     } = &mut **overlay;
 
     let want = |g: OverlayGroup| focus_now && focused == g;
-    let foc = |g: OverlayGroup| focused == g;
-    let cx = |g: OverlayGroup| col_x[g.index()];
+    let foc  = |g: OverlayGroup| focused == g;
 
-    // ── Stimuli ───────────────────────────────────────────────────────────────
-    group_window(ctx, OverlayGroup::Stimuli, &mut visible[OverlayGroup::Stimuli.index()],
-        foc(OverlayGroup::Stimuli), want(OverlayGroup::Stimuli), cx(OverlayGroup::Stimuli), |ui, want_focus| {
-        ui.horizontal(|ui| {
-            let new_btn = ui.button("➕ New stimulus");
-            if want_focus {
-                new_btn.request_focus();
-            }
-            if new_btn.clicked() {
-                stimulus_dialog.open();
-            }
-            if ui.button("Spawn demo").clicked() {
-                crate::render::spawn_demo_stimuli(scene);
-            }
-        });
-        ui.separator();
-        if let Ok(mut sc) = scene.try_write() {
-            let handles: Vec<u32> = sc.stimuli.keys().copied().collect();
-            let mut to_delete: Option<u32> = None;
-            egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
-                egui::Grid::new("stimuli_grid").striped(true).num_columns(6).spacing([8.0, 2.0]).show(ui, |ui| {
-                    ui.label(egui::RichText::new("En").strong());
-                    ui.label(egui::RichText::new("Handle / type").strong());
-                    ui.label(egui::RichText::new("Name").strong());
-                    ui.label(egui::RichText::new("Position (px)").strong());
-                    ui.label(egui::RichText::new("Size (px)").strong());
-                    ui.label("");
-                    ui.end_row();
-                    for h in handles {
-                        if let Some(entry) = sc.stimuli.get_mut(&h) {
-                            let stim = &entry.stimulus;
-                            let type_name = stim.type_name();
-                            let pos = stim.transform().live.pos;
-                            let size_label = match stim {
-                                Stimulus::Grating(s) => {
-                                    let [hw, hh] = s.size.live;
-                                    format!("{}×{}", (hw * 2.0) as i32, (hh * 2.0) as i32)
+    // ── Top panel — each visible group is a Panel::left inside ───────────────
+    // Panel::left fills the full height of Panel::top, so no circular height
+    // dependency. The top panel auto-sizes from the tallest left panel.
+    const GROUP_W: f32 = 310.0;
+    #[allow(deprecated)]
+    egui::Panel::top("overlay_panel")
+        .resizable(true)
+        .default_size(360.0)
+        .show(ctx, |ui| {
+
+        // ── Stimuli ───────────────────────────────────────────────────────────
+        if visible[OverlayGroup::Stimuli.index()] {
+            let mut closed = false;
+            egui::Panel::left("ovl_stimuli").resizable(false).default_size(GROUP_W)
+                .frame(group_frame(OverlayGroup::Stimuli))
+                .show_inside(ui, |ui| {
+                group_panel_header(ui, OverlayGroup::Stimuli,
+                    foc(OverlayGroup::Stimuli), want(OverlayGroup::Stimuli), &mut closed,
+                    |ui, want_focus| {
+                    ui.horizontal(|ui| {
+                        let new_btn = ui.button("➕ New stimulus");
+                        if want_focus { new_btn.request_focus(); }
+                        if new_btn.clicked() { stimulus_dialog.open(); }
+                        if ui.button("Spawn demo").clicked() {
+                            crate::render::spawn_demo_stimuli(scene);
+                        }
+                    });
+                    ui.separator();
+                    if let Ok(mut sc) = scene.try_write() {
+                        let handles: Vec<u32> = sc.stimuli.keys().copied().collect();
+                        let mut to_delete: Option<u32> = None;
+                        egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                            egui::Grid::new("stimuli_grid").striped(true).num_columns(6)
+                                .spacing([8.0, 2.0]).show(ui, |ui| {
+                                ui.label(egui::RichText::new("En").strong());
+                                ui.label(egui::RichText::new("Handle / type").strong());
+                                ui.label(egui::RichText::new("Name").strong());
+                                ui.label(egui::RichText::new("Pos (px)").strong());
+                                ui.label(egui::RichText::new("Size (px)").strong());
+                                ui.label("");
+                                ui.end_row();
+                                for h in handles {
+                                    if let Some(entry) = sc.stimuli.get_mut(&h) {
+                                        let stim = &entry.stimulus;
+                                        let type_name = stim.type_name();
+                                        let pos = stim.transform().live.pos;
+                                        let size_label = match stim {
+                                            Stimulus::Grating(s) => {
+                                                let [hw, hh] = s.size.live;
+                                                format!("{}×{}", (hw*2.0) as i32, (hh*2.0) as i32)
+                                            }
+                                            Stimulus::Shape(ShapeStimulus::Rect(s)) => {
+                                                let [hw, hh] = s.size.live;
+                                                format!("{}×{}", (hw*2.0) as i32, (hh*2.0) as i32)
+                                            }
+                                            Stimulus::Shape(ShapeStimulus::Circle(s)) =>
+                                                format!("r={}", s.radius.live as i32),
+                                            Stimulus::Shape(ShapeStimulus::Ellipse(s)) => {
+                                                let [rx, ry] = s.radii.live;
+                                                format!("{}×{}", (rx*2.0) as i32, (ry*2.0) as i32)
+                                            }
+                                            Stimulus::Text(s) => {
+                                                let [w, h] = s.box_size.live;
+                                                format!("{}×{}", w as i32, h as i32)
+                                            }
+                                        };
+                                        let name_label = entry.name.as_deref().unwrap_or("");
+                                        let uuid_str = entry.id.to_string();
+                                        let flags = entry.stimulus.flags_mut();
+                                        ui.checkbox(&mut flags.enabled, "");
+                                        ui.label(format!("#{h} {type_name}"));
+                                        let disp = if name_label.is_empty() {
+                                            &uuid_str[..8]
+                                        } else { name_label };
+                                        ui.label(egui::RichText::new(disp).color(
+                                            if name_label.is_empty() {
+                                                egui::Color32::DARK_GRAY
+                                            } else { egui::Color32::WHITE }
+                                        )).on_hover_text(&uuid_str);
+                                        ui.label(format!("{:.0},{:.0}", pos[0], pos[1]));
+                                        ui.label(size_label);
+                                        if ui.small_button("x")
+                                            .on_hover_text("Delete stimulus").clicked() {
+                                            to_delete = Some(h);
+                                        }
+                                        ui.end_row();
+                                    }
                                 }
-                                Stimulus::Shape(ShapeStimulus::Rect(s)) => {
-                                    let [hw, hh] = s.size.live;
-                                    format!("{}×{}", (hw * 2.0) as i32, (hh * 2.0) as i32)
-                                }
-                                Stimulus::Shape(ShapeStimulus::Circle(s)) => {
-                                    format!("r={}", s.radius.live as i32)
-                                }
-                                Stimulus::Shape(ShapeStimulus::Ellipse(s)) => {
-                                    let [rx, ry] = s.radii.live;
-                                    format!("{}×{}", (rx * 2.0) as i32, (ry * 2.0) as i32)
-                                }
-                                Stimulus::Text(s) => {
-                                    let [w, h] = s.box_size.live;
-                                    format!("{}×{}", w as i32, h as i32)
-                                }
+                            });
+                        });
+                        if let Some(h) = to_delete { sc.stimuli.shift_remove(&h); }
+                    }
+                });
+            });
+            if closed { visible[OverlayGroup::Stimuli.index()] = false; }
+        }
+
+        // ── Log ───────────────────────────────────────────────────────────────
+        if visible[OverlayGroup::Log.index()] {
+            let mut closed = false;
+            egui::Panel::left("ovl_log").resizable(false).default_size(GROUP_W)
+                .frame(group_frame(OverlayGroup::Log))
+                .show_inside(ui, |ui| {
+                group_panel_header(ui, OverlayGroup::Log,
+                    foc(OverlayGroup::Log), want(OverlayGroup::Log), &mut closed,
+                    |ui, _| {
+                    ui.label(egui::RichText::new("Server log").strong());
+                    let entries = log_buffer.lock()
+                        .map(|buf| buf.iter().map(|e| {
+                            let color = match e.level {
+                                log::Level::Error => egui::Color32::RED,
+                                log::Level::Warn  => egui::Color32::YELLOW,
+                                log::Level::Info  => egui::Color32::WHITE,
+                                _                 => egui::Color32::GRAY,
                             };
-                            let name_label = entry.name.as_deref().unwrap_or("");
-                            let uuid_str = entry.id.to_string();
-                            let flags = entry.stimulus.flags_mut();
-                            ui.checkbox(&mut flags.enabled, "");
-                            ui.label(format!("#{h} {type_name}"));
-                            let display = if name_label.is_empty() { &uuid_str[..8] } else { name_label };
-                            ui.label(
-                                egui::RichText::new(display).color(if name_label.is_empty() {
-                                    egui::Color32::DARK_GRAY
-                                } else {
-                                    egui::Color32::WHITE
-                                }),
-                            ).on_hover_text(&uuid_str);
-                            ui.label(format!("{:.0},{:.0}", pos[0], pos[1]));
-                            ui.label(size_label);
-                            if ui.small_button("✕").on_hover_text("Delete stimulus").clicked() {
-                                to_delete = Some(h);
+                            (color, format!("[{:>8.1}ms] {:5} {}", e.elapsed_ms, e.level, e.message))
+                        }).collect::<Vec<_>>())
+                        .unwrap_or_default();
+                    egui::ScrollArea::vertical().id_salt("server_log")
+                        .stick_to_bottom(true).max_height(160.0).show(ui, |ui| {
+                        for (color, text) in entries { ui.colored_label(color, text); }
+                    });
+                    ui.separator();
+                    if let Ok(sc) = scene.try_read() {
+                        ui.label(egui::RichText::new(format!(
+                            "IPC commands: {}  errors: {}",
+                            sc.runtime.command_log_total, sc.runtime.command_log_errors,
+                        )).strong());
+                        egui::ScrollArea::vertical().id_salt("ipc_log")
+                            .stick_to_bottom(true).max_height(140.0).show(ui, |ui| {
+                            for entry in &sc.runtime.command_log {
+                                let color = if entry.ok {
+                                    egui::Color32::from_rgb(80, 200, 80)
+                                } else { egui::Color32::RED };
+                                ui.colored_label(color, format!(
+                                    "[{:>8.1}ms] #{} {} → {}",
+                                    entry.elapsed_ms, entry.handle, entry.summary,
+                                    if entry.ok { format!("ok ({})", entry.response) }
+                                    else { "err".to_string() },
+                                ));
                             }
-                            ui.end_row();
+                        });
+                    }
+                });
+            });
+            if closed { visible[OverlayGroup::Log.index()] = false; }
+        }
+
+        // ── VTL ───────────────────────────────────────────────────────────────
+        if visible[OverlayGroup::Vtl.index()] {
+            let mut closed = false;
+            egui::Panel::left("ovl_vtl").resizable(false).default_size(GROUP_W)
+                .frame(group_frame(OverlayGroup::Vtl))
+                .show_inside(ui, |ui| {
+                group_panel_header(ui, OverlayGroup::Vtl,
+                    foc(OverlayGroup::Vtl), want(OverlayGroup::Vtl), &mut closed,
+                    |ui, want_focus| {
+                    vtl_group(ctx, ui, want_focus, *vtl);
+                });
+            });
+            if closed { visible[OverlayGroup::Vtl.index()] = false; }
+        }
+
+        // ── Animations ────────────────────────────────────────────────────────
+        if visible[OverlayGroup::Animations.index()] {
+            let mut closed = false;
+            egui::Panel::left("ovl_anim").resizable(false).default_size(GROUP_W)
+                .frame(group_frame(OverlayGroup::Animations))
+                .show_inside(ui, |ui| {
+                group_panel_header(ui, OverlayGroup::Animations,
+                    foc(OverlayGroup::Animations), want(OverlayGroup::Animations), &mut closed,
+                    |ui, want_focus| {
+                    let new_btn = ui.button("➕ New animation");
+                    if want_focus { new_btn.request_focus(); }
+                    if new_btn.clicked() { animation_dialog.open(); }
+                    ui.separator();
+                    if let Ok(mut sc) = scene.try_write() {
+                        let handles: Vec<u32> = sc.animations.keys().copied().collect();
+                        if handles.is_empty() {
+                            ui.label(egui::RichText::new("(no animations)")
+                                .color(egui::Color32::DARK_GRAY));
+                        }
+                        let mut arm: Option<u32> = None;
+                        let mut disarm: Option<u32> = None;
+                        let mut trigger: Option<u32> = None;
+                        let mut delete: Option<u32> = None;
+                        egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                            for h in &handles {
+                                if let Some(entry) = sc.animations.get(h) {
+                                    let (state_txt, state_col) = match entry.state {
+                                        AnimState::Idle           => ("Idle",    egui::Color32::GRAY),
+                                        AnimState::Armed          => ("Armed",   egui::Color32::YELLOW),
+                                        AnimState::Running { .. } => ("Running", egui::Color32::from_rgb(80,200,80)),
+                                        AnimState::Done           => ("Done",    egui::Color32::DARK_GRAY),
+                                    };
+                                    let name = if entry.name.is_empty() {
+                                        format!("anim #{h}")
+                                    } else { format!("#{h} {}", entry.name) };
+                                    ui.horizontal(|ui| {
+                                        ui.colored_label(state_col, format!("● {state_txt}"));
+                                        ui.label(format!("{name}  ({} stim)", entry.stimuli.len()));
+                                    });
+                                    ui.horizontal(|ui| {
+                                        if ui.small_button("Arm").clicked() { arm = Some(*h); }
+                                        if ui.small_button("Disarm").clicked() { disarm = Some(*h); }
+                                        if ui.small_button("Trigger")
+                                            .on_hover_text("Fire start trigger or run now").clicked() {
+                                            trigger = Some(*h);
+                                        }
+                                        if ui.small_button("x")
+                                            .on_hover_text("Delete animation").clicked() {
+                                            delete = Some(*h);
+                                        }
+                                    });
+                                    ui.separator();
+                                }
+                            }
+                        });
+                        if let Some(h) = arm    { sc.arm_animation(h); }
+                        if let Some(h) = disarm { sc.disarm_animation(h); }
+                        if let Some(h) = delete { sc.delete_animation(h); }
+                        if let Some(h) = trigger {
+                            let start_trigger = sc.animations.get(&h)
+                                .and_then(|e| e.start_trigger);
+                            sc.arm_animation(h);
+                            if let (Some((bit, edge)), Some(v)) = (start_trigger, *vtl)
+                                && let Ok(vst) = v.try_lock()
+                            {
+                                let owner = vst.owner();
+                                let mask = 1u64 << bit.bit;
+                                match edge {
+                                    crate::scene::Edge::Rising => {
+                                        owner.set_input_bit(bit.bank, bit.bit);
+                                        owner.set_input_rise(bit.bank, mask);
+                                    }
+                                    crate::scene::Edge::Falling => {
+                                        owner.clear_input_bit(bit.bank, bit.bit);
+                                        owner.set_input_fall(bit.bank, mask);
+                                    }
+                                }
+                            }
                         }
                     }
                 });
             });
-            if let Some(h) = to_delete {
-                sc.stimuli.shift_remove(&h);
-            }
+            if closed { visible[OverlayGroup::Animations.index()] = false; }
         }
-    });
 
-    // ── Log (server log + IPC log) ──────────────────────────────────────────────
-    group_window(ctx, OverlayGroup::Log, &mut visible[OverlayGroup::Log.index()],
-        foc(OverlayGroup::Log), want(OverlayGroup::Log), cx(OverlayGroup::Log), |ui, _| {
-        ui.label(egui::RichText::new("Server log").strong());
-        let entries = log_buffer
-            .lock()
-            .map(|buf| buf.iter().map(|e| {
-                let color = match e.level {
-                    log::Level::Error => egui::Color32::RED,
-                    log::Level::Warn  => egui::Color32::YELLOW,
-                    log::Level::Info  => egui::Color32::WHITE,
-                    _                 => egui::Color32::GRAY,
-                };
-                (color, format!("[{:>8.1}ms] {:5} {}", e.elapsed_ms, e.level, e.message))
-            }).collect::<Vec<_>>())
-            .unwrap_or_default();
-        egui::ScrollArea::vertical().id_salt("server_log").stick_to_bottom(true).max_height(160.0).show(ui, |ui| {
-            for (color, text) in entries {
-                ui.colored_label(color, text);
-            }
-        });
+        // ── System ────────────────────────────────────────────────────────────
+        if visible[OverlayGroup::System.index()] {
+            let mut closed = false;
+            egui::Panel::left("ovl_system").resizable(false).default_size(GROUP_W)
+                .frame(group_frame(OverlayGroup::System))
+                .show_inside(ui, |ui| {
+                group_panel_header(ui, OverlayGroup::System,
+                    foc(OverlayGroup::System), want(OverlayGroup::System), &mut closed,
+                    |ui, _| {
+                    system_group(ui, sys, display, *wireframe, metrics, scene,
+                        wireframe_toggle_requested);
+                    ui.separator();
+                    frame_timing(ui, frame_stats, last_phases);
+                });
+            });
+            if closed { visible[OverlayGroup::System.index()] = false; }
+        }
 
-        ui.separator();
-        if let Ok(sc) = scene.try_read() {
-            ui.label(egui::RichText::new(format!(
-                "IPC commands: {}  errors: {}",
-                sc.runtime.command_log_total, sc.runtime.command_log_errors,
-            )).strong());
-            egui::ScrollArea::vertical().id_salt("ipc_log").stick_to_bottom(true).max_height(140.0).show(ui, |ui| {
-                for entry in &sc.runtime.command_log {
-                    let color = if entry.ok {
-                        egui::Color32::from_rgb(80, 200, 80)
+        // ── Config ────────────────────────────────────────────────────────────
+        if visible[OverlayGroup::Config.index()] {
+            let mut closed = false;
+            egui::Panel::left("ovl_config").resizable(false).default_size(GROUP_W)
+                .frame(group_frame(OverlayGroup::Config))
+                .show_inside(ui, |ui| {
+                group_panel_header(ui, OverlayGroup::Config,
+                    foc(OverlayGroup::Config), want(OverlayGroup::Config), &mut closed,
+                    |ui, want_focus| {
+                    ui.label("Save or load the scene + VTL configuration.");
+                    ui.horizontal(|ui| {
+                        let save = ui.button("Save…");
+                        if want_focus { save.request_focus(); }
+                        if save.clicked() { file_browser.open_save(); }
+                        if ui.button("Open (replace)…").clicked() {
+                            file_browser.open_load_replace();
+                        }
+                        if ui.button("Open (additive)…").clicked() {
+                            file_browser.open_load_additive();
+                        }
+                    });
+                });
+            });
+            if closed { visible[OverlayGroup::Config.index()] = false; }
+        }
+
+        // ── Benchmarks ────────────────────────────────────────────────────────
+        if visible[OverlayGroup::Benchmarks.index()] {
+            let mut closed = false;
+            egui::Panel::left("ovl_bench").resizable(false).default_size(GROUP_W)
+                .frame(group_frame(OverlayGroup::Benchmarks))
+                .show_inside(ui, |ui| {
+                group_panel_header(ui, OverlayGroup::Benchmarks,
+                    foc(OverlayGroup::Benchmarks), want(OverlayGroup::Benchmarks), &mut closed,
+                    |ui, want_focus| {
+                    ui.heading("Grating stress test");
+                    if benchmark.is_running() {
+                        let remaining = benchmark.remaining_frames(frame_stats).unwrap_or(0);
+                        ui.label(format!("Running… {remaining} frames remaining"));
                     } else {
-                        egui::Color32::RED
-                    };
-                    ui.colored_label(color, format!(
-                        "[{:>8.1}ms] #{} {} → {}",
-                        entry.elapsed_ms, entry.handle, entry.summary,
-                        if entry.ok { format!("ok ({})", entry.response) } else { "err".to_string() },
-                    ));
-                }
-            });
-        }
-    });
-
-    // ── Virtual Trigger (VTL) ───────────────────────────────────────────────────
-    group_window(ctx, OverlayGroup::Vtl, &mut visible[OverlayGroup::Vtl.index()],
-        foc(OverlayGroup::Vtl), want(OverlayGroup::Vtl), cx(OverlayGroup::Vtl), |ui, want_focus| {
-        vtl_group(ctx, ui, want_focus, *vtl);
-    });
-
-    // ── Animations ──────────────────────────────────────────────────────────────
-    group_window(ctx, OverlayGroup::Animations, &mut visible[OverlayGroup::Animations.index()],
-        foc(OverlayGroup::Animations), want(OverlayGroup::Animations), cx(OverlayGroup::Animations), |ui, want_focus| {
-        let new_btn = ui.button("➕ New animation");
-        if want_focus {
-            new_btn.request_focus();
-        }
-        if new_btn.clicked() {
-            animation_dialog.open();
-        }
-        ui.separator();
-        if let Ok(mut sc) = scene.try_write() {
-            let handles: Vec<u32> = sc.animations.keys().copied().collect();
-            if handles.is_empty() {
-                ui.label(egui::RichText::new("(no animations)").color(egui::Color32::DARK_GRAY));
-            }
-            let mut arm: Option<u32> = None;
-            let mut disarm: Option<u32> = None;
-            let mut trigger: Option<u32> = None;
-            let mut delete: Option<u32> = None;
-            egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
-                for h in &handles {
-                    if let Some(entry) = sc.animations.get(h) {
-                        let (state_txt, state_col) = match entry.state {
-                            AnimState::Idle           => ("Idle",    egui::Color32::GRAY),
-                            AnimState::Armed          => ("Armed",   egui::Color32::YELLOW),
-                            AnimState::Running { .. } => ("Running", egui::Color32::from_rgb(80, 200, 80)),
-                            AnimState::Done           => ("Done",    egui::Color32::DARK_GRAY),
-                        };
-                        let name = if entry.name.is_empty() {
-                            format!("anim #{h}")
-                        } else {
-                            format!("#{h} {}", entry.name)
-                        };
-                        let n_targets = entry.stimuli.len();
-                        ui.horizontal(|ui| {
-                            ui.colored_label(state_col, format!("● {state_txt}"));
-                            ui.label(format!("{name}  ({n_targets} stim)"));
-                        });
-                        ui.horizontal(|ui| {
-                            if ui.small_button("Arm").clicked() { arm = Some(*h); }
-                            if ui.small_button("Disarm").clicked() { disarm = Some(*h); }
-                            if ui.small_button("Trigger").on_hover_text("Fire start trigger or run now").clicked() {
-                                trigger = Some(*h);
-                            }
-                            if ui.small_button("✕").on_hover_text("Delete animation").clicked() {
-                                delete = Some(*h);
-                            }
-                        });
-                        ui.separator();
-                    }
-                }
-            });
-            if let Some(h) = arm { sc.arm_animation(h); }
-            if let Some(h) = disarm { sc.disarm_animation(h); }
-            if let Some(h) = delete { sc.delete_animation(h); }
-            if let Some(h) = trigger {
-                let start_trigger = sc.animations.get(&h).and_then(|e| e.start_trigger);
-                sc.arm_animation(h);
-                // If the animation waits on an input edge, fire it so it runs now.
-                if let (Some((bit, edge)), Some(v)) = (start_trigger, *vtl)
-                    && let Ok(vst) = v.try_lock()
-                {
-                    let owner = vst.owner();
-                    let mask = 1u64 << bit.bit;
-                    match edge {
-                        crate::scene::Edge::Rising => {
-                            owner.set_input_bit(bit.bank, bit.bit);
-                            owner.set_input_rise(bit.bank, mask);
+                        let run = ui.button("Run (200 gratings, 300 frames)");
+                        if want_focus { run.request_focus(); }
+                        if run.clicked() {
+                            benchmark.start_grating_stress(scene, frame_stats,
+                                (display.width_px, display.height_px), 20, 10, 300);
                         }
-                        crate::scene::Edge::Falling => {
-                            owner.clear_input_bit(bit.bank, bit.bit);
-                            owner.set_input_fall(bit.bank, mask);
+                        if let Some(r) = benchmark.last_result() {
+                            ui.separator();
+                            ui.label(format!(
+                                "{} gratings × {} frames → {} dropped",
+                                r.grating_count, r.duration_frames, r.drop_count,
+                            ));
                         }
                     }
-                }
-            }
+                });
+            });
+            if closed { visible[OverlayGroup::Benchmarks.index()] = false; }
         }
-    });
 
-    // ── System (host info + frame timing + metrics + toggles) ───────────────────
-    group_window(ctx, OverlayGroup::System, &mut visible[OverlayGroup::System.index()],
-        foc(OverlayGroup::System), want(OverlayGroup::System), cx(OverlayGroup::System), |ui, _| {
-        system_group(ui, sys, display, *wireframe, metrics, scene, wireframe_toggle_requested);
-        ui.separator();
-        frame_timing(ui, frame_stats, last_phases);
-    });
+        // Central panel consumes remaining space so egui doesn't complain about
+        // unoccupied area inside the top panel.
+        egui::CentralPanel::default().show_inside(ui, |_| {});
+    }); // Panel::top
 
-    // ── Config ──────────────────────────────────────────────────────────────────
-    group_window(ctx, OverlayGroup::Config, &mut visible[OverlayGroup::Config.index()],
-        foc(OverlayGroup::Config), want(OverlayGroup::Config), cx(OverlayGroup::Config), |ui, want_focus| {
-        ui.label("Save or load the scene + VTL configuration.");
-        ui.horizontal(|ui| {
-            let save = ui.button("Save…");
-            if want_focus {
-                save.request_focus();
-            }
-            if save.clicked() {
-                file_browser.open_save();
-            }
-            if ui.button("Open (replace)…").clicked() {
-                file_browser.open_load_replace();
-            }
-            if ui.button("Open (additive)…").clicked() {
-                file_browser.open_load_additive();
-            }
-        });
-    });
+    // Hide master when all groups were closed via x button.
+    if !visible.iter().any(|&v| v) {
+        *master_visible = false;
+    }
 
-    // ── Benchmarks ──────────────────────────────────────────────────────────────
-    group_window(ctx, OverlayGroup::Benchmarks, &mut visible[OverlayGroup::Benchmarks.index()],
-        foc(OverlayGroup::Benchmarks), want(OverlayGroup::Benchmarks), cx(OverlayGroup::Benchmarks), |ui, want_focus| {
-        ui.heading("Grating stress test");
-        if benchmark.is_running() {
-            let remaining = benchmark.remaining_frames(frame_stats).unwrap_or(0);
-            ui.label(format!("Running… {remaining} frames remaining"));
-        } else {
-            let run = ui.button("Run (200 gratings, 300 frames)");
-            if want_focus {
-                run.request_focus();
-            }
-            if run.clicked() {
-                benchmark.start_grating_stress(scene, frame_stats, (display.width_px, display.height_px), 20, 10, 300);
-            }
-            if let Some(r) = benchmark.last_result() {
-                ui.separator();
-                ui.label(format!(
-                    "{} gratings × {} frames → {} dropped",
-                    r.grating_count, r.duration_frames, r.drop_count,
-                ));
-            }
-        }
-    });
-
-    // ── Dialogs (modal windows + result handling) ───────────────────────────────
+    // ── Dialogs (modal floating windows) ────────────────────────────────────────
     stimulus_dialog.show(ctx);
     if let Some(entry) = stimulus_dialog.take_result() {
         scene.write().unwrap().add_stimulus(entry);
