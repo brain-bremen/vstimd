@@ -158,6 +158,60 @@ impl SceneState {
         h
     }
 
+    /// Arm an animation. Returns false if the handle is unknown. Shared by
+    /// `cmd_arm_animation` and the overlay UI.
+    pub fn arm_animation(&mut self, handle: u32) -> bool {
+        match self.config.animations.get_mut(&handle) {
+            Some(entry) => {
+                entry.state = AnimState::Armed;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Disarm an animation back to Idle, releasing any flicker `anim_enabled`
+    /// hold it placed on its stimuli. Returns false if the handle is unknown.
+    /// Shared by `cmd_disarm_animation` and the overlay UI.
+    pub fn disarm_animation(&mut self, handle: u32) -> bool {
+        let entry = match self.config.animations.get_mut(&handle) {
+            Some(e) => e,
+            None => return false,
+        };
+        let was_running = matches!(entry.state, AnimState::Running { .. });
+        let stim_handles = entry.stimuli.clone();
+        entry.state = AnimState::Idle;
+        if was_running {
+            self.release_anim_hold(&stim_handles);
+        }
+        true
+    }
+
+    /// Remove an animation, releasing any flicker hold if it was running.
+    /// Returns false if the handle is unknown. Shared by `cmd_delete_animation`
+    /// and the overlay UI.
+    pub fn delete_animation(&mut self, handle: u32) -> bool {
+        let entry = match self.config.animations.shift_remove(&handle) {
+            Some(e) => e,
+            None => return false,
+        };
+        if matches!(entry.state, AnimState::Running { .. }) {
+            self.release_anim_hold(&entry.config.stimuli);
+        }
+        true
+    }
+
+    /// Release the `anim_enabled` hold a running animation placed on `stimuli`.
+    /// Setting true when already true is a no-op, so this is safe unconditionally.
+    fn release_anim_hold(&mut self, stimuli: &[u32]) {
+        for &sh in stimuli {
+            if let Some(se) = self.config.stimuli.get_mut(&sh) {
+                se.stimulus.flags_mut().anim_enabled = true;
+                se.stimulus.flags_mut().mark_dirty();
+            }
+        }
+    }
+
     /// Advance all animations by one frame.  Called once per frame by the render
     /// thread at [S] (after output commit and input poll).
     ///

@@ -184,6 +184,7 @@ fn detect_render_target(window_mode: WindowMode) -> RenderTarget {
 
 fn parse_args() -> Args {
     let mut window_mode = WindowMode::default();
+    let mut explicit_windowed = false;
     let mut verbose = false;
     let mut null = false;
     let zmq_port = vstimd::ipc::DEFAULT_ZMQ_PORT;
@@ -206,6 +207,7 @@ fn parse_args() -> Args {
                     width: w,
                     height: h,
                 };
+                explicit_windowed = true;
             }
             "--rig-config" => {
                 rig_config = args.next().unwrap_or_else(|| {
@@ -236,6 +238,16 @@ fn parse_args() -> Args {
     } else {
         detect_render_target(window_mode)
     };
+
+    if explicit_windowed && render_target == RenderTarget::Drm {
+        eprintln!(
+            "vstimd: --windowed requires a desktop session \
+             (DISPLAY or WAYLAND_DISPLAY must be set). \
+             DRM/console mode does not support windowed output."
+        );
+        std::process::exit(1);
+    }
+
     log::info!("vstimd: render target: {:?}", render_target);
 
     Args {

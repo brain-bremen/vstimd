@@ -246,30 +246,35 @@ impl DrmRenderLoopData {
             let (app_keys, nav_events) = self.input.poll();
             for key in app_keys {
                 match key {
-                    AppKey::Escape => return,
-                    AppKey::SwitchVt(n) => self.vt_guard.switch_to(n),
-                    AppKey::D => {
-                        crate::render::spawn_demo_stimuli(&self.rs.scene_renderer.scene);
-                    }
-                    AppKey::F1 => {
+                    // Esc never quits — it closes a dialog or hides the overlay.
+                    // (Quit via SIGINT, or Ctrl+Alt+Fn to another VT then kill.)
+                    AppKey::Escape => {
                         if let Some(ui) = &mut self.rs.ui {
-                            ui.show_overlay = !ui.show_overlay;
+                            ui.overlay.handle_escape();
                         }
                     }
-                    AppKey::F2 => {
-                        let mut sc = self.rs.scene_renderer.scene.write().expect("scene lock");
-                        sc.photodiode.enabled = !sc.photodiode.enabled;
-                        sc.photodiode.flicker = true;
-                        sc.photodiode.lit = false;
+                    AppKey::ToggleOverlay => {
+                        if let Some(ui) = &mut self.rs.ui {
+                            ui.overlay.toggle_master();
+                        }
                     }
-                    AppKey::F3 => {
-                        if self.rs.ctx.supports_wireframe {
-                            self.rs.scene_renderer.wireframe =
-                                !self.rs.scene_renderer.wireframe;
-                            log::info!(
-                                "vstimd: wireframe {}",
-                                if self.rs.scene_renderer.wireframe { "ON" } else { "OFF" }
-                            );
+                    AppKey::ShowGroup(group) => {
+                        if let Some(ui) = &mut self.rs.ui {
+                            ui.overlay.show_group(group);
+                        }
+                    }
+                    AppKey::HideGroup(group) => {
+                        if let Some(ui) = &mut self.rs.ui {
+                            ui.overlay.hide_group(group);
+                        }
+                    }
+                    AppKey::SwitchVt(n) => self.vt_guard.switch_to(n),
+                    // Demo spawn only when the overlay is hidden, so 'd' types
+                    // into dialog fields while the overlay is up.
+                    AppKey::D => {
+                        let overlay_up = self.rs.ui.as_ref().is_some_and(|ui| ui.overlay.master_visible);
+                        if !overlay_up {
+                            crate::render::spawn_demo_stimuli(&self.rs.scene_renderer.scene);
                         }
                     }
                 }
@@ -278,7 +283,7 @@ impl DrmRenderLoopData {
             // 2. Build egui raw input (DRM: screen rect + libinput nav keys).
             let egui_raw_input = self.rs.ui
                 .as_ref()
-                .filter(|ui| ui.show_overlay)
+                .filter(|ui| ui.overlay.master_visible)
                 .map(|_| self.build_egui_raw_input(nav_events));
 
             // 3. Block on vblank: DRM ioctl path blocks here directly; VK path

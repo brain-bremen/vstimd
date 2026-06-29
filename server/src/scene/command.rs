@@ -1320,52 +1320,30 @@ impl SceneState {
     }
 
     fn cmd_arm_animation(&mut self, cmd: proto::ArmAnimationRequest) -> proto::Response {
-        match self.config.animations.get_mut(&cmd.handle) {
-            Some(entry) => { entry.state = AnimState::Armed; ok_ack() }
-            None => err(proto::ErrorCode::HandleNotFound,
-                format!("animation handle {} not found", cmd.handle)),
+        if self.arm_animation(cmd.handle) {
+            ok_ack()
+        } else {
+            err(proto::ErrorCode::HandleNotFound,
+                format!("animation handle {} not found", cmd.handle))
         }
     }
 
     fn cmd_disarm_animation(&mut self, cmd: proto::DisarmAnimationRequest) -> proto::Response {
-        let entry = match self.config.animations.get_mut(&cmd.handle) {
-            Some(e) => e,
-            None => return err(proto::ErrorCode::HandleNotFound,
-                format!("animation handle {} not found", cmd.handle)),
-        };
-
-        let was_running = matches!(entry.state, AnimState::Running { .. });
-        let stim_handles = entry.stimuli.clone();
-        entry.state = AnimState::Idle;
-
-        // Release any anim_enabled hold. Safe to do unconditionally: setting true when
-        // already true is a no-op, and we don't need to track which animation types hold it.
-        if was_running {
-            for sh in stim_handles {
-                if let Some(se) = self.config.stimuli.get_mut(&sh) {
-                    se.stimulus.flags_mut().anim_enabled = true;
-                    se.stimulus.flags_mut().mark_dirty();
-                }
-            }
+        if self.disarm_animation(cmd.handle) {
+            ok_ack()
+        } else {
+            err(proto::ErrorCode::HandleNotFound,
+                format!("animation handle {} not found", cmd.handle))
         }
-        ok_ack()
     }
 
     fn cmd_delete_animation(&mut self, cmd: proto::DeleteAnimationRequest) -> proto::Response {
-        let entry = match self.config.animations.shift_remove(&cmd.handle) {
-            Some(e) => e,
-            None => return err(proto::ErrorCode::HandleNotFound,
-                format!("animation handle {} not found", cmd.handle)),
-        };
-        if matches!(entry.state, AnimState::Running { .. }) {
-            for sh in entry.config.stimuli {
-                if let Some(se) = self.config.stimuli.get_mut(&sh) {
-                    se.stimulus.flags_mut().anim_enabled = true;
-                    se.stimulus.flags_mut().mark_dirty();
-                }
-            }
+        if self.delete_animation(cmd.handle) {
+            ok_ack()
+        } else {
+            err(proto::ErrorCode::HandleNotFound,
+                format!("animation handle {} not found", cmd.handle))
         }
-        ok_ack()
     }
 
     fn cmd_list_animations(&self) -> proto::Response {

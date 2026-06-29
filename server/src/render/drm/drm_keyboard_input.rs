@@ -3,6 +3,7 @@ use std::os::fd::OwnedFd;
 use std::path::Path;
 
 use crate::render::AppKey;
+use crate::render::overlay_ui::OverlayGroup;
 
 // ── TTY keyboard suppression guard ───────────────────────────────────────────
 
@@ -135,47 +136,95 @@ impl InputState {
                 continue;
             };
             let pressed = kb.key_state() == input::event::keyboard::KeyState::Pressed;
+            let code = kb.key();
 
-            match kb.key() {
-                // Modifier tracking (press + release) — no separate egui event;
-                // modifier state is embedded in subsequent key events.
-                42 | 54 => self.modifiers.shift = pressed, // KEY_LEFTSHIFT, KEY_RIGHTSHIFT
-                29 | 97 => self.modifiers.ctrl = pressed,  // KEY_LEFTCTRL,  KEY_RIGHTCTRL
-                56 | 100 => self.modifiers.alt = pressed,  // KEY_LEFTALT,   KEY_RIGHTALT
-                // Ctrl+Alt+F1–F12 → VT switch (libinput grabs input exclusively,
-                // so the kernel never sees these; we forward them ourselves).
-                code @ 59..=68 if pressed && self.modifiers.ctrl && self.modifiers.alt => {
-                    app_keys.push(AppKey::SwitchVt((code - 58) as u16)); // F1=59→1 … F10=68→10
+            // Modifier tracking (press + release) — no separate egui event;
+            // modifier state is embedded in subsequent key events.
+            match code {
+                42 | 54 => { self.modifiers.shift = pressed; continue; } // L/R SHIFT
+                29 | 97 => { self.modifiers.ctrl  = pressed; continue; } // L/R CTRL
+                56 | 100 => { self.modifiers.alt  = pressed; continue; } // L/R ALT
+                _ => {}
+            }
+
+            // Ctrl+Alt+F1–F12 → VT switch (libinput grabs input exclusively, so the
+            // kernel never sees these; we forward them ourselves). Takes priority
+            // over plain-Fn group selection.
+            if pressed && self.modifiers.ctrl && self.modifiers.alt {
+                let vt = match code {
+                    59..=68 => Some((code - 58) as u16), // F1→1 … F10→10
+                    87 => Some(11),                      // F11
+                    88 => Some(12),                      // F12
+                    _ => None,
+                };
+                if let Some(n) = vt {
+                    app_keys.push(AppKey::SwitchVt(n));
+                    continue;
                 }
-                87 if pressed && self.modifiers.ctrl && self.modifiers.alt => {
-                    app_keys.push(AppKey::SwitchVt(11)); // KEY_F11
-                }
-                88 if pressed && self.modifiers.ctrl && self.modifiers.alt => {
-                    app_keys.push(AppKey::SwitchVt(12)); // KEY_F12
-                }
-                // App-level keys (press only)
-                1 if pressed => app_keys.push(AppKey::Escape), // KEY_ESC
-                32 if pressed => app_keys.push(AppKey::D),     // KEY_D
-                59 if pressed => app_keys.push(AppKey::F1),    // KEY_F1
-                60 if pressed => app_keys.push(AppKey::F2),    // KEY_F2
-                61 if pressed => app_keys.push(AppKey::F3),    // KEY_F3
-                // Navigation / interaction keys → egui events (press + release)
-                code => {
-                    if let Some(key) = evdev_to_egui_key(code) {
-                        egui_events.push(egui::Event::Key {
-                            key,
-                            physical_key: None,
-                            pressed,
-                            repeat: false,
-                            modifiers: self.modifiers,
-                        });
+            }
+
+            // App-level keys (press only). F-keys and Esc never type, so they
+            // `continue`; KEY_D falls through so 'd' can also reach text fields.
+            match code {
+                1 if pressed => { app_keys.push(AppKey::Escape); continue; } // KEY_ESC
+                41 if pressed => { app_keys.push(AppKey::ToggleOverlay); continue; } // KEY_GRAVE
+                59..=68 | 87 | 88 if pressed => {
+                    let n = match code { 87 => 11, 88 => 12, _ => (code - 58) as u8 };
+                    if let Some(group) = OverlayGroup::from_fkey(n) {
+                        if self.modifiers.shift {
+                            app_keys.push(AppKey::HideGroup(group));
+                        } else {
+                            app_keys.push(AppKey::ShowGroup(group));
+                        }
                     }
+                    continue;
                 }
+                32 if pressed => app_keys.push(AppKey::D), // KEY_D — also types below
+                _ => {}
+            }
+
+            // Navigation keys → egui events (press + release).
+            if let Some(key) = evdev_to_egui_key(code) {
+                egui_events.push(egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed,
+                    repeat: false,
+                    modifiers: self.modifiers,
+                });
+            }
+            // Printable characters → egui text input (press only). Without this,
+            // dialog text fields cannot be typed into in DRM mode.
+            if pressed && let Some(ch) = evdev_to_char(code, self.modifiers.shift) {
+                egui_events.push(egui::Event::Text(ch.to_string()));
             }
         }
 
         (app_keys, egui_events)
     }
+}
+
+/// Map evdev key codes to characters for text entry (US QWERTY layout).
+/// Returns the shifted glyph when `shift` is held.
+fn evdev_to_char(code: u32, shift: bool) -> Option<char> {
+    let (lo, hi): (char, char) = match code {
+        2 => ('1', '!'), 3 => ('2', '@'), 4 => ('3', '#'), 5 => ('4', '$'),
+        6 => ('5', '%'), 7 => ('6', '^'), 8 => ('7', '&'), 9 => ('8', '*'),
+        10 => ('9', '('), 11 => ('0', ')'),
+        12 => ('-', '_'), 13 => ('=', '+'),
+        16 => ('q', 'Q'), 17 => ('w', 'W'), 18 => ('e', 'E'), 19 => ('r', 'R'),
+        20 => ('t', 'T'), 21 => ('y', 'Y'), 22 => ('u', 'U'), 23 => ('i', 'I'),
+        24 => ('o', 'O'), 25 => ('p', 'P'), 26 => ('[', '{'), 27 => (']', '}'),
+        30 => ('a', 'A'), 31 => ('s', 'S'), 32 => ('d', 'D'), 33 => ('f', 'F'),
+        34 => ('g', 'G'), 35 => ('h', 'H'), 36 => ('j', 'J'), 37 => ('k', 'K'),
+        38 => ('l', 'L'), 39 => (';', ':'), 40 => ('\'', '"'), 43 => ('\\', '|'),
+        44 => ('z', 'Z'), 45 => ('x', 'X'), 46 => ('c', 'C'), 47 => ('v', 'V'),
+        48 => ('b', 'B'), 49 => ('n', 'N'), 50 => ('m', 'M'),
+        51 => (',', '<'), 52 => ('.', '>'), 53 => ('/', '?'),
+        57 => (' ', ' '),
+        _ => return None,
+    };
+    Some(if shift { hi } else { lo })
 }
 
 /// Map evdev key codes (linux/input-event-codes.h) to egui navigation keys.

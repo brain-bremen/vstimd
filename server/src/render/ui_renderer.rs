@@ -1,8 +1,7 @@
 use std::path::PathBuf;
 
 use crate::log_buffer::LogBuffer;
-use crate::render::benchmark::BenchmarkState;
-use crate::render::overlay_ui::FileBrowser;
+use crate::render::overlay_ui::OverlayState;
 use crate::render::system_metrics::MetricsSampler;
 use crate::render::vk::{VkContext, VkEguiRenderer};
 
@@ -11,9 +10,8 @@ use crate::render::vk::{VkContext, VkEguiRenderer};
 pub struct UiRenderer {
     pub egui_renderer: VkEguiRenderer,
     pub egui_ctx: egui::Context,
-    pub show_overlay: bool,
-    pub benchmark: BenchmarkState,
-    pub file_browser: FileBrowser,
+    /// Grouped-window visibility, focus, and owned dialogs.
+    pub overlay: OverlayState,
     pub metrics: MetricsSampler,
     pub log_buffer: LogBuffer,
 }
@@ -29,9 +27,7 @@ impl UiRenderer {
         Self {
             egui_renderer,
             egui_ctx: egui::Context::default(),
-            show_overlay: false,
-            benchmark: BenchmarkState::new(),
-            file_browser: FileBrowser::new(config_dir),
+            overlay: OverlayState::new(config_dir),
             metrics: MetricsSampler::new(),
             log_buffer,
         }

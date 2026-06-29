@@ -42,14 +42,13 @@ pub fn render_frame(
     let wireframe = rs.ctx.supports_wireframe.then_some(rs.scene_renderer.wireframe);
 
     if let Some(ui) = &mut rs.ui
-        && ui.show_overlay
+        && ui.overlay.master_visible
         && let Some(raw_input) = egui_raw_input
     {
         let phases = rs.timing.last_phases;
         let crate::render::ui_renderer::UiRenderer {
             ref mut egui_ctx,
-            ref mut benchmark,
-            ref mut file_browser,
+            ref mut overlay,
             ref mut metrics,
             ref log_buffer,
             ..
@@ -66,8 +65,7 @@ pub fn render_frame(
                 wireframe,
                 metrics: metrics_sample,
                 log_buffer,
-                bench: benchmark,
-                file_browser,
+                overlay,
             });
         });
         platform_output = Some(output.platform_output);
@@ -78,6 +76,20 @@ pub fn render_frame(
             primitives,
             pixels_per_point: ppp,
         });
+    }
+
+    // Apply the overlay's wireframe toggle request (the System group can't reach
+    // the scene-renderer pipeline state itself). Read+reset, then act, so we
+    // don't hold a borrow of `rs.ui` while mutating `rs.scene_renderer`.
+    let toggle_wireframe = rs.ui.as_mut()
+        .map(|ui| std::mem::take(&mut ui.overlay.wireframe_toggle_requested))
+        .unwrap_or(false);
+    if toggle_wireframe && rs.ctx.supports_wireframe {
+        rs.scene_renderer.wireframe = !rs.scene_renderer.wireframe;
+        log::info!(
+            "vstimd: wireframe {}",
+            if rs.scene_renderer.wireframe { "ON" } else { "OFF" }
+        );
     }
 
     // ── 2. Wait for this slot's previous GPU work ─────────────────────────────
