@@ -17,7 +17,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Connection, rgb } from "../src/index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
-const WEB_PORT = 8137; // dedicated test port; avoids clashing with a real server
+const WEB_PORT = 8137; // dedicated test ports; never collide with a real server
+const ZMQ_PORT = 5567;
 const BASE_URL = `ws://127.0.0.1:${WEB_PORT}`;
 
 function serverBinary(): string {
@@ -59,7 +60,11 @@ let conn: Connection;
 
 describe("vstimd web client e2e (--null)", () => {
   beforeAll(async () => {
-    server = spawn(serverBinary(), ["--null", "--web-port", String(WEB_PORT)], { stdio: "ignore" });
+    server = spawn(
+      serverBinary(),
+      ["--null", "--web-port", String(WEB_PORT), "--zmq-port", String(ZMQ_PORT)],
+      { stdio: "ignore" },
+    );
     await waitForPort(WEB_PORT);
     conn = await Connection.connect(BASE_URL);
   }, 180_000);

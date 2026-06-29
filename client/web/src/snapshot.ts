@@ -6,6 +6,7 @@
 // (the map key used to address mutations like SetPosition during RF mapping).
 
 import type { SceneSnapshot as ProtoSnapshot } from "./_proto/vstimd/v1/snapshot_pb.js";
+import type { QueryStimulusResponse } from "./_proto/vstimd/v1/stimuli/query_pb.js";
 import { StimulusType } from "./_proto/vstimd/v1/stimuli/stimulus_type_pb.js";
 import { toServerInfo, type ServerInfo } from "./system.js";
 import type { Color, StimulusHandle, StimulusKind, Vec2 } from "./types.js";
@@ -19,6 +20,8 @@ export interface StimulusView {
   handle: StimulusHandle;
   kind: StimulusKind;
   pos: Vec2;
+  /** Bounding-box size in stimulus-space pixels (full width/height). */
+  size: { width: number; height: number };
   /** Orientation in degrees CCW. */
   orientation: number;
   opacity: number;
@@ -46,6 +49,27 @@ function kindOf(t: StimulusType): StimulusKind {
   }
 }
 
+/** Bounding-box size in stimulus-space pixels from the shape params. */
+function sizeOf(s: QueryStimulusResponse): { width: number; height: number } {
+  const shape = s.params?.shape;
+  switch (shape?.case) {
+    case "rect":
+    case "ellipse":
+    case "grating":
+      return { width: shape.value.width, height: shape.value.height };
+    case "circle":
+      return { width: shape.value.radius * 2, height: shape.value.radius * 2 };
+    case "text":
+      // No box in TextParams; estimate from text length × letter height.
+      return {
+        width: Math.max(20, shape.value.text.length * shape.value.letterHeight * 0.6),
+        height: Math.max(10, shape.value.letterHeight),
+      };
+    default:
+      return { width: 20, height: 20 };
+  }
+}
+
 export function toSceneSnapshot(p: ProtoSnapshot): SceneSnapshot {
   return {
     serverInfo: p.serverInfo ? toServerInfo(p.serverInfo) : undefined,
@@ -55,6 +79,7 @@ export function toSceneSnapshot(p: ProtoSnapshot): SceneSnapshot {
       handle: s.handle,
       kind: kindOf(s.stimulusType),
       pos: { x: s.pos?.x ?? 0, y: s.pos?.y ?? 0 },
+      size: sizeOf(s),
       orientation: s.orientation,
       opacity: s.opacity,
       fillColor: s.fillColor,
