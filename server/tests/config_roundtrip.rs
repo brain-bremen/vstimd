@@ -2,7 +2,7 @@ use uuid::Uuid;
 use vstimd::io_config::{parse_config_json, retrieve_config_json};
 use vstimd::scene::{
     CircleStimulus, Deferred, LoadMode, RectStimulus, SceneConfig, SceneState, ShapeAppearance,
-    ShapeCommon, Stimulus, StimulusSceneE StimulusFlags, Transform2D,
+    ShapeCommon, Stimulus, StimulusFlags, StimulusSceneEntry, Transform2D,
 };
 use vstimd::vtl_state::{VtlConfig, VtlNameEntry};
 use vtl::Direction;
