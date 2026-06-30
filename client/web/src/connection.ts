@@ -5,6 +5,8 @@
 import { ErrorCode, throwForCode } from "./errors.js";
 import { CommandTransport, EventTransport, type Send } from "./transport.js";
 import { toSceneSnapshot, type SceneSnapshot } from "./snapshot.js";
+import { AnimationsClient } from "./animations.js";
+import { ConfigClient } from "./config.js";
 import { StimuliClient } from "./stimuli.js";
 import { SystemClient } from "./system.js";
 import { VtlClient } from "./vtl.js";
@@ -24,6 +26,10 @@ export class Connection {
   readonly system: SystemClient;
   /** Virtual trigger line control. */
   readonly vtl: VtlClient;
+  /** Frame-accurate animations (`conn.animations.flash(...)`). */
+  readonly animations: AnimationsClient;
+  /** Named scene-config persistence (`conn.config.save/load/list`). */
+  readonly config: ConfigClient;
 
   private constructor(
     private readonly cmd: CommandTransport,
@@ -39,6 +45,10 @@ export class Connection {
     this.stimuli = new StimuliClient(send);
     this.system = new SystemClient(send);
     this.vtl = new VtlClient(send);
+    this.animations = new AnimationsClient(send, () =>
+      this.system.queryServerInfo().then((i) => i.frameRate),
+    );
+    this.config = new ConfigClient(send);
   }
 
   /**

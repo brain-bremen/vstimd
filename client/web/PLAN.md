@@ -45,14 +45,20 @@ React UI  ──uses──▶  client library (public API)  ──wraps──▶
 
 ## TODO (roughly in priority order)
 
-1. **Expand the client API** to full parity with the Python client / proto:
-   - stimuli: DONE — `createEllipse`, grating (`conn.stimuli.grating`: create +
+1. **Expand the client API** to full parity with the Python client / proto: DONE.
+   - stimuli: `createEllipse`, grating (`conn.stimuli.grating`: create +
      sf/contrast/phase/drift/opacity/waveform/mask/fore+backColor), text
-     (`conn.stimuli.text`: create/setText/setColor), and shape setters
-     (setOrientation, setRectSize/CircleRadius/EllipseSize, setFillColor, setAlpha).
-   - TODO: remaining generic setters (outlineColor/Width, drawMode, drawOrder),
-     and `conn.vtl` (list/name/set/toggle lines), `conn.animations`
-     (create/arm/disarm/delete/list), `conn.config` (list/load/save/retrieve).
+     (`conn.stimuli.text`: create/setText/setColor), shape setters
+     (setOrientation, setRectSize/CircleRadius/EllipseSize, setFillColor, setAlpha),
+     and the remaining generic setters (setName, setDrawMode, setOutlineColor,
+     setOutlineWidth, bringToFront/sendToBack/swapDrawOrder).
+   - `conn.vtl`: list/name/set/toggle/clear lines.
+   - `conn.animations`: create (all 7 types) / arm / disarm / delete / list / query,
+     with `*Frames`|`*Ms` conversion via a cached server frame rate.
+   - `conn.config`: list / load / save / retrieve / upload.
+   - JSON Schema for config (schemars server-side, file export + `conn.config.schema()`):
+     DEFERRED — do this right before the Config UI panel (step 2) so the panel is
+     schema-driven. See "Known issues" for the related server gaps.
 2. **UI panels** to match the egui overlay: VTL, Animations, System
    (background/photodiode/deferred), Config (save/load), Log
    (snapshot.commandLog + server log). Creation dialogs for all stimulus types.
@@ -72,6 +78,12 @@ React UI  ──uses──▶  client library (public API)  ──wraps──▶
 
 ## Known issues
 
+- **Draw-order commands unimplemented server-side**: `bringToFront` / `sendToBack`
+  / `swapDrawOrder` are wired in both clients but the server returns `NotSupported`
+  (brain-daemons/vstimd#43). The web e2e asserts the `NotSupported` gap for now.
+- **Prod config dir**: default is the cwd (good for dev/tests). For systemd, use
+  `StateDirectory=vstimd` + `--config-dir ${STATE_DIRECTORY}/configs`
+  (`/var/lib/vstimd/configs`) — runtime-mutable state, not `/etc`. (See step 5.)
 - **Shutdown segfault**: vstimd core-dumps on Ctrl-C/SIGTERM with the *windowed*
   backend (both web + ZMQ "shutting down" log lines print first, so it's in
   teardown after `backend.run()` returns). Not reproducible/triagable without a
