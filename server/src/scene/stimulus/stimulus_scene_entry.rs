@@ -9,13 +9,13 @@ use uuid::Uuid;
 /// reconnecting clients match server-side stimuli to their in-memory objects).
 /// `name` is optional human-readable label for debugging/tooling.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct StimulusEntry {
+pub struct StimulusSceneEntry {
     pub id: Uuid,
     pub name: Option<String>,
     pub stimulus: Stimulus,
 }
 
-impl StimulusEntry {
+impl StimulusSceneEntry {
     pub fn new(id: Uuid, name: Option<String>, stimulus: Stimulus) -> Self {
         Self { id, name, stimulus }
     }

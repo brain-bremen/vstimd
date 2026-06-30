@@ -11,7 +11,8 @@ use uuid::Uuid;
 use crate::Color;
 use crate::scene::{
     CircleStimulus, Deferred, EllipseStimulus, GratingParams, GratingStimulus, RectStimulus,
-    ShapeAppearance, ShapeCommon, Stimulus, StimulusEntry, StimulusFlags, Transform2D, Waveform,
+    ShapeAppearance, ShapeCommon, Stimulus, StimulusFlags, StimulusSceneEntry, Transform2D,
+    Waveform,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -41,7 +42,7 @@ pub struct StimulusDialog {
     grating_contrast: f32,
     grating_drift: f32,
     grating_waveform: Waveform,
-    result: Option<StimulusEntry>,
+    result: Option<StimulusSceneEntry>,
 }
 
 impl Default for StimulusDialog {
@@ -74,18 +75,25 @@ impl StimulusDialog {
         self.result = None;
     }
 
-    pub fn take_result(&mut self) -> Option<StimulusEntry> {
+    pub fn take_result(&mut self) -> Option<StimulusSceneEntry> {
         self.result.take()
     }
 
-    fn build_entry(&self) -> StimulusEntry {
+    fn build_entry(&self) -> StimulusSceneEntry {
         let flags = StimulusFlags::enabled(true);
-        let transform = Deferred::new(Transform2D { pos: self.pos, angle: self.angle });
+        let transform = Deferred::new(Transform2D {
+            pos: self.pos,
+            angle: self.angle,
+        });
         let appearance = Deferred::new(ShapeAppearance {
             fill_color: Color::new(self.fill[0], self.fill[1], self.fill[2], self.fill[3]),
             ..Default::default()
         });
-        let common = ShapeCommon { flags, transform, appearance };
+        let common = ShapeCommon {
+            flags,
+            transform,
+            appearance,
+        };
         let stimulus = match self.kind {
             Kind::Rect => Stimulus::Rect(RectStimulus {
                 common,
@@ -113,7 +121,7 @@ impl StimulusDialog {
             )),
         };
         let name = (!self.name.trim().is_empty()).then(|| self.name.trim().to_string());
-        StimulusEntry::new(Uuid::new_v4(), name, stimulus)
+        StimulusSceneEntry::new(Uuid::new_v4(), name, stimulus)
     }
 
     pub fn show(&mut self, ctx: &egui::Context) {
@@ -141,80 +149,135 @@ impl StimulusDialog {
                     ui.label("Name:");
                     ui.text_edit_singleline(&mut self.name);
                 });
-                egui::Grid::new("stim_dialog_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
-                    ui.label("Position x,y");
-                    ui.horizontal(|ui| {
-                        ui.add(egui::DragValue::new(&mut self.pos[0]).speed(1.0));
-                        ui.add(egui::DragValue::new(&mut self.pos[1]).speed(1.0));
-                    });
-                    ui.end_row();
-
-                    if self.kind != Kind::Circle {
-                        ui.label("Angle°");
-                        ui.add(egui::DragValue::new(&mut self.angle).speed(1.0));
-                        ui.end_row();
-                    }
-
-                    match self.kind {
-                        Kind::Rect => {
-                            ui.label("Size w×h");
-                            ui.horizontal(|ui| {
-                                ui.add(egui::DragValue::new(&mut self.rect_size[0]).speed(1.0).range(1.0..=4096.0));
-                                ui.add(egui::DragValue::new(&mut self.rect_size[1]).speed(1.0).range(1.0..=4096.0));
-                            });
-                            ui.end_row();
-                        }
-                        Kind::Circle => {
-                            ui.label("Radius");
-                            ui.add(egui::DragValue::new(&mut self.circle_radius).speed(1.0).range(1.0..=4096.0));
-                            ui.end_row();
-                        }
-                        Kind::Ellipse => {
-                            ui.label("Size w×h");
-                            ui.horizontal(|ui| {
-                                ui.add(egui::DragValue::new(&mut self.ellipse_size[0]).speed(1.0).range(1.0..=4096.0));
-                                ui.add(egui::DragValue::new(&mut self.ellipse_size[1]).speed(1.0).range(1.0..=4096.0));
-                            });
-                            ui.end_row();
-                        }
-                        Kind::Grating => {
-                            ui.label("Size w×h");
-                            ui.horizontal(|ui| {
-                                ui.add(egui::DragValue::new(&mut self.grating_size[0]).speed(1.0).range(1.0..=4096.0));
-                                ui.add(egui::DragValue::new(&mut self.grating_size[1]).speed(1.0).range(1.0..=4096.0));
-                            });
-                            ui.end_row();
-                            ui.label("Spatial freq (cyc/px)");
-                            ui.add(egui::DragValue::new(&mut self.grating_sf).speed(0.001).range(0.0..=1.0));
-                            ui.end_row();
-                            ui.label("Contrast");
-                            ui.add(egui::DragValue::new(&mut self.grating_contrast).speed(0.01).range(0.0..=1.0));
-                            ui.end_row();
-                            ui.label("Drift (cyc/s)");
-                            ui.add(egui::DragValue::new(&mut self.grating_drift).speed(0.05));
-                            ui.end_row();
-                            ui.label("Waveform");
-                            ui.horizontal(|ui| {
-                                ui.selectable_value(&mut self.grating_waveform, Waveform::Sin, "Sin");
-                                ui.selectable_value(&mut self.grating_waveform, Waveform::Sqr, "Sqr");
-                                ui.selectable_value(&mut self.grating_waveform, Waveform::Saw, "Saw");
-                                ui.selectable_value(&mut self.grating_waveform, Waveform::Tri, "Tri");
-                            });
-                            ui.end_row();
-                        }
-                    }
-
-                    // Grating uses its own fore/back colors; fill applies to shapes only.
-                    if self.kind != Kind::Grating {
-                        ui.label("Fill RGBA");
+                egui::Grid::new("stim_dialog_grid")
+                    .num_columns(2)
+                    .spacing([8.0, 4.0])
+                    .show(ui, |ui| {
+                        ui.label("Position x,y");
                         ui.horizontal(|ui| {
-                            for c in &mut self.fill {
-                                ui.add(egui::DragValue::new(c).speed(0.01).range(0.0..=1.0));
-                            }
+                            ui.add(egui::DragValue::new(&mut self.pos[0]).speed(1.0));
+                            ui.add(egui::DragValue::new(&mut self.pos[1]).speed(1.0));
                         });
                         ui.end_row();
-                    }
-                });
+
+                        if self.kind != Kind::Circle {
+                            ui.label("Angle°");
+                            ui.add(egui::DragValue::new(&mut self.angle).speed(1.0));
+                            ui.end_row();
+                        }
+
+                        match self.kind {
+                            Kind::Rect => {
+                                ui.label("Size w×h");
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::DragValue::new(&mut self.rect_size[0])
+                                            .speed(1.0)
+                                            .range(1.0..=4096.0),
+                                    );
+                                    ui.add(
+                                        egui::DragValue::new(&mut self.rect_size[1])
+                                            .speed(1.0)
+                                            .range(1.0..=4096.0),
+                                    );
+                                });
+                                ui.end_row();
+                            }
+                            Kind::Circle => {
+                                ui.label("Radius");
+                                ui.add(
+                                    egui::DragValue::new(&mut self.circle_radius)
+                                        .speed(1.0)
+                                        .range(1.0..=4096.0),
+                                );
+                                ui.end_row();
+                            }
+                            Kind::Ellipse => {
+                                ui.label("Size w×h");
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::DragValue::new(&mut self.ellipse_size[0])
+                                            .speed(1.0)
+                                            .range(1.0..=4096.0),
+                                    );
+                                    ui.add(
+                                        egui::DragValue::new(&mut self.ellipse_size[1])
+                                            .speed(1.0)
+                                            .range(1.0..=4096.0),
+                                    );
+                                });
+                                ui.end_row();
+                            }
+                            Kind::Grating => {
+                                ui.label("Size w×h");
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::DragValue::new(&mut self.grating_size[0])
+                                            .speed(1.0)
+                                            .range(1.0..=4096.0),
+                                    );
+                                    ui.add(
+                                        egui::DragValue::new(&mut self.grating_size[1])
+                                            .speed(1.0)
+                                            .range(1.0..=4096.0),
+                                    );
+                                });
+                                ui.end_row();
+                                ui.label("Spatial freq (cyc/px)");
+                                ui.add(
+                                    egui::DragValue::new(&mut self.grating_sf)
+                                        .speed(0.001)
+                                        .range(0.0..=1.0),
+                                );
+                                ui.end_row();
+                                ui.label("Contrast");
+                                ui.add(
+                                    egui::DragValue::new(&mut self.grating_contrast)
+                                        .speed(0.01)
+                                        .range(0.0..=1.0),
+                                );
+                                ui.end_row();
+                                ui.label("Drift (cyc/s)");
+                                ui.add(egui::DragValue::new(&mut self.grating_drift).speed(0.05));
+                                ui.end_row();
+                                ui.label("Waveform");
+                                ui.horizontal(|ui| {
+                                    ui.selectable_value(
+                                        &mut self.grating_waveform,
+                                        Waveform::Sin,
+                                        "Sin",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.grating_waveform,
+                                        Waveform::Sqr,
+                                        "Sqr",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.grating_waveform,
+                                        Waveform::Saw,
+                                        "Saw",
+                                    );
+                                    ui.selectable_value(
+                                        &mut self.grating_waveform,
+                                        Waveform::Tri,
+                                        "Tri",
+                                    );
+                                });
+                                ui.end_row();
+                            }
+                        }
+
+                        // Grating uses its own fore/back colors; fill applies to shapes only.
+                        if self.kind != Kind::Grating {
+                            ui.label("Fill RGBA");
+                            ui.horizontal(|ui| {
+                                for c in &mut self.fill {
+                                    ui.add(egui::DragValue::new(c).speed(0.01).range(0.0..=1.0));
+                                }
+                            });
+                            ui.end_row();
+                        }
+                    });
 
                 ui.separator();
                 ui.horizontal(|ui| {

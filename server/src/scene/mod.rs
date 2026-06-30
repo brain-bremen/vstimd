@@ -13,6 +13,6 @@ pub use scene_config::{LoadMode, SceneConfig};
 pub use scene_state::{SceneRuntimeState, SceneState};
 pub use stimulus::{
     Anchor, CircleStimulus, DrawMode, EllipseStimulus, GratingMask, GratingParams, GratingStimulus,
-    LanguageStyle, RectStimulus, ShapeAppearance, ShapeCommon, Stimulus, StimulusEntry,
-    StimulusFlags, TextRenderParams, TextStimulus, Transform2D, Waveform,
+    LanguageStyle, RectStimulus, ShapeAppearance, ShapeCommon, Stimulus, StimulusFlags,
+    StimulusSceneEntry, TextRenderParams, TextStimulus, Transform2D, Waveform,
 };

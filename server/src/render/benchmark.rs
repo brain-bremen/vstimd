@@ -1,8 +1,10 @@
 use std::sync::{Arc, RwLock};
 
-use crate::scene::{GratingParams, GratingStimulus, SceneState, Stimulus, StimulusEntry, Waveform};
-use uuid::Uuid;
+use crate::scene::{
+    GratingParams, GratingStimulus, SceneState, Stimulus, StimulusSceneEntry, Waveform,
+};
 use crate::timing::FrameStats;
+use uuid::Uuid;
 
 pub struct BenchmarkResult {
     pub grating_count: usize,
@@ -71,7 +73,7 @@ impl BenchmarkState {
                     let h = sc.alloc_stim_handle();
                     sc.stimuli.insert(
                         h,
-                        StimulusEntry::new(
+                        StimulusSceneEntry::new(
                             Uuid::new_v4(),
                             None,
                             Stimulus::Grating(GratingStimulus::new(
@@ -124,20 +126,20 @@ impl BenchmarkState {
                 handles,
                 ..
             } = std::mem::replace(&mut self.phase, Phase::Idle)
-            {
-                let grating_count = handles.len();
-                if let Ok(mut sc) = scene.try_write() {
-                    for h in handles {
-                        sc.stimuli.shift_remove(&h);
-                    }
+        {
+            let grating_count = handles.len();
+            if let Ok(mut sc) = scene.try_write() {
+                for h in handles {
+                    sc.stimuli.shift_remove(&h);
                 }
-                let drop_count = current_drops.saturating_sub(start_drops);
-                self.phase = Phase::Done(BenchmarkResult {
-                    grating_count,
-                    duration_frames,
-                    drop_count,
-                });
             }
+            let drop_count = current_drops.saturating_sub(start_drops);
+            self.phase = Phase::Done(BenchmarkResult {
+                grating_count,
+                duration_frames,
+                drop_count,
+            });
+        }
     }
 
     /// Remaining frames, or None if not running.

@@ -14,7 +14,7 @@ use super::stimulus::text::{
     text_render_params_from_proto,
 };
 use super::stimulus::{
-    CircleStimulus, EllipseStimulus, RectStimulus, ShapeCommon, Stimulus, StimulusEntry,
+    CircleStimulus, EllipseStimulus, RectStimulus, ShapeCommon, Stimulus, StimulusSceneEntry,
 };
 use super::stimulus::{DrawMode as SceneDrawMode, ShapeAppearance, StimulusFlags, Transform2D};
 use crate::Color;
@@ -408,7 +408,7 @@ impl SceneState {
         let width = if cmd.width == 0.0 { 100.0 } else { cmd.width };
         let height = if cmd.height == 0.0 { 100.0 } else { cmd.height };
         let fill = color_or_default(cmd.fill_color, self.config.default_fill);
-        let entry = StimulusEntry::new(
+        let entry = StimulusSceneEntry::new(
             id,
             nonempty(cmd.name),
             Stimulus::Rect(RectStimulus {
@@ -441,7 +441,7 @@ impl SceneState {
         let center = cmd.center.unwrap_or_default();
         let radius = if cmd.radius == 0.0 { 50.0 } else { cmd.radius };
         let fill = color_or_default(cmd.fill_color, self.config.default_fill);
-        let entry = StimulusEntry::new(
+        let entry = StimulusSceneEntry::new(
             id,
             nonempty(cmd.name),
             Stimulus::Circle(CircleStimulus {
@@ -475,7 +475,7 @@ impl SceneState {
         let width = if cmd.width == 0.0 { 100.0 } else { cmd.width };
         let height = if cmd.height == 0.0 { 100.0 } else { cmd.height };
         let fill = color_or_default(cmd.fill_color, self.config.default_fill);
-        let entry = StimulusEntry::new(
+        let entry = StimulusSceneEntry::new(
             id,
             nonempty(cmd.name),
             Stimulus::Ellipse(EllipseStimulus {
@@ -840,7 +840,7 @@ impl SceneState {
         let handle = self.alloc_stim_handle();
         self.config.stimuli.insert(
             handle,
-            StimulusEntry::new(
+            StimulusSceneEntry::new(
                 id,
                 name,
                 Stimulus::Grating(GratingStimulus::new(
@@ -1076,7 +1076,7 @@ impl SceneState {
         let handle = self.alloc_stim_handle();
         self.config.stimuli.insert(
             handle,
-            StimulusEntry::new(
+            StimulusSceneEntry::new(
                 id,
                 name,
                 Stimulus::Text(TextStimulus::new(
@@ -1222,7 +1222,7 @@ impl SceneState {
     pub(crate) fn query_stimulus_response(
         &self,
         handle: u32,
-        entry: &StimulusEntry,
+        entry: &StimulusSceneEntry,
     ) -> proto::QueryStimulusResponse {
         let stim = &entry.stimulus;
 

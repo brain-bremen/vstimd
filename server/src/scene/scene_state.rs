@@ -1,6 +1,6 @@
 use super::animation::{AnimState, Animation, AnimationEntry, FinalAction, StartAction};
 use super::scene_config::SceneConfig;
-use super::stimulus::StimulusEntry;
+use super::stimulus::StimulusSceneEntry;
 use crate::vtl_state::{Edge, VtlEdges};
 extern crate vtl;
 
@@ -148,7 +148,7 @@ impl SceneState {
 
     /// Insert a `StimulusEntry` and return the allocated handle.
     /// The internal insertion path used by both `cmd_create_*` and tests.
-    pub fn add_stimulus(&mut self, entry: super::stimulus::StimulusEntry) -> u32 {
+    pub fn add_stimulus(&mut self, entry: super::stimulus::StimulusSceneEntry) -> u32 {
         let h = self.alloc_stim_handle();
         self.stimuli.insert(h, entry);
         h
@@ -369,7 +369,7 @@ impl Default for SceneState {
     }
 }
 
-fn make_entry_dirty(mut entry: StimulusEntry) -> StimulusEntry {
+fn make_entry_dirty(mut entry: StimulusSceneEntry) -> StimulusSceneEntry {
     entry.stimulus.flags_mut().dirty = true;
     entry.stimulus.reset_phase_accum();
     entry.stimulus.make_copy();
