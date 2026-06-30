@@ -13,6 +13,7 @@ const BACKEND = "ws://127.0.0.1:8138";
 test.beforeEach(async () => {
   const conn = await Connection.connect(BACKEND);
   await conn.system.deleteAll();
+  for (const a of await conn.animations.list()) await conn.animations.delete(a.handle);
   conn.close();
 });
 
@@ -54,6 +55,26 @@ test("shows a VTL line and toggles its level", async ({ page }) => {
   // The toggle button drives the line high (reconciled via the next snapshot).
   await row.getByRole("button", { name: "toggle" }).click();
   await expect(indicator).toHaveAttribute("title", "high");
+});
+
+test("lists an animation and arms it", async ({ page }) => {
+  // Create a stimulus + a flash animation server-side, then load the UI.
+  const conn = await Connection.connect(BACKEND);
+  const h = await conn.stimuli.shapes.createRect({ name: "anim-rect" });
+  await conn.animations.flash(h, { durationFrames: 30, name: "fl" });
+  conn.close();
+
+  await page.goto("/");
+  await expect(page.getByText("connected")).toBeVisible();
+
+  // The animation appears in the panel (polled) with its canonical type tag.
+  const row = page.locator("tr", { hasText: "fl" });
+  await expect(row).toContainText("FlashForNFrames");
+  await expect(row).toContainText("idle");
+
+  // Arming starts it; the polled state leaves idle (armed → running → done).
+  await row.getByRole("button", { name: "arm", exact: true }).click();
+  await expect(row).not.toContainText("idle");
 });
 
 test("drag on the map moves the stimulus (RF mapping)", async ({ page }) => {
