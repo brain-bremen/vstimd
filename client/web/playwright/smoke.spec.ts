@@ -77,6 +77,21 @@ test("lists an animation and arms it", async ({ page }) => {
   await expect(row).not.toContainText("idle");
 });
 
+test("system: Hide all disables every stimulus", async ({ page }) => {
+  const conn = await Connection.connect(BACKEND);
+  await conn.stimuli.shapes.createRect({ name: "sys-rect" });
+  conn.close();
+
+  await page.goto("/");
+  await expect(page.getByText("connected")).toBeVisible();
+
+  const checkbox = page.locator("tr", { hasText: "sys-rect" }).locator("input[type=checkbox]");
+  await expect(checkbox).toBeChecked();
+
+  await page.getByRole("button", { name: "Hide all" }).click();
+  await expect(checkbox).not.toBeChecked(); // reconciled via the next snapshot
+});
+
 test("drag on the map moves the stimulus (RF mapping)", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("connected")).toBeVisible();

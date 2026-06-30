@@ -59,4 +59,28 @@ export class SystemClient {
       }),
     );
   }
+
+  /** Enable or disable every stimulus at once (show/hide all). */
+  async setAllEnabled(enabled: boolean): Promise<void> {
+    await this.send(
+      create(RequestSchema, {
+        target: { case: "system", value: {} },
+        body: { case: "setAllEnabled", value: { enabled } },
+      }),
+    );
+  }
+
+  /**
+   * Enter/exit deferred (frame-batched) mode. `active=true` begins; `active=false`
+   * schedules an atomic flip on the next vsync; `cancel=true` discards pending
+   * changes instead of applying them.
+   */
+  async setDeferredMode(active: boolean, cancel = false): Promise<void> {
+    await this.send(
+      create(RequestSchema, {
+        target: { case: "system", value: {} },
+        body: { case: "setDeferredMode", value: { active, cancel } },
+      }),
+    );
+  }
 }
