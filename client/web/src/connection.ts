@@ -7,6 +7,7 @@ import { CommandTransport, EventTransport, type Send } from "./transport.js";
 import { toSceneSnapshot, type SceneSnapshot } from "./snapshot.js";
 import { StimuliClient } from "./stimuli.js";
 import { SystemClient } from "./system.js";
+import { VtlClient } from "./vtl.js";
 
 /** Callback for live scene snapshots from the /events channel. */
 export type SnapshotListener = (snap: SceneSnapshot) => void;
@@ -21,6 +22,8 @@ export class Connection {
   readonly stimuli: StimuliClient;
   /** Scene-wide commands and server queries. */
   readonly system: SystemClient;
+  /** Virtual trigger line control. */
+  readonly vtl: VtlClient;
 
   private constructor(
     private readonly cmd: CommandTransport,
@@ -35,6 +38,7 @@ export class Connection {
     };
     this.stimuli = new StimuliClient(send);
     this.system = new SystemClient(send);
+    this.vtl = new VtlClient(send);
   }
 
   /**

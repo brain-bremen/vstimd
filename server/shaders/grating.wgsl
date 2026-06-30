@@ -61,8 +61,10 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     // Transform to pixel-space then to NDC using push constants.
     let pixel_pos = p.center_px + in.position.xy * p.half_size;
     let ndc = pixel_pos / p.screen_half;
+    // Clip space is Y-up (top of screen = +1), matching the text path; do NOT
+    // negate Y here or the grating renders vertically flipped.
     var out: VertexOutput;
-    out.clip_pos = vec4<f32>(ndc.x, -ndc.y, 0.0, 1.0);
+    out.clip_pos = vec4<f32>(ndc.x, ndc.y, 0.0, 1.0);
     return out;
 }
 

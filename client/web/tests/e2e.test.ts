@@ -9,7 +9,8 @@
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { connect as netConnect } from "node:net";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -17,7 +18,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Connection, rgb } from "../src/index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
-const WEB_PORT = 8137; // dedicated test port; avoids clashing with a real server
+const WEB_PORT = 8137; // dedicated test ports; never collide with a real server
+const ZMQ_PORT = 5567;
 const BASE_URL = `ws://127.0.0.1:${WEB_PORT}`;
 
 function serverBinary(): string {
@@ -59,7 +61,18 @@ let conn: Connection;
 
 describe("vstimd web client e2e (--null)", () => {
   beforeAll(async () => {
-    server = spawn(serverBinary(), ["--null", "--web-port", String(WEB_PORT)], { stdio: "ignore" });
+    // Isolate the VTL shm (name is global) so the test server never collides
+    // with a real vstimd the developer may be running.
+    const rig = join(tmpdir(), `vstimd-e2e-rig-${process.pid}.toml`);
+    writeFileSync(rig, `[vtl]\nshm_name = "/vstimd_e2e_${process.pid}"\n`);
+    server = spawn(
+      serverBinary(),
+      [
+        "--null", "--web-port", String(WEB_PORT),
+        "--zmq-port", String(ZMQ_PORT), "--rig-config", rig,
+      ],
+      { stdio: "ignore" },
+    );
     await waitForPort(WEB_PORT);
     conn = await Connection.connect(BASE_URL);
   }, 180_000);
@@ -98,6 +111,56 @@ describe("vstimd web client e2e (--null)", () => {
     expect(ours!.kind).toBe("rect");
     expect(ours!.pos.x).toBeCloseTo(-200, 3);
     expect(ours!.pos.y).toBeCloseTo(75, 3);
+  });
+
+  it("applies size and orientation setters", async () => {
+    const handle = await conn.stimuli.shapes.createRect({ width: 100, height: 50, name: "sized" });
+    await conn.stimuli.setRectSize(handle, 240, 120);
+    await conn.stimuli.setOrientation(handle, 30);
+
+    const snap = await conn.nextSnapshot();
+    const ours = snap.stimuli.find((s) => s.name === "sized")!;
+    expect(ours.size.width).toBeCloseTo(240, 3);
+    expect(ours.size.height).toBeCloseTo(120, 3);
+    expect(ours.orientation).toBeCloseTo(30, 3);
+  });
+
+  it("creates a named ellipse with the expected size", async () => {
+    await conn.stimuli.shapes.createEllipse({ width: 160, height: 80, name: "ell" });
+    const snap = await conn.nextSnapshot();
+    const ell = snap.stimuli.find((s) => s.name === "ell")!;
+    expect(ell.kind).toBe("ellipse");
+    expect(ell.size.width).toBeCloseTo(160, 3);
+    expect(ell.size.height).toBeCloseTo(80, 3);
+  });
+
+  it("creates a grating", async () => {
+    await conn.stimuli.grating.create({ width: 300, height: 200, sf: 0.04, name: "grat", waveform: "sqr" });
+    const snap = await conn.nextSnapshot();
+    const g = snap.stimuli.find((s) => s.name === "grat")!;
+    expect(g.kind).toBe("grating");
+    expect(g.size.width).toBeCloseTo(300, 3);
+    expect(g.size.height).toBeCloseTo(200, 3);
+  });
+
+  it("creates and updates a text stimulus", async () => {
+    const h = await conn.stimuli.text.create({ text: "hello", letterHeight: 40, name: "txt" });
+    await conn.stimuli.text.setText(h, "world!");
+    const snap = await conn.nextSnapshot();
+    const t = snap.stimuli.find((s) => s.name === "txt")!;
+    expect(t.kind).toBe("text");
+  });
+
+  it("names and fires a VTL input line", async () => {
+    await conn.vtl.setName(0, 1, "input", "trig");
+    await conn.vtl.setInput("trig", true);
+
+    const snap = await conn.nextSnapshot();
+    const line = snap.vtlLines.find((l) => l.name === "trig")!;
+    expect(line.direction).toBe("input");
+    expect(line.bank).toBe(0);
+    expect(line.bit).toBe(1);
+    expect(line.high).toBe(true);
   });
 
   it("round-trips a position update (RF-mapping style)", async () => {

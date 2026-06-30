@@ -20,9 +20,11 @@ pub struct ShapeTessellationResult {
 
 // ── Coordinate conversion ─────────────────────────────────────────────────────
 
-/// Pixel-space (centre = 0, Y-up) → NDC (centre = 0, Y-down), z = 0.
+/// Pixel-space (centre = 0, Y-up) → clip space (centre = 0, Y-up), z = 0.
+/// The renderer's clip space is Y-up (top of screen = +1), matching the text
+/// path; do NOT negate Y here or shapes render vertically flipped.
 fn px_to_ndc(x: f32, y: f32, half_w: f32, half_h: f32) -> [f32; 3] {
-    [x / half_w, -y / half_h, 0.0]
+    [x / half_w, y / half_h, 0.0]
 }
 
 const FRONT_NORMAL: [f32; 3] = [0.0, 0.0, 1.0];

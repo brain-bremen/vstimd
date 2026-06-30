@@ -63,29 +63,44 @@ export function StimulusMap({ conn, snapshot }: Props) {
       const c = toCanvas(s.pos);
       const col = s.fillColor;
       const css = col ? `rgba(${col.r * 255},${col.g * 255},${col.b * 255},${s.enabled ? col.a : 0.25})` : "#888";
+      // True-to-scale: stimulus pixels → canvas pixels. Keep a small floor so
+      // tiny stimuli stay clickable/visible.
+      const w = Math.max(4, s.size.width * scale);
+      const h = Math.max(4, s.size.height * scale);
+
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate((-s.orientation * Math.PI) / 180); // +y up → canvas +y down
       ctx.fillStyle = css;
       ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 1;
       if (s.kind === "circle" || s.kind === "ellipse") {
         ctx.beginPath();
-        ctx.ellipse(c.x, c.y, 12, 12, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
       } else {
-        ctx.fillRect(c.x - 12, c.y - 12, 24, 24);
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
       }
+      ctx.restore();
+
       ctx.fillStyle = "#ccc";
       ctx.font = "11px sans-serif";
-      ctx.fillText(s.name || s.kind, c.x + 15, c.y + 4);
+      ctx.fillText(s.name || s.kind, c.x + w / 2 + 4, c.y + 4);
     }
   });
 
   function hitTest(sx: number, sy: number): StimulusView | null {
     const canvas = canvasRef.current!;
-    const { toCanvas } = geom(canvas);
-    // topmost (last drawn) first
+    const { toCanvas, scale } = geom(canvas);
+    // topmost (last drawn) first; axis-aligned bbox with a clickable floor.
     const list = stimuli();
     for (let i = list.length - 1; i >= 0; i--) {
       const c = toCanvas(list[i].pos);
-      if (Math.abs(sx - c.x) <= 14 && Math.abs(sy - c.y) <= 14) return list[i];
+      const hw = Math.max(8, (list[i].size.width * scale) / 2);
+      const hh = Math.max(8, (list[i].size.height * scale) / 2);
+      if (Math.abs(sx - c.x) <= hw && Math.abs(sy - c.y) <= hh) return list[i];
     }
     return null;
   }
