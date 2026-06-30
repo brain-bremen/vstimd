@@ -6,23 +6,23 @@ use super::text_params::{Anchor, LanguageStyle, TextRenderParams};
 /// Serializable text configuration.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct TextConfig {
-    pub flags:            StimulusFlags,
-    pub transform:        Deferred<Transform2D>,
-    pub params:           Deferred<TextRenderParams>,
-    pub box_size:         Deferred<[f32; 2]>,
-    pub text_live:        String,
+    pub flags: StimulusFlags,
+    pub transform: Deferred<Transform2D>,
+    pub params: Deferred<TextRenderParams>,
+    pub box_size: Deferred<[f32; 2]>,
+    pub text_live: String,
     // These never change post-creation (would require full re-layout).
-    pub font_family:      String,
+    pub font_family: String,
     pub letter_height_px: f32,
-    pub anchor:           Anchor,
-    pub language_style:   LanguageStyle,
+    pub anchor: Anchor,
+    pub language_style: LanguageStyle,
 }
 
 /// Full text stimulus: serializable config + deferred text copy.
 /// Deref/DerefMut give transparent access to the config fields.
 #[derive(Clone)]
 pub struct TextStimulus {
-    pub config:    TextConfig,
+    pub config: TextConfig,
     // String is not Copy, so live/copy are managed manually. Not serialized;
     // restored equal to text_live on deserialization.
     pub text_copy: String,
@@ -30,11 +30,15 @@ pub struct TextStimulus {
 
 impl std::ops::Deref for TextStimulus {
     type Target = TextConfig;
-    fn deref(&self) -> &TextConfig { &self.config }
+    fn deref(&self) -> &TextConfig {
+        &self.config
+    }
 }
 
 impl std::ops::DerefMut for TextStimulus {
-    fn deref_mut(&mut self) -> &mut TextConfig { &mut self.config }
+    fn deref_mut(&mut self) -> &mut TextConfig {
+        &mut self.config
+    }
 }
 
 impl serde::Serialize for TextStimulus {
@@ -52,6 +56,7 @@ impl<'de> serde::Deserialize<'de> for TextStimulus {
 }
 
 impl TextStimulus {
+    pub const TYPE_NAME: &'static str = "TextStimulus";
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pos: [f32; 2],
@@ -66,11 +71,11 @@ impl TextStimulus {
         let text_copy = text.clone();
         Self {
             config: TextConfig {
-                flags:            StimulusFlags::enabled(true),
-                transform:        Deferred::new(Transform2D { pos, angle: 0.0 }),
-                params:           Deferred::new(params),
-                box_size:         Deferred::new(box_size),
-                text_live:        text,
+                flags: StimulusFlags::enabled(true),
+                transform: Deferred::new(Transform2D { pos, angle: 0.0 }),
+                params: Deferred::new(params),
+                box_size: Deferred::new(box_size),
+                text_live: text,
                 font_family,
                 letter_height_px,
                 anchor,
@@ -91,8 +96,13 @@ impl TextStimulus {
     }
 
     pub fn set_color(&mut self, deferred: bool, color: crate::Color) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
-        self.params.set(deferred, TextRenderParams { color, ..prev });
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
+        self.params
+            .set(deferred, TextRenderParams { color, ..prev });
         if !deferred {
             self.flags.mark_dirty();
         }
