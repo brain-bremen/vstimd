@@ -1,6 +1,6 @@
 use super::animation::{AnimState, Animation, AnimationEntry, FinalAction, StartAction};
 use super::scene_config::SceneConfig;
-use super::stimulus::StimulusEntry;
+use super::stimulus::StimulusSceneEntry;
 use crate::vtl_state::{Edge, VtlEdges};
 extern crate vtl;
 
@@ -106,11 +106,15 @@ pub struct SceneState {
 
 impl std::ops::Deref for SceneState {
     type Target = SceneConfig;
-    fn deref(&self) -> &SceneConfig { &self.config }
+    fn deref(&self) -> &SceneConfig {
+        &self.config
+    }
 }
 
 impl std::ops::DerefMut for SceneState {
-    fn deref_mut(&mut self) -> &mut SceneConfig { &mut self.config }
+    fn deref_mut(&mut self) -> &mut SceneConfig {
+        &mut self.config
+    }
 }
 
 impl SceneState {
@@ -144,7 +148,7 @@ impl SceneState {
 
     /// Insert a `StimulusEntry` and return the allocated handle.
     /// The internal insertion path used by both `cmd_create_*` and tests.
-    pub fn add_stimulus(&mut self, entry: super::stimulus::StimulusEntry) -> u32 {
+    pub fn add_stimulus(&mut self, entry: super::stimulus::StimulusSceneEntry) -> u32 {
         let h = self.alloc_stim_handle();
         self.stimuli.insert(h, entry);
         h
@@ -326,7 +330,9 @@ impl SceneState {
                 let additive_next_anim = cfg.next_anim_handle;
                 for (handle, entry) in cfg.stimuli {
                     let new_handle = handle + stim_offset;
-                    self.config.stimuli.insert(new_handle, make_entry_dirty(entry));
+                    self.config
+                        .stimuli
+                        .insert(new_handle, make_entry_dirty(entry));
                 }
                 for (handle, mut anim) in cfg.animations {
                     for sh in &mut anim.config.stimuli {
@@ -363,7 +369,7 @@ impl Default for SceneState {
     }
 }
 
-fn make_entry_dirty(mut entry: StimulusEntry) -> StimulusEntry {
+fn make_entry_dirty(mut entry: StimulusSceneEntry) -> StimulusSceneEntry {
     entry.stimulus.flags_mut().dirty = true;
     entry.stimulus.reset_phase_accum();
     entry.stimulus.make_copy();
@@ -374,7 +380,7 @@ fn make_entry_dirty(mut entry: StimulusEntry) -> StimulusEntry {
 
 fn edge_fired(edges: &VtlEdges, bit: crate::vtl_state::VtlBit, edge: Edge) -> bool {
     let bank = match edge {
-        Edge::Rising  => edges.rising[bit.bank],
+        Edge::Rising => edges.rising[bit.bank],
         Edge::Falling => edges.falling[bit.bank],
     };
     (bank >> bit.bit) & 1 != 0
@@ -398,8 +404,8 @@ fn advance_one(
         };
         if entry.state == AnimState::Armed {
             let fires = match &entry.start_trigger {
-                None                       => true,
-                Some((bit, edge))          => edge_fired(input_edges, *bit, *edge),
+                None => true,
+                Some((bit, edge)) => edge_fired(input_edges, *bit, *edge),
             };
             if fires {
                 // Snapshot user_enabled for RESTORE_STATE before modifying anything.
@@ -409,10 +415,22 @@ fn advance_one(
                 let start_action_trigger_line = entry.start_action_trigger_line;
 
                 if captures_state {
-                    let captured: Vec<bool> = stim_handles.iter()
-                        .map(|&sh| scene.config.stimuli.get(&sh).is_some_and(|e| e.stimulus.flags().enabled))
+                    let captured: Vec<bool> = stim_handles
+                        .iter()
+                        .map(|&sh| {
+                            scene
+                                .config
+                                .stimuli
+                                .get(&sh)
+                                .is_some_and(|e| e.stimulus.flags().enabled)
+                        })
                         .collect();
-                    scene.config.animations.get_mut(&handle).unwrap().captured_user_enabled = Some(captured);
+                    scene
+                        .config
+                        .animations
+                        .get_mut(&handle)
+                        .unwrap()
+                        .captured_user_enabled = Some(captured);
                 }
 
                 // FlashForNFrames enables stimuli at start; FlickerForNFrames sets initial phase.
@@ -482,7 +500,8 @@ fn advance_one(
                 let anim_en = level == *polarity;
                 for &sh in &stim_handles {
                     if let Some(e) = scene.config.stimuli.get_mut(&sh)
-                        && e.stimulus.flags().anim_enabled != anim_en {
+                        && e.stimulus.flags().anim_enabled != anim_en
+                    {
                         e.stimulus.flags_mut().anim_enabled = anim_en;
                         e.stimulus.flags_mut().mark_dirty();
                     }
@@ -490,7 +509,11 @@ fn advance_one(
                 false
             }
 
-            Animation::EnableOnTriggerEdge { trigger, edge, enabled } => {
+            Animation::EnableOnTriggerEdge {
+                trigger,
+                edge,
+                enabled,
+            } => {
                 let fired = edge_fired(input_edges, *trigger, *edge);
                 if fired {
                     let en = *enabled;
@@ -504,12 +527,14 @@ fn advance_one(
                 fired
             }
 
+            Animation::FlashForNFrames { duration_frames } => frame_counter + 1 >= *duration_frames,
 
-            Animation::FlashForNFrames { duration_frames } => {
-                frame_counter + 1 >= *duration_frames
-            }
-
-            Animation::FlickerForNFrames { on_frames, off_frames, total_frames, start_on_phase } => {
+            Animation::FlickerForNFrames {
+                on_frames,
+                off_frames,
+                total_frames,
+                start_on_phase,
+            } => {
                 let period = on_frames + off_frames;
                 let phase_frame = frame_counter % period;
                 let is_on = if *start_on_phase {
@@ -519,7 +544,8 @@ fn advance_one(
                 };
                 for &sh in &stim_handles {
                     if let Some(e) = scene.config.stimuli.get_mut(&sh)
-                        && e.stimulus.flags().anim_enabled != is_on {
+                        && e.stimulus.flags().anim_enabled != is_on
+                    {
                         e.stimulus.flags_mut().anim_enabled = is_on;
                         e.stimulus.flags_mut().mark_dirty();
                     }
@@ -539,18 +565,25 @@ fn advance_one(
                 }
                 frame_counter + 1 >= coords.len() as u32
             }
-            Animation::MoveAlongSegments2D { waypoints, speed_px_per_sec } => {
+            Animation::MoveAlongSegments2D {
+                waypoints,
+                speed_px_per_sec,
+            } => {
                 if waypoints.len() < 2 || *speed_px_per_sec <= 0.0 {
                     true
                 } else {
                     // Compute cumulative lengths along each segment.
-                    let seg_lens: Vec<f32> = waypoints.windows(2).map(|w| {
-                        let dx = w[1][0] - w[0][0];
-                        let dy = w[1][1] - w[0][1];
-                        (dx * dx + dy * dy).sqrt()
-                    }).collect();
+                    let seg_lens: Vec<f32> = waypoints
+                        .windows(2)
+                        .map(|w| {
+                            let dx = w[1][0] - w[0][0];
+                            let dy = w[1][1] - w[0][1];
+                            (dx * dx + dy * dy).sqrt()
+                        })
+                        .collect();
                     let total_len: f32 = seg_lens.iter().sum();
-                    let total_frames = (total_len / speed_px_per_sec * scene.runtime.frame_rate).ceil() as u32;
+                    let total_frames =
+                        (total_len / speed_px_per_sec * scene.runtime.frame_rate).ceil() as u32;
                     let total_frames = total_frames.max(1);
 
                     // How far along the path are we at this frame?
@@ -562,11 +595,18 @@ fn advance_one(
                     let mut pos = waypoints[0];
                     for (i, &seg_len) in seg_lens.iter().enumerate() {
                         if accum + seg_len >= dist || i + 1 == seg_lens.len() {
-                            let local_t = if seg_len > 0.0 { (dist - accum) / seg_len } else { 0.0 };
+                            let local_t = if seg_len > 0.0 {
+                                (dist - accum) / seg_len
+                            } else {
+                                0.0
+                            };
                             let local_t = local_t.clamp(0.0, 1.0);
                             let a = waypoints[i];
                             let b = waypoints[i + 1];
-                            pos = [a[0] + (b[0] - a[0]) * local_t, a[1] + (b[1] - a[1]) * local_t];
+                            pos = [
+                                a[0] + (b[0] - a[0]) * local_t,
+                                a[1] + (b[1] - a[1]) * local_t,
+                            ];
                             break;
                         }
                         accum += seg_len;
@@ -585,8 +625,11 @@ fn advance_one(
     };
 
     // Increment frame counter.
-    if let Some(AnimState::Running { frame_counter }) =
-        scene.config.animations.get_mut(&handle).map(|e| &mut e.state)
+    if let Some(AnimState::Running { frame_counter }) = scene
+        .config
+        .animations
+        .get_mut(&handle)
+        .map(|e| &mut e.state)
     {
         *frame_counter += 1;
     }
@@ -637,12 +680,14 @@ fn finalize(
     {
         let anim_held = matches!(
             scene.config.animations.get(&handle).map(|e| &e.animation),
-            Some(Animation::FlickerForNFrames { .. }) | Some(Animation::CoupleVisibilityToTriggerLine { .. })
+            Some(Animation::FlickerForNFrames { .. })
+                | Some(Animation::CoupleVisibilityToTriggerLine { .. })
         );
         if anim_held {
             for &sh in stim_handles {
                 if let Some(e) = scene.config.stimuli.get_mut(&sh)
-                    && !e.stimulus.flags().anim_enabled {
+                    && !e.stimulus.flags().anim_enabled
+                {
                     e.stimulus.flags_mut().anim_enabled = true;
                     e.stimulus.flags_mut().mark_dirty();
                 }
@@ -655,7 +700,8 @@ fn finalize(
     }
 
     if final_action.contains(FinalAction::FINAL_ACTION_TRIGGER_LINE)
-        && let Some(bit) = trigger_line {
+        && let Some(bit) = trigger_line
+    {
         output_pending[bit.bank] |= 1u64 << bit.bit;
     }
 

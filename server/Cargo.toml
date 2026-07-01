@@ -59,10 +59,6 @@ wayland-sys     = "=0.31.8"
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 
-[[bench]]
-name = "tess"
-harness = false
-
 [build-dependencies]
 prost-build = "0.13"
 naga        = { version = "23", features = ["wgsl-in", "spv-out"] }

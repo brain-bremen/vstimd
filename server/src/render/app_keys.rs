@@ -15,4 +15,7 @@ pub enum AppKey {
     D,
     /// Ctrl+Alt+Fn — forward to the kernel as a VT switch.
     SwitchVt(u16),
+    /// Ctrl+Q — quit the process (DRM mode has no window manager to send a
+    /// close request, so this is the only in-session quit hotkey).
+    Quit,
 }

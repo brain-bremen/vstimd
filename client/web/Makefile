@@ -4,6 +4,10 @@
 SERVER_ROOT := ../..
 # Window size for `make dev` (override: make dev WINDOW=1920x1080)
 WINDOW ?= 1280x720
+# Host the Vite dev UI binds to. Default 0.0.0.0 so the UI is reachable from other
+# machines on the LAN (browse http://<this-device-ip>:5173). Override for loopback
+# only: make dev UI_HOST=127.0.0.1
+UI_HOST ?= 0.0.0.0
 
 .PHONY: install gen dev dev-null build typecheck test-e2e test-ui test clean
 
@@ -38,7 +42,7 @@ dev-null: gen
 _run:
 	@echo "vstimd: starting server + web dev UI (Ctrl-C stops both)…"
 	@$(SERVER_ROOT)/target/release/vstimd $(SERVER_ARGS) & server=$$!; \
-	npm run dev -- --host 127.0.0.1 & ui=$$!; \
+	npm run dev -- --host $(UI_HOST) & ui=$$!; \
 	trap "kill -INT $$server 2>/dev/null; kill -TERM $$ui 2>/dev/null" INT TERM; \
 	wait $$ui; kill -INT $$server 2>/dev/null; wait $$server 2>/dev/null || true
 

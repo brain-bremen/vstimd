@@ -266,10 +266,8 @@ impl VtlState {
     /// Returns a bitmask array with the vblank trigger bit set (if configured).
     pub fn vblank_mask(&self) -> [u64; MAX_BANKS] {
         let mut mask = [0u64; MAX_BANKS];
-        if let Some(vb) = self.vblank_vtl {
-            if vb.bank < MAX_BANKS {
-                mask[vb.bank] |= 1u64 << vb.bit;
-            }
+        if let Some(vb) = self.vblank_vtl.filter(|vb| vb.bank < MAX_BANKS) {
+            mask[vb.bank] |= 1u64 << vb.bit;
         }
         mask
     }

@@ -9,17 +9,17 @@ use super::grating_pipeline::GratingPushConstants;
 /// Serializable grating configuration (all Deferred fields serialize as their live value).
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct GratingConfig {
-    pub flags:     StimulusFlags,
+    pub flags: StimulusFlags,
     pub transform: Deferred<Transform2D>,
-    pub size:      Deferred<[f32; 2]>, // [half_width, half_height] in pixels
-    pub params:    Deferred<GratingParams>,
+    pub size: Deferred<[f32; 2]>, // [half_width, half_height] in pixels
+    pub params: Deferred<GratingParams>,
 }
 
 /// Full grating stimulus: serializable config + render-thread runtime state.
 /// Deref/DerefMut give transparent access to the config fields.
 #[derive(Clone)]
 pub struct GratingStimulus {
-    pub config:      GratingConfig,
+    pub config: GratingConfig,
     /// Phase accumulated by the render thread each frame from `drift_speed`.
     /// Not deferred — updated in place; reset to 0 when drift_speed is set to 0.
     pub phase_accum: f32,
@@ -27,11 +27,15 @@ pub struct GratingStimulus {
 
 impl std::ops::Deref for GratingStimulus {
     type Target = GratingConfig;
-    fn deref(&self) -> &GratingConfig { &self.config }
+    fn deref(&self) -> &GratingConfig {
+        &self.config
+    }
 }
 
 impl std::ops::DerefMut for GratingStimulus {
-    fn deref_mut(&mut self) -> &mut GratingConfig { &mut self.config }
+    fn deref_mut(&mut self) -> &mut GratingConfig {
+        &mut self.config
+    }
 }
 
 impl serde::Serialize for GratingStimulus {
@@ -42,11 +46,15 @@ impl serde::Serialize for GratingStimulus {
 
 impl<'de> serde::Deserialize<'de> for GratingStimulus {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        Ok(Self { config: GratingConfig::deserialize(d)?, phase_accum: 0.0 })
+        Ok(Self {
+            config: GratingConfig::deserialize(d)?,
+            phase_accum: 0.0,
+        })
     }
 }
 
 impl GratingStimulus {
+    pub const TYPE_NAME: &'static str = "Grating";
     pub fn new(
         pos: [f32; 2],
         angle: f32,
@@ -55,10 +63,10 @@ impl GratingStimulus {
     ) -> Self {
         Self {
             config: GratingConfig {
-                flags:     StimulusFlags::enabled(true),
+                flags: StimulusFlags::enabled(true),
                 transform: Deferred::new(Transform2D { pos, angle }),
-                size:      Deferred::new(size),
-                params:    Deferred::new(params),
+                size: Deferred::new(size),
+                params: Deferred::new(params),
             },
             phase_accum: 0.0,
         }
@@ -67,23 +75,47 @@ impl GratingStimulus {
     // ── Setters ───────────────────────────────────────────────────────────────
 
     pub fn set_fore_color(&mut self, deferred: bool, color: crate::Color) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
-        self.params.set(deferred, GratingParams { fore_color: color, ..prev });
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
+        self.params.set(
+            deferred,
+            GratingParams {
+                fore_color: color,
+                ..prev
+            },
+        );
         if !deferred {
             self.flags.mark_dirty();
         }
     }
 
     pub fn set_back_color(&mut self, deferred: bool, color: crate::Color) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
-        self.params.set(deferred, GratingParams { back_color: color, ..prev });
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
+        self.params.set(
+            deferred,
+            GratingParams {
+                back_color: color,
+                ..prev
+            },
+        );
         if !deferred {
             self.flags.mark_dirty();
         }
     }
 
     pub fn set_opacity(&mut self, deferred: bool, opacity: f32) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
         self.params.set(deferred, GratingParams { opacity, ..prev });
         if !deferred {
             self.flags.mark_dirty();
@@ -91,7 +123,11 @@ impl GratingStimulus {
     }
 
     pub fn set_phase(&mut self, deferred: bool, phase: f32) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
         self.params.set(deferred, GratingParams { phase, ..prev });
         if !deferred {
             self.phase_accum = 0.0;
@@ -100,7 +136,11 @@ impl GratingStimulus {
     }
 
     pub fn set_sf(&mut self, deferred: bool, sf: f32) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
         self.params.set(deferred, GratingParams { sf, ..prev });
         if !deferred {
             self.flags.mark_dirty();
@@ -108,23 +148,37 @@ impl GratingStimulus {
     }
 
     pub fn set_contrast(&mut self, deferred: bool, contrast: f32) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
-        self.params.set(deferred, GratingParams { contrast, ..prev });
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
+        self.params
+            .set(deferred, GratingParams { contrast, ..prev });
         if !deferred {
             self.flags.mark_dirty();
         }
     }
 
     pub fn set_waveform(&mut self, deferred: bool, waveform: Waveform) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
-        self.params.set(deferred, GratingParams { waveform, ..prev });
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
+        self.params
+            .set(deferred, GratingParams { waveform, ..prev });
         if !deferred {
             self.flags.mark_dirty();
         }
     }
 
     pub fn set_mask(&mut self, deferred: bool, mask: GratingMask) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
         self.params.set(deferred, GratingParams { mask, ..prev });
         if !deferred {
             self.flags.mark_dirty();
@@ -132,8 +186,18 @@ impl GratingStimulus {
     }
 
     pub fn set_drift_speed(&mut self, deferred: bool, speed: f32) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
-        self.params.set(deferred, GratingParams { drift_speed: speed, ..prev });
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
+        self.params.set(
+            deferred,
+            GratingParams {
+                drift_speed: speed,
+                ..prev
+            },
+        );
         if !deferred {
             if speed == 0.0 {
                 self.phase_accum = 0.0;
@@ -143,17 +207,37 @@ impl GratingStimulus {
     }
 
     pub fn set_drift_decoupled(&mut self, deferred: bool, decoupled: bool) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
         // decoupled = true → coupled = false
-        self.params.set(deferred, GratingParams { drift_coupled: !decoupled, ..prev });
+        self.params.set(
+            deferred,
+            GratingParams {
+                drift_coupled: !decoupled,
+                ..prev
+            },
+        );
         if !deferred {
             self.flags.mark_dirty();
         }
     }
 
     pub fn set_drift_angle(&mut self, deferred: bool, angle_deg: f32) {
-        let prev = if deferred { self.params.copy } else { self.params.live };
-        self.params.set(deferred, GratingParams { drift_angle: angle_deg, ..prev });
+        let prev = if deferred {
+            self.params.copy
+        } else {
+            self.params.live
+        };
+        self.params.set(
+            deferred,
+            GratingParams {
+                drift_angle: angle_deg,
+                ..prev
+            },
+        );
         if !deferred {
             self.flags.mark_dirty();
         }
@@ -231,7 +315,7 @@ mod tests {
     #[test]
     fn set_phase_immediate_resets_accum() {
         let mut s = default_stim();
-        s.phase_accum = 3.14;
+        s.phase_accum = 1.5;
         s.set_phase(false, 0.5);
         assert_eq!(s.phase_accum, 0.0);
         assert_eq!(s.params.live.phase, 0.5);
@@ -240,9 +324,9 @@ mod tests {
     #[test]
     fn set_phase_deferred_preserves_accum() {
         let mut s = default_stim();
-        s.phase_accum = 3.14;
+        s.phase_accum = 1.5;
         s.set_phase(true, 0.5);
-        assert_eq!(s.phase_accum, 3.14);
+        assert_eq!(s.phase_accum, 1.5);
         // live untouched, copy updated
         assert_ne!(s.params.live.phase, 0.5);
         assert_eq!(s.params.copy.phase, 0.5);
@@ -254,7 +338,10 @@ mod tests {
     fn set_fore_color_immediate() {
         let mut s = default_stim();
         s.set_fore_color(false, crate::Color::new(1.0, 0.0, 0.0, 0.5));
-        assert_eq!(s.params.live.fore_color, crate::Color::new(1.0, 0.0, 0.0, 0.5));
+        assert_eq!(
+            s.params.live.fore_color,
+            crate::Color::new(1.0, 0.0, 0.0, 0.5)
+        );
     }
 
     #[test]
@@ -262,14 +349,20 @@ mod tests {
         let mut s = default_stim();
         s.set_fore_color(true, crate::Color::new(0.0, 1.0, 0.0, 1.0));
         assert_eq!(s.params.live.fore_color, crate::Color::WHITE); // live unchanged
-        assert_eq!(s.params.copy.fore_color, crate::Color::new(0.0, 1.0, 0.0, 1.0));
+        assert_eq!(
+            s.params.copy.fore_color,
+            crate::Color::new(0.0, 1.0, 0.0, 1.0)
+        );
     }
 
     #[test]
     fn set_back_color_immediate() {
         let mut s = default_stim();
         s.set_back_color(false, crate::Color::new(0.0, 0.0, 1.0, 0.0));
-        assert_eq!(s.params.live.back_color, crate::Color::new(0.0, 0.0, 1.0, 0.0));
+        assert_eq!(
+            s.params.live.back_color,
+            crate::Color::new(0.0, 0.0, 1.0, 0.0)
+        );
     }
 
     #[test]

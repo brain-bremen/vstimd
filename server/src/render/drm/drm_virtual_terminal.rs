@@ -234,7 +234,7 @@ impl Drop for DrmVtGuard {
 /// stdin (fd 0) *is* `/dev/tty{target_vt}`. Dup-ing it avoids needing the
 /// vstimd user to have direct open permission on the device node (which is
 /// `crw-------` / root-only when no login session owns it).
-fn open_vt(target_vt: u16) -> libc::c_int {
+pub(crate) fn open_vt(target_vt: u16) -> libc::c_int {
     let expected = format!("/dev/tty{target_vt}");
     if ttyname_of(0).as_deref() == Some(&expected) {
         let fd = unsafe { libc::fcntl(0, libc::F_DUPFD_CLOEXEC, 0) };
@@ -265,7 +265,7 @@ fn ttyname_of(fd: libc::c_int) -> Option<String> {
     Some(String::from_utf8_lossy(&buf[..end]).into_owned())
 }
 
-fn vt_number_from_env() -> u16 {
+pub(crate) fn vt_number_from_env() -> u16 {
     match std::env::var("VSTIMD_TTY") {
         Ok(s) => match s.trim().parse::<u16>() {
             Ok(n) if n >= 1 => n,

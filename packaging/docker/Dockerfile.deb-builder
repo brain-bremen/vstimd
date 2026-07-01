@@ -73,6 +73,14 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable \
     && rustup target add ${RUST_TARGET}
 
+# Node.js for building the embedded web UI bundle (baked in via `embed-ui`).
+# Ubuntu's apt nodejs is too old for Vite/buf, so use NodeSource 22.x. The
+# bundle is plain static JS, so it's built for the build host arch even in the
+# arm64 cross-compile image.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install cargo-deb as a separate layer so Docker caches it independently
 # of source changes.
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry \
@@ -86,11 +94,19 @@ COPY server/     server/
 COPY vtl/        vtl/
 COPY proto/      proto/
 COPY packaging/  packaging/
+COPY client/web/ client/web/
+
+# Build the React UI first so `--features embed-ui` can bake client/web/dist
+# into the binary. `npm run gen` regenerates the protobuf-es client from proto/.
+RUN cd client/web \
+    && npm ci \
+    && npm run gen \
+    && npm run build
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry \
     --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git \
     --mount=type=cache,target=/src/target,id=cargo-target-${RUST_TARGET} \
-    cargo build --release --target ${RUST_TARGET} && \
+    cargo build --release --features embed-ui --target ${RUST_TARGET} && \
     cargo deb -p vstimd --no-build --target ${RUST_TARGET} --deb-revision ${REVISION} && \
     mkdir -p /out && \
     find target -name 'vstimd_*.deb' -not -name '*dbgsym*' -exec cp {} /out/ \;

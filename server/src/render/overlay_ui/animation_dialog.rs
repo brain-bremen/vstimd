@@ -5,7 +5,7 @@
 //! variants; `MoveAlongPath2D` (bulk coords) and `ExternalPosition2D` (shm) are
 //! intentionally omitted from v1.
 
-use crate::scene::animation::{Animation, StartAction};
+use crate::scene::animation::{Animation, FinalAction, StartAction};
 use crate::scene::{AnimState, AnimationEntry, Edge, VtlBit};
 
 /// A VTL line offered as a trigger choice: display label + resolved address.
@@ -49,6 +49,15 @@ pub struct AnimationDialog {
     // Move
     waypoints_text: String,
     speed: f32,
+    // Start trigger: gate the animation on a VTL edge (after arming).
+    start_trig_enabled: bool,
+    start_bank: u32,
+    start_bit: u32,
+    start_trig_rising: bool,
+    // Final trigger: pulse a VTL output line when the animation completes.
+    final_trig_enabled: bool,
+    final_bank: u32,
+    final_bit: u32,
     result: Option<AnimationEntry>,
 }
 
@@ -74,6 +83,13 @@ impl Default for AnimationDialog {
             polarity: true,
             waypoints_text: "0,0; 200,0; 200,200".to_string(),
             speed: 300.0,
+            start_trig_enabled: false,
+            start_bank: 0,
+            start_bit: 0,
+            start_trig_rising: true,
+            final_trig_enabled: false,
+            final_bank: 0,
+            final_bit: 0,
             result: None,
         }
     }
@@ -132,6 +148,16 @@ impl AnimationDialog {
         entry.config.name = self.name.trim().to_string();
         if self.enable_on_start {
             entry.config.start_action |= StartAction::ENABLE;
+        }
+        if self.start_trig_enabled {
+            let edge = if self.start_trig_rising { Edge::Rising } else { Edge::Falling };
+            entry.config.start_trigger =
+                Some((VtlBit { bank: self.start_bank as usize, bit: self.start_bit as u8 }, edge));
+        }
+        if self.final_trig_enabled {
+            entry.config.final_action |= FinalAction::FINAL_ACTION_TRIGGER_LINE;
+            entry.config.final_action_trigger_line =
+                Some(VtlBit { bank: self.final_bank as usize, bit: self.final_bit as u8 });
         }
         if self.arm_immediately {
             entry.config.state = AnimState::Armed;
@@ -233,6 +259,28 @@ impl AnimationDialog {
                 ui.separator();
                 ui.checkbox(&mut self.enable_on_start, "Enable stimuli on start");
                 ui.checkbox(&mut self.arm_immediately, "Arm immediately");
+
+                ui.separator();
+                ui.label(egui::RichText::new("Triggers (any line)").strong());
+                let bank_max = vtl::MAX_BANKS as u32 - 1;
+                ui.checkbox(&mut self.start_trig_enabled, "Start on VTL edge");
+                if self.start_trig_enabled {
+                    ui.horizontal(|ui| {
+                        ui.label("Bank/Bit");
+                        ui.add(egui::DragValue::new(&mut self.start_bank).range(0..=bank_max));
+                        ui.add(egui::DragValue::new(&mut self.start_bit).range(0..=63));
+                        ui.selectable_value(&mut self.start_trig_rising, true, "Rising");
+                        ui.selectable_value(&mut self.start_trig_rising, false, "Falling");
+                    });
+                }
+                ui.checkbox(&mut self.final_trig_enabled, "Pulse VTL line on completion");
+                if self.final_trig_enabled {
+                    ui.horizontal(|ui| {
+                        ui.label("Bank/Bit");
+                        ui.add(egui::DragValue::new(&mut self.final_bank).range(0..=bank_max));
+                        ui.add(egui::DragValue::new(&mut self.final_bit).range(0..=63));
+                    });
+                }
 
                 ui.separator();
                 ui.horizontal(|ui| {

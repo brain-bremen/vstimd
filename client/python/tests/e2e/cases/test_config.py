@@ -18,7 +18,7 @@ def test_retrieve_returns_valid_json(conn: Connection) -> None:
     raw = conn.config.retrieve()
     assert isinstance(raw, str) and len(raw) > 0
     data = json.loads(raw)
-    assert data["version"] == 1
+    assert data["version"] == 2
     assert "scene" in data
     assert "io" in data
 

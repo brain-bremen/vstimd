@@ -246,8 +246,11 @@ impl DrmRenderLoopData {
             let (app_keys, nav_events) = self.input.poll();
             for key in app_keys {
                 match key {
+                    AppKey::Quit => {
+                        crate::shutdown::request();
+                    }
                     // Esc never quits — it closes a dialog or hides the overlay.
-                    // (Quit via SIGINT, or Ctrl+Alt+Fn to another VT then kill.)
+                    // (Quit via Ctrl+Q, SIGINT, or Ctrl+Alt+Fn to another VT then kill.)
                     AppKey::Escape => {
                         if let Some(ui) = &mut self.rs.ui {
                             ui.overlay.handle_escape();

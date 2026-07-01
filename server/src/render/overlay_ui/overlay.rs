@@ -6,7 +6,6 @@ use crate::render::SystemMetrics;
 use super::animation_dialog::TriggerLine;
 use super::file_browser::BrowserMode;
 use super::overlay_state::{OverlayGroup, OverlayState};
-use crate::scene::stimulus::ShapeStimulus;
 use crate::scene::{AnimState, LoadMode, SceneState, Stimulus};
 use crate::timing::{FramePhases, FrameStats};
 use crate::vtl_state::{VtlConfig, VtlState};
@@ -15,7 +14,15 @@ pub use crate::render::system_info::{ClockSource, SystemInfo};
 use crate::render::StimulusDisplayInfo;
 
 #[derive(Clone, Copy, PartialEq, Default)]
-enum BankFmt { #[default] Dec, Hex, Bin }
+enum BankFmt { Dec, Hex, #[default] Bin }
+
+/// Persisted state for the manual VTL fire control (set any bank/bit for debug).
+#[derive(Clone, Copy, Default)]
+struct VtlManual {
+    bank: u32,
+    bit: u32,
+    output: bool,
+}
 
 const FOCUS_STROKE: egui::Color32 = egui::Color32::from_rgb(90, 160, 255);
 
@@ -121,6 +128,10 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
     let want = |g: OverlayGroup| focus_now && focused == g;
     let foc  = |g: OverlayGroup| focused == g;
 
+    // Quick-load requested from the inline config list; applied after the panels
+    // are drawn (like the file-browser result) so we never write the scene mid-draw.
+    let mut quick_load: Option<(BrowserMode, std::path::PathBuf)> = None;
+
     // ── Top panel — each visible group is a Panel::left inside ───────────────
     // Panel::left fills the full height of Panel::top, so no circular height
     // dependency. The top panel auto-sizes from the tallest left panel.
@@ -173,13 +184,13 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                                                 let [hw, hh] = s.size.live;
                                                 format!("{}×{}", (hw*2.0) as i32, (hh*2.0) as i32)
                                             }
-                                            Stimulus::Shape(ShapeStimulus::Rect(s)) => {
+                                            Stimulus::Rect(s) => {
                                                 let [hw, hh] = s.size.live;
                                                 format!("{}×{}", (hw*2.0) as i32, (hh*2.0) as i32)
                                             }
-                                            Stimulus::Shape(ShapeStimulus::Circle(s)) =>
+                                            Stimulus::Circle(s) =>
                                                 format!("r={}", s.radius.live as i32),
-                                            Stimulus::Shape(ShapeStimulus::Ellipse(s)) => {
+                                            Stimulus::Ellipse(s) => {
                                                 let [rx, ry] = s.radii.live;
                                                 format!("{}×{}", (rx*2.0) as i32, (ry*2.0) as i32)
                                             }
@@ -201,7 +212,9 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                                                 egui::Color32::DARK_GRAY
                                             } else { egui::Color32::WHITE }
                                         )).on_hover_text(&uuid_str);
-                                        ui.label(format!("{:.0},{:.0}", pos[0], pos[1]));
+                                        ui.label(egui::RichText::new(
+                                            format!("{:>6.0},{:>6.0}", pos[0], pos[1])
+                                        ).monospace());
                                         ui.label(size_label);
                                         if ui.small_button("x")
                                             .on_hover_text("Delete stimulus").clicked() {
@@ -409,6 +422,38 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                             file_browser.open_load_additive();
                         }
                     });
+
+                    // Inline listing of the config directory with quick-load buttons.
+                    ui.separator();
+                    ui.label(egui::RichText::new("Saved configs").strong());
+                    match scene.try_read().ok().map(|sc| sc.runtime.config_dir.clone()) {
+                        None => {
+                            ui.label(egui::RichText::new("(scene busy)").color(egui::Color32::DARK_GRAY));
+                        }
+                        Some(dir) => {
+                            let names = crate::io_config::list_config_names(&dir).unwrap_or_default();
+                            if names.is_empty() {
+                                ui.label(egui::RichText::new("(none)").color(egui::Color32::DARK_GRAY));
+                            } else {
+                                egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+                                    egui::Grid::new("config_list").num_columns(3).spacing([8.0, 2.0])
+                                        .show(ui, |ui| {
+                                        for name in &names {
+                                            let path = dir.join(format!("vstimd_{name}.config.json"));
+                                            ui.label(name);
+                                            if ui.button("Load").clicked() {
+                                                quick_load = Some((BrowserMode::OpenReplace, path.clone()));
+                                            }
+                                            if ui.button("＋").on_hover_text("Load additive").clicked() {
+                                                quick_load = Some((BrowserMode::OpenAdditive, path));
+                                            }
+                                            ui.end_row();
+                                        }
+                                    });
+                                });
+                            }
+                        }
+                    }
                 });
             });
             if closed { visible[OverlayGroup::Config.index()] = false; }
@@ -471,6 +516,9 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
 
     file_browser.show(ctx);
     if let Some((mode, path)) = file_browser.take_result() {
+        handle_file_result(mode, path, scene, *vtl);
+    }
+    if let Some((mode, path)) = quick_load {
         handle_file_result(mode, path, scene, *vtl);
     }
 }
@@ -660,14 +708,16 @@ fn system_group(
 }
 
 fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Option<&Mutex<VtlState>>) {
-    let vtl_guard = vtl.and_then(|v| v.try_lock().ok());
-    let Some(ref vtl_st) = vtl_guard else {
+    let Some(mut vtl_guard) = vtl.and_then(|v| v.try_lock().ok()) else {
         ui.label(egui::RichText::new("VTL not available").color(egui::Color32::DARK_GRAY));
         return;
     };
-    let owner = vtl_st.owner();
-    let inputs:  Vec<_> = vtl_st.names.iter().filter(|e| e.direction == vtl::Direction::Input).collect();
-    let outputs: Vec<_> = vtl_st.names.iter().filter(|e| e.direction == vtl::Direction::Output).collect();
+    let vtl_st = &mut *vtl_guard;
+    // Owned copies so the read state and names don't hold a borrow of `vtl_st`
+    // across the output writes (`set_staged_bit` needs `&mut`).
+    let names = vtl_st.names.clone();
+    let inputs:  Vec<_> = names.iter().filter(|e| e.direction == vtl::Direction::Input).collect();
+    let outputs: Vec<_> = names.iter().filter(|e| e.direction == vtl::Direction::Output).collect();
 
     // --- Bank view (integer representation) ---
     let fmt_id = egui::Id::new("vtl_bank_fmt");
@@ -675,7 +725,13 @@ fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Opti
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Banks").strong());
         ui.separator();
-        ui.selectable_value(&mut fmt, BankFmt::Dec, "Dec");
+        // Anchor keyboard focus here when the panel is F-keyed: this row is always
+        // present, so Tab navigation starts inside the VTL panel even when there
+        // are no named input lines (whose fire buttons used to be the only anchor).
+        let dec = ui.selectable_value(&mut fmt, BankFmt::Dec, "Dec");
+        if want_focus {
+            dec.request_focus();
+        }
         ui.selectable_value(&mut fmt, BankFmt::Hex, "Hex");
         ui.selectable_value(&mut fmt, BankFmt::Bin, "Bin");
     });
@@ -692,8 +748,8 @@ fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Opti
         }
     };
 
-    let n_in  = owner.num_input_banks()  as usize;
-    let n_out = owner.num_output_banks() as usize;
+    let n_in  = vtl_st.owner().num_input_banks()  as usize;
+    let n_out = vtl_st.owner().num_output_banks() as usize;
     egui::Grid::new("vtl_bank_grid").num_columns(3).spacing([8.0, 2.0]).show(ui, |ui| {
         ui.label(egui::RichText::new("Dir").strong());
         ui.label(egui::RichText::new("Bank").strong());
@@ -702,13 +758,13 @@ fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Opti
         for b in 0..n_in {
             ui.label("In");
             ui.label(format!("{}", b));
-            ui.label(egui::RichText::new(fmt_val(owner.input_state(b))).monospace());
+            ui.label(egui::RichText::new(fmt_val(vtl_st.owner().input_state(b))).monospace());
             ui.end_row();
         }
         for b in 0..n_out {
             ui.label("Out");
             ui.label(format!("{}", b));
-            ui.label(egui::RichText::new(fmt_val(owner.output_state(b))).monospace());
+            ui.label(egui::RichText::new(fmt_val(vtl_st.owner().output_state(b))).monospace());
             ui.end_row();
         }
     });
@@ -736,9 +792,9 @@ fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Opti
             for (i, e) in inputs.iter().enumerate() {
                 let b = e.bank as usize;
                 let mask = 1u64 << e.bit;
-                let high  = owner.input_state(b) & mask != 0;
-                let rise  = owner.peek_input_rise(b) & mask != 0;
-                let fall  = owner.peek_input_fall(b) & mask != 0;
+                let high  = vtl_st.owner().input_state(b) & mask != 0;
+                let rise  = vtl_st.owner().peek_input_rise(b) & mask != 0;
+                let fall  = vtl_st.owner().peek_input_fall(b) & mask != 0;
                 ui.label(&e.name);
                 ui.label(format!("{}/{}", e.bank, e.bit));
                 dot(ui, high);
@@ -749,12 +805,12 @@ fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Opti
                         up.request_focus();
                     }
                     if up.clicked() {
-                        owner.set_input_bit(b, e.bit);
-                        owner.set_input_rise(b, mask);
+                        vtl_st.owner().set_input_bit(b, e.bit);
+                        vtl_st.owner().set_input_rise(b, mask);
                     }
                     if ui.button("↓").on_hover_text("Fire falling edge").clicked() {
-                        owner.clear_input_bit(b, e.bit);
-                        owner.set_input_fall(b, mask);
+                        vtl_st.owner().clear_input_bit(b, e.bit);
+                        vtl_st.owner().set_input_fall(b, mask);
                     }
                 });
                 ui.end_row();
@@ -773,7 +829,7 @@ fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Opti
             for e in &outputs {
                 let b = e.bank as usize;
                 let mask = 1u64 << e.bit;
-                let high = owner.output_state(b) & mask != 0;
+                let high = vtl_st.owner().output_state(b) & mask != 0;
                 ui.label(&e.name);
                 ui.label(format!("{}/{}", e.bank, e.bit));
                 dot(ui, high);
@@ -781,4 +837,46 @@ fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Opti
             }
         });
     }
+
+    // --- Manual fire: set any bank/bit, named or not (debug) ---
+    ui.separator();
+    ui.label(egui::RichText::new("Manual fire (any line)").strong());
+    let manual_id = egui::Id::new("vtl_manual");
+    let mut m: VtlManual = ctx.data(|d| d.get_temp(manual_id)).unwrap_or_default();
+    ui.horizontal(|ui| {
+        ui.selectable_value(&mut m.output, false, "In");
+        ui.selectable_value(&mut m.output, true, "Out");
+        ui.label("Bank");
+        let max_bank = (if m.output { n_out } else { n_in }).saturating_sub(1) as u32;
+        ui.add(egui::DragValue::new(&mut m.bank).range(0..=max_bank));
+        ui.label("Bit");
+        ui.add(egui::DragValue::new(&mut m.bit).range(0..=63));
+    });
+    ui.horizontal(|ui| {
+        let bank = m.bank as usize;
+        let bit = m.bit as u8;
+        let mask = 1u64 << bit;
+        if m.output {
+            if ui.button("High").clicked() {
+                vtl_st.set_staged_bit(bank, bit, true);
+                log::info!("vtl: manual fire out bank={bank} bit={bit} -> high (state now {:#018x})", vtl_st.owner().output_state(bank));
+            }
+            if ui.button("Low").clicked() {
+                vtl_st.set_staged_bit(bank, bit, false);
+                log::info!("vtl: manual fire out bank={bank} bit={bit} -> low (state now {:#018x})", vtl_st.owner().output_state(bank));
+            }
+        } else {
+            if ui.button("↑ rise").clicked() {
+                vtl_st.owner().set_input_bit(bank, bit);
+                vtl_st.owner().set_input_rise(bank, mask);
+                log::info!("vtl: manual fire in bank={bank} bit={bit} -> rise (state now {:#018x})", vtl_st.owner().input_state(bank));
+            }
+            if ui.button("↓ fall").clicked() {
+                vtl_st.owner().clear_input_bit(bank, bit);
+                vtl_st.owner().set_input_fall(bank, mask);
+                log::info!("vtl: manual fire in bank={bank} bit={bit} -> fall (state now {:#018x})", vtl_st.owner().input_state(bank));
+            }
+        }
+    });
+    ctx.data_mut(|d| d.insert_temp(manual_id, m));
 }

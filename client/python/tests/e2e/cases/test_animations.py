@@ -41,6 +41,12 @@ def test_anim_flash_state_transitions(
     )
     assert conn.animations.query(a).state == AnimationState.IDLE
 
+    # Single source of truth: query() and list_animations() return the same
+    # canonical type_name (the serde config tag), sent verbatim by the server.
+    assert conn.animations.query(a).type_name == "FlashForNFrames"
+    listed = next(i for i in conn.animations.list_animations() if i.handle == a)
+    assert listed.type_name == conn.animations.query(a).type_name
+
     conn.animations.arm(a)
     assert conn.animations.query(a).state in (
         AnimationState.ARMED,

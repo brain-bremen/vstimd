@@ -1,3 +1,5 @@
+use uuid::Uuid;
+use vstimd::scene::deferred::Deferred;
 /// Integration tests for the animation system.
 ///
 /// Tests use the internal domain model directly — no proto, no ZMQ, no GPU.
@@ -13,13 +15,11 @@ use vstimd::scene::{
     SceneState,
     animation::{AnimState, Animation, AnimationEntry, FinalAction},
     stimulus::{
-        RectStimulus, ShapeAppearance, ShapeStimulus, Stimulus, StimulusEntry, StimulusFlags,
+        RectStimulus, ShapeAppearance, ShapeCommon, Stimulus, StimulusSceneEntry, StimulusFlags,
         Transform2D,
     },
 };
-use vstimd::scene::deferred::Deferred;
 use vstimd::vtl_state::{Edge, VtlBit, VtlEdges};
-use uuid::Uuid;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,21 +45,32 @@ fn advance_with(scene: &mut SceneState, edges: &VtlEdges) -> [u64; vtl::MAX_BANK
 
 /// Create a rect stimulus and return its handle.  Starts with `enabled=true`.
 fn create_rect(scene: &mut SceneState) -> u32 {
-    scene.add_stimulus(StimulusEntry::new(
+    scene.add_stimulus(StimulusSceneEntry::new(
         Uuid::new_v4(),
         None,
-        Stimulus::Shape(ShapeStimulus::Rect(RectStimulus {
-            flags: StimulusFlags::enabled(true),
-            transform:  Deferred::new(Transform2D { pos: [0.0, 0.0], angle: 0.0 }),
-            appearance: Deferred::new(ShapeAppearance::default()),
-            size:       Deferred::new([50.0, 50.0]),
-        })),
+        Stimulus::Rect(RectStimulus {
+            common: ShapeCommon {
+                flags: StimulusFlags::enabled(true),
+                transform: Deferred::new(Transform2D {
+                    pos: [0.0, 0.0],
+                    angle: 0.0,
+                }),
+                appearance: Deferred::new(ShapeAppearance::default()),
+            },
+            size: Deferred::new([50.0, 50.0]),
+        }),
     ))
 }
 
 /// Enable a stimulus's `enabled` flag directly (bypassing ZMQ).
 fn set_enabled(scene: &mut SceneState, stim: u32, val: bool) {
-    scene.stimuli.get_mut(&stim).unwrap().stimulus.flags_mut().enabled = val;
+    scene
+        .stimuli
+        .get_mut(&stim)
+        .unwrap()
+        .stimulus
+        .flags_mut()
+        .enabled = val;
 }
 
 /// Arm an existing animation (Idle/Done → Armed).
@@ -89,7 +100,7 @@ fn is_visible(scene: &SceneState, stim: u32) -> bool {
 
 fn rising_edge(bank: usize, bit: u8) -> VtlEdges {
     let mut e = VtlEdges::default();
-    e.rising[bank]  |= 1u64 << bit;
+    e.rising[bank] |= 1u64 << bit;
     e.current[bank] |= 1u64 << bit;
     e
 }
@@ -121,7 +132,8 @@ fn flash_1_frame_disables_immediately() {
     let s = create_rect(&mut scene);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
         e.final_action = FinalAction::DISABLE;
         e
     });
@@ -129,7 +141,10 @@ fn flash_1_frame_disables_immediately() {
     advance(&mut scene);
 
     assert_eq!(anim_state(&scene, a), &AnimState::Done);
-    assert!(!is_enabled(&scene, s), "DISABLE fires on frame 0 for duration=1");
+    assert!(
+        !is_enabled(&scene, s),
+        "DISABLE fires on frame 0 for duration=1"
+    );
 }
 
 #[test]
@@ -138,7 +153,8 @@ fn flash_3_frames_visible_during_frames_0_1_2_then_disabled() {
     let s = create_rect(&mut scene);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 3 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 3 }, vec![s]);
         e.final_action = FinalAction::DISABLE;
         e
     });
@@ -146,12 +162,18 @@ fn flash_3_frames_visible_during_frames_0_1_2_then_disabled() {
     // Frame 0: enables stim, frame_counter→1, not done (0+1 < 3).
     advance(&mut scene);
     assert!(is_enabled(&scene, s), "frame 0: visible");
-    assert_eq!(anim_state(&scene, a), &AnimState::Running { frame_counter: 1 });
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Running { frame_counter: 1 }
+    );
 
     // Frame 1: frame_counter=1, 1+1=2 < 3.
     advance(&mut scene);
     assert!(is_enabled(&scene, s), "frame 1: visible");
-    assert_eq!(anim_state(&scene, a), &AnimState::Running { frame_counter: 2 });
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Running { frame_counter: 2 }
+    );
 
     // Frame 2: frame_counter=2, 2+1=3 >= 3 → Done → DISABLE.
     advance(&mut scene);
@@ -169,7 +191,10 @@ fn flash_not_advanced_while_idle() {
         vec![s],
     ));
     advance(&mut scene);
-    assert!(!is_enabled(&scene, s), "idle animation should not enable stimulus");
+    assert!(
+        !is_enabled(&scene, s),
+        "idle animation should not enable stimulus"
+    );
     assert_eq!(anim_state(&scene, a), &AnimState::Idle);
 }
 
@@ -186,7 +211,10 @@ fn flash_no_final_action_leaves_stim_enabled() {
     advance(&mut scene);
 
     assert_eq!(anim_state(&scene, a), &AnimState::Done);
-    assert!(is_enabled(&scene, s), "no DISABLE: stim stays enabled after Done");
+    assert!(
+        is_enabled(&scene, s),
+        "no DISABLE: stim stays enabled after Done"
+    );
 }
 
 #[test]
@@ -196,7 +224,10 @@ fn flash_multiple_stimuli() {
     let s2 = create_rect(&mut scene);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s1, s2]);
+        let mut e = AnimationEntry::armed(
+            Animation::FlashForNFrames { duration_frames: 2 },
+            vec![s1, s2],
+        );
         e.final_action = FinalAction::DISABLE;
         e
     });
@@ -235,7 +266,10 @@ fn flicker_on_off_phase_cycling() {
     // Frame 0: Armed→Running sets anim_enabled=true (start_on_phase=true).
     advance(&mut scene);
     assert!(is_anim_enabled(&scene, s), "frame 0: on");
-    assert_eq!(anim_state(&scene, a), &AnimState::Running { frame_counter: 1 });
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Running { frame_counter: 1 }
+    );
 
     // Frame 1: phase_frame=1 < 2 → on
     advance(&mut scene);
@@ -265,7 +299,10 @@ fn flicker_on_off_phase_cycling() {
     advance(&mut scene);
     assert!(!is_anim_enabled(&scene, s), "frame 7: off");
 
-    assert_eq!(anim_state(&scene, a), &AnimState::Running { frame_counter: 8 });
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Running { frame_counter: 8 }
+    );
 }
 
 #[test]
@@ -282,7 +319,10 @@ fn flicker_start_off_phase() {
     let a = scene.add_animation(AnimationEntry::armed(flicker(2, 3, None, false), vec![s]));
 
     advance(&mut scene); // frame 0: start_on_phase=false → anim_enabled=false
-    assert!(!is_anim_enabled(&scene, s), "frame 0: off (start_on_phase=false)");
+    assert!(
+        !is_anim_enabled(&scene, s),
+        "frame 0: off (start_on_phase=false)"
+    );
 
     advance(&mut scene); // frame 1: phase_frame=1 < 3 → off
     assert!(!is_anim_enabled(&scene, s), "frame 1: off");
@@ -315,7 +355,9 @@ fn flicker_total_frames_cutoff() {
         advance(&mut scene);
         assert_eq!(
             anim_state(&scene, a),
-            &AnimState::Running { frame_counter: i + 1 },
+            &AnimState::Running {
+                frame_counter: i + 1
+            },
             "frame {i}: still running"
         );
     }
@@ -341,8 +383,14 @@ fn flicker_anim_enabled_reset_on_done() {
     advance(&mut scene);
 
     assert_eq!(anim_state(&scene, a), &AnimState::Done);
-    assert!(is_anim_enabled(&scene, s), "anim_enabled reset to true after Done");
-    assert!(is_visible(&scene, s), "stimulus visible (no DISABLE, anim_enabled restored)");
+    assert!(
+        is_anim_enabled(&scene, s),
+        "anim_enabled reset to true after Done"
+    );
+    assert!(
+        is_visible(&scene, s),
+        "stimulus visible (no DISABLE, anim_enabled restored)"
+    );
 }
 
 #[test]
@@ -367,7 +415,8 @@ fn flash_with_start_trigger_stays_armed_until_edge() {
     set_enabled(&mut scene, s, false); // flash should not enable until trigger fires
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
         e.start_trigger = Some((bit(0, 3), Edge::Rising));
         e
     });
@@ -392,18 +441,27 @@ fn flash_start_trigger_wrong_edge_type_ignored() {
     let s = create_rect(&mut scene);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
         e.start_trigger = Some((bit(0, 0), Edge::Rising));
         e
     });
 
     // Falling edge — should NOT start (wants Rising).
     advance_with(&mut scene, &falling_edge(0, 0));
-    assert_eq!(anim_state(&scene, a), &AnimState::Armed, "falling edge ignored");
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Armed,
+        "falling edge ignored"
+    );
 
     // Rising on wrong bit — should NOT start.
     advance_with(&mut scene, &rising_edge(0, 1));
-    assert_eq!(anim_state(&scene, a), &AnimState::Armed, "wrong bit ignored");
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Armed,
+        "wrong bit ignored"
+    );
 
     // Correct rising edge — starts.
     advance_with(&mut scene, &rising_edge(0, 0));
@@ -416,7 +474,8 @@ fn flash_start_trigger_falling_edge() {
     let s = create_rect(&mut scene);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
         e.start_trigger = Some((bit(0, 2), Edge::Falling));
         e
     });
@@ -453,14 +512,21 @@ fn enable_on_trigger_edge_rising() {
     set_enabled(&mut scene, s, false); // start disabled; animation enables on edge
 
     let a = scene.add_animation(AnimationEntry::armed(
-        Animation::EnableOnTriggerEdge { trigger: bit(0, 5), edge: Edge::Rising, enabled: true },
+        Animation::EnableOnTriggerEdge {
+            trigger: bit(0, 5),
+            edge: Edge::Rising,
+            enabled: true,
+        },
         vec![s],
     ));
 
     // No edge — nothing happens.
     advance(&mut scene);
     assert!(!is_enabled(&scene, s), "no edge yet: still disabled");
-    assert_eq!(anim_state(&scene, a), &AnimState::Running { frame_counter: 1 });
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Running { frame_counter: 1 }
+    );
 
     // Rising edge — enabled + Done.
     advance_with(&mut scene, &rising_edge(0, 5));
@@ -475,7 +541,11 @@ fn enable_on_trigger_edge_disable_on_falling() {
     set_enabled(&mut scene, s, true);
 
     let a = scene.add_animation(AnimationEntry::armed(
-        Animation::EnableOnTriggerEdge { trigger: bit(0, 2), edge: Edge::Falling, enabled: false },
+        Animation::EnableOnTriggerEdge {
+            trigger: bit(0, 2),
+            edge: Edge::Falling,
+            enabled: false,
+        },
         vec![s],
     ));
 
@@ -496,7 +566,11 @@ fn enable_on_trigger_edge_wrong_bank_ignored() {
     set_enabled(&mut scene, s, false); // start disabled; animation enables only on correct bank
 
     let a = scene.add_animation(AnimationEntry::armed(
-        Animation::EnableOnTriggerEdge { trigger: bit(0, 0), edge: Edge::Rising, enabled: true },
+        Animation::EnableOnTriggerEdge {
+            trigger: bit(0, 0),
+            edge: Edge::Rising,
+            enabled: true,
+        },
         vec![s],
     ));
 
@@ -518,7 +592,10 @@ fn couple_visibility_tracks_input_level() {
     set_enabled(&mut scene, s, true);
 
     let a = scene.add_animation(AnimationEntry::armed(
-        Animation::CoupleVisibilityToTriggerLine { trigger: bit(0, 1), polarity: true },
+        Animation::CoupleVisibilityToTriggerLine {
+            trigger: bit(0, 1),
+            polarity: true,
+        },
         vec![s],
     ));
 
@@ -547,17 +624,26 @@ fn couple_visibility_inverted_polarity() {
     set_enabled(&mut scene, s, true);
 
     let _a = scene.add_animation(AnimationEntry::armed(
-        Animation::CoupleVisibilityToTriggerLine { trigger: bit(0, 0), polarity: false },
+        Animation::CoupleVisibilityToTriggerLine {
+            trigger: bit(0, 0),
+            polarity: false,
+        },
         vec![s],
     ));
 
     // Input LOW + polarity=false → visible.
     advance_with(&mut scene, &no_edges());
-    assert!(is_anim_enabled(&scene, s), "LOW with polarity=false → visible");
+    assert!(
+        is_anim_enabled(&scene, s),
+        "LOW with polarity=false → visible"
+    );
 
     // Input HIGH + polarity=false → invisible.
     advance_with(&mut scene, &current_high(0, 0));
-    assert!(!is_anim_enabled(&scene, s), "HIGH with polarity=false → invisible");
+    assert!(
+        !is_anim_enabled(&scene, s),
+        "HIGH with polarity=false → invisible"
+    );
 }
 
 #[test]
@@ -571,7 +657,10 @@ fn couple_visibility_anim_enabled_restored_on_disarm() {
     set_enabled(&mut scene, s, true);
 
     let a = scene.add_animation(AnimationEntry::armed(
-        Animation::CoupleVisibilityToTriggerLine { trigger: bit(0, 0), polarity: true },
+        Animation::CoupleVisibilityToTriggerLine {
+            trigger: bit(0, 0),
+            polarity: true,
+        },
         vec![s],
     ));
 
@@ -579,12 +668,20 @@ fn couple_visibility_anim_enabled_restored_on_disarm() {
     assert!(!is_anim_enabled(&scene, s));
 
     // Disarm via handle_request (exercises cmd_disarm_animation).
-    scene.handle_request(proto::Request {
-        target: Some(request::Target::System(proto::SystemTarget {})),
-        body: Some(request::Body::DisarmAnimation(proto::DisarmAnimationRequest { handle: a })),
-    }, None);
+    scene.handle_request(
+        proto::Request {
+            target: Some(request::Target::System(proto::SystemTarget {})),
+            body: Some(request::Body::DisarmAnimation(
+                proto::DisarmAnimationRequest { handle: a },
+            )),
+        },
+        None,
+    );
     assert_eq!(anim_state(&scene, a), &AnimState::Idle);
-    assert!(is_anim_enabled(&scene, s), "anim_enabled restored to true on disarm");
+    assert!(
+        is_anim_enabled(&scene, s),
+        "anim_enabled restored to true on disarm"
+    );
 }
 
 #[test]
@@ -602,12 +699,20 @@ fn flicker_anim_enabled_restored_on_disarm() {
 
     use vstimd::proto;
     use vstimd::proto::request;
-    scene.handle_request(proto::Request {
-        target: Some(request::Target::System(proto::SystemTarget {})),
-        body: Some(request::Body::DisarmAnimation(proto::DisarmAnimationRequest { handle: a })),
-    }, None);
+    scene.handle_request(
+        proto::Request {
+            target: Some(request::Target::System(proto::SystemTarget {})),
+            body: Some(request::Body::DisarmAnimation(
+                proto::DisarmAnimationRequest { handle: a },
+            )),
+        },
+        None,
+    );
     assert_eq!(anim_state(&scene, a), &AnimState::Idle);
-    assert!(is_anim_enabled(&scene, s), "anim_enabled restored on disarm from off-phase");
+    assert!(
+        is_anim_enabled(&scene, s),
+        "anim_enabled restored on disarm from off-phase"
+    );
 }
 
 #[test]
@@ -619,16 +724,27 @@ fn disarm_while_armed_does_not_touch_anim_enabled() {
     set_enabled(&mut scene, s, true);
 
     let a = scene.add_animation(AnimationEntry::armed(flicker(1, 1, None, true), vec![s]));
-    assert!(is_anim_enabled(&scene, s), "before disarm: anim_enabled still true");
+    assert!(
+        is_anim_enabled(&scene, s),
+        "before disarm: anim_enabled still true"
+    );
 
     use vstimd::proto;
     use vstimd::proto::request;
-    scene.handle_request(proto::Request {
-        target: Some(request::Target::System(proto::SystemTarget {})),
-        body: Some(request::Body::DisarmAnimation(proto::DisarmAnimationRequest { handle: a })),
-    }, None);
+    scene.handle_request(
+        proto::Request {
+            target: Some(request::Target::System(proto::SystemTarget {})),
+            body: Some(request::Body::DisarmAnimation(
+                proto::DisarmAnimationRequest { handle: a },
+            )),
+        },
+        None,
+    );
     assert_eq!(anim_state(&scene, a), &AnimState::Idle);
-    assert!(is_anim_enabled(&scene, s), "anim_enabled unchanged (was never written)");
+    assert!(
+        is_anim_enabled(&scene, s),
+        "anim_enabled unchanged (was never written)"
+    );
 }
 
 // ── FinalAction::RESTORE_STATE ────────────────────────────────────────────────
@@ -640,7 +756,8 @@ fn restore_state_restores_user_enabled() {
     set_enabled(&mut scene, s, false); // start disabled; flash enables, RESTORE_STATE restores
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
         e.final_action = FinalAction::RESTORE_STATE;
         e
     });
@@ -664,7 +781,8 @@ fn restore_state_captures_at_armed_to_running() {
     set_enabled(&mut scene, s, true); // enabled=true at create time
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
         e.final_action = FinalAction::RESTORE_STATE;
         e
     });
@@ -680,7 +798,10 @@ fn restore_state_captures_at_armed_to_running() {
     // then done → RESTORE_STATE restores enabled=false.
     advance(&mut scene);
     assert_eq!(anim_state(&scene, a), &AnimState::Done);
-    assert!(!is_enabled(&scene, s), "RESTORE_STATE restores the value captured at transition");
+    assert!(
+        !is_enabled(&scene, s),
+        "RESTORE_STATE restores the value captured at transition"
+    );
 }
 
 #[test]
@@ -691,7 +812,8 @@ fn restore_state_takes_priority_over_disable() {
     set_enabled(&mut scene, s, true);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
         e.final_action = FinalAction::RESTORE_STATE | FinalAction::DISABLE;
         e
     });
@@ -699,7 +821,10 @@ fn restore_state_takes_priority_over_disable() {
     advance(&mut scene);
     assert_eq!(anim_state(&scene, a), &AnimState::Done);
     // captured=true → restored to true; DISABLE branch skipped.
-    assert!(is_enabled(&scene, s), "RESTORE_STATE takes priority over DISABLE");
+    assert!(
+        is_enabled(&scene, s),
+        "RESTORE_STATE takes priority over DISABLE"
+    );
 }
 
 // ── FinalAction::RESTART ──────────────────────────────────────────────────────
@@ -710,20 +835,27 @@ fn restart_loops_animation() {
     let s = create_rect(&mut scene);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
         e.final_action = FinalAction::RESTART;
         e
     });
 
     advance(&mut scene); // frame 0 → Running{1}
     advance(&mut scene); // frame 1: done → RESTART → Running{0}
-    assert_eq!(anim_state(&scene, a), &AnimState::Running { frame_counter: 0 },
-        "RESTART resets frame_counter to 0");
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Running { frame_counter: 0 },
+        "RESTART resets frame_counter to 0"
+    );
     assert!(is_enabled(&scene, s));
 
     advance(&mut scene); // second cycle → Running{1}
     advance(&mut scene); // second done → RESTART again
-    assert_eq!(anim_state(&scene, a), &AnimState::Running { frame_counter: 0 });
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Running { frame_counter: 0 }
+    );
 }
 
 // ── FinalAction::TOGGLE_PHOTODIODE ────────────────────────────────────────────
@@ -735,7 +867,8 @@ fn toggle_photodiode_fires_on_done() {
     let initial = scene.photodiode.lit;
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
         e.final_action = FinalAction::TOGGLE_PHOTODIODE;
         e
     });
@@ -752,7 +885,8 @@ fn toggle_photodiode_toggles_each_restart() {
     let initial = scene.photodiode.lit;
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
         e.final_action = FinalAction::TOGGLE_PHOTODIODE | FinalAction::RESTART;
         e
     });
@@ -774,7 +908,8 @@ fn final_action_trigger_line_sets_output_bit_on_done() {
     let s = create_rect(&mut scene);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
         e.final_action = FinalAction::FINAL_ACTION_TRIGGER_LINE;
         e.final_action_trigger_line = Some(bit(0, 7));
         e
@@ -782,7 +917,10 @@ fn final_action_trigger_line_sets_output_bit_on_done() {
 
     let out0 = advance(&mut scene); // frame 0: running, no output
     assert_eq!(out0[0] & (1u64 << 7), 0, "frame 0: output bit not set");
-    assert_eq!(anim_state(&scene, a), &AnimState::Running { frame_counter: 1 });
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Running { frame_counter: 1 }
+    );
 
     let out1 = advance(&mut scene); // frame 1: done
     assert_eq!(anim_state(&scene, a), &AnimState::Done);
@@ -795,7 +933,8 @@ fn final_action_trigger_line_not_set_before_done() {
     let s = create_rect(&mut scene);
 
     let _a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 3 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 3 }, vec![s]);
         e.final_action = FinalAction::FINAL_ACTION_TRIGGER_LINE;
         e.final_action_trigger_line = Some(bit(0, 2));
         e
@@ -803,7 +942,11 @@ fn final_action_trigger_line_not_set_before_done() {
 
     for i in 0..2 {
         let out = advance(&mut scene);
-        assert_eq!(out[0] & (1u64 << 2), 0, "frame {i}: output bit not set before Done");
+        assert_eq!(
+            out[0] & (1u64 << 2),
+            0,
+            "frame {i}: output bit not set before Done"
+        );
     }
 }
 
@@ -821,13 +964,15 @@ fn output_ordering_chained_animations_one_frame_latency() {
     let s2 = create_rect(&mut scene);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s1]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s1]);
         e.final_action = FinalAction::FINAL_ACTION_TRIGGER_LINE;
         e.final_action_trigger_line = Some(bit(0, 0));
         e
     });
     let b = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s2]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s2]);
         e.start_trigger = Some((bit(0, 0), Edge::Rising));
         e
     });
@@ -836,13 +981,18 @@ fn output_ordering_chained_animations_one_frame_latency() {
     let out = advance(&mut scene);
     assert_eq!(anim_state(&scene, a), &AnimState::Done);
     assert_ne!(out[0] & 1, 0, "A sets output bit");
-    assert_eq!(anim_state(&scene, b), &AnimState::Armed,
-        "B stays Armed in same frame A completes (one-frame latency)");
+    assert_eq!(
+        anim_state(&scene, b),
+        &AnimState::Armed,
+        "B stays Armed in same frame A completes (one-frame latency)"
+    );
 
     // Frame N+1: simulate caller committing out and nidaqd delivering a rising edge.
     advance_with(&mut scene, &rising_edge(0, 0));
-    assert!(matches!(anim_state(&scene, b), &AnimState::Running { .. }),
-        "B starts in frame N+1 when edge delivered");
+    assert!(
+        matches!(anim_state(&scene, b), &AnimState::Running { .. }),
+        "B starts in frame N+1 when edge delivered"
+    );
 }
 
 // ── FinalAction::END_DEFERRED ─────────────────────────────────────────────────
@@ -856,7 +1006,8 @@ fn end_deferred_sets_pending_flip() {
     assert!(scene.runtime.deferred_mode);
 
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
         e.final_action = FinalAction::END_DEFERRED;
         e
     });
@@ -882,7 +1033,10 @@ fn idle_animation_not_advanced() {
         advance(&mut scene);
     }
     assert_eq!(anim_state(&scene, a), &AnimState::Idle);
-    assert!(!is_enabled(&scene, s), "idle animation must not enable stimulus");
+    assert!(
+        !is_enabled(&scene, s),
+        "idle animation must not enable stimulus"
+    );
 }
 
 #[test]
@@ -890,7 +1044,8 @@ fn done_animation_not_re_advanced() {
     let mut scene = SceneState::new();
     let s = create_rect(&mut scene);
     let a = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
         e.final_action = FinalAction::DISABLE;
         e
     });
@@ -915,19 +1070,30 @@ fn couple_visibility_anim_enabled_restored_on_delete() {
     set_enabled(&mut scene, s, true);
 
     let a = scene.add_animation(AnimationEntry::armed(
-        Animation::CoupleVisibilityToTriggerLine { trigger: bit(0, 0), polarity: true },
+        Animation::CoupleVisibilityToTriggerLine {
+            trigger: bit(0, 0),
+            polarity: true,
+        },
         vec![s],
     ));
 
     advance_with(&mut scene, &no_edges()); // Running, input LOW → anim_enabled=false
     assert!(!is_anim_enabled(&scene, s));
 
-    scene.handle_request(proto::Request {
-        target: Some(request::Target::System(proto::SystemTarget {})),
-        body: Some(request::Body::DeleteAnimation(proto::DeleteAnimationRequest { handle: a })),
-    }, None);
+    scene.handle_request(
+        proto::Request {
+            target: Some(request::Target::System(proto::SystemTarget {})),
+            body: Some(request::Body::DeleteAnimation(
+                proto::DeleteAnimationRequest { handle: a },
+            )),
+        },
+        None,
+    );
     assert!(!scene.animations.contains_key(&a), "animation removed");
-    assert!(is_anim_enabled(&scene, s), "anim_enabled restored to true on delete");
+    assert!(
+        is_anim_enabled(&scene, s),
+        "anim_enabled restored to true on delete"
+    );
 }
 
 #[test]
@@ -945,12 +1111,20 @@ fn flicker_anim_enabled_restored_on_delete() {
     advance(&mut scene); // frame 2: off (phase_frame=2 >= 2)
     assert!(!is_anim_enabled(&scene, s), "in off-phase before delete");
 
-    scene.handle_request(proto::Request {
-        target: Some(request::Target::System(proto::SystemTarget {})),
-        body: Some(request::Body::DeleteAnimation(proto::DeleteAnimationRequest { handle: a })),
-    }, None);
+    scene.handle_request(
+        proto::Request {
+            target: Some(request::Target::System(proto::SystemTarget {})),
+            body: Some(request::Body::DeleteAnimation(
+                proto::DeleteAnimationRequest { handle: a },
+            )),
+        },
+        None,
+    );
     assert!(!scene.animations.contains_key(&a), "animation removed");
-    assert!(is_anim_enabled(&scene, s), "anim_enabled restored on delete from off-phase");
+    assert!(
+        is_anim_enabled(&scene, s),
+        "anim_enabled restored on delete from off-phase"
+    );
 }
 
 // ── Multiple animations on the same stimulus ──────────────────────────────────
@@ -965,10 +1139,12 @@ fn two_animations_same_stimulus_last_write_wins() {
     let s = create_rect(&mut scene);
 
     let a1 = scene.add_animation(AnimationEntry::armed(
-        Animation::FlashForNFrames { duration_frames: 3 }, vec![s],
+        Animation::FlashForNFrames { duration_frames: 3 },
+        vec![s],
     ));
     let a2 = scene.add_animation({
-        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 1 }, vec![s]);
         e.final_action = FinalAction::DISABLE;
         e
     });
@@ -976,5 +1152,8 @@ fn two_animations_same_stimulus_last_write_wins() {
     advance(&mut scene);
     assert_eq!(anim_state(&scene, a2), &AnimState::Done);
     assert!(!is_enabled(&scene, s), "a2 DISABLE fires in same frame");
-    assert!(matches!(anim_state(&scene, a1), &AnimState::Running { frame_counter: 1 }));
+    assert!(matches!(
+        anim_state(&scene, a1),
+        &AnimState::Running { frame_counter: 1 }
+    ));
 }

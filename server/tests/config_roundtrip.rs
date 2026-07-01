@@ -1,42 +1,51 @@
+use uuid::Uuid;
 use vstimd::io_config::{parse_config_json, retrieve_config_json};
 use vstimd::scene::{
-    Deferred, LoadMode, SceneState, SceneConfig,
-    CircleStimulus, RectStimulus, ShapeAppearance, ShapeStimulus, Stimulus, StimulusEntry,
-    StimulusFlags, Transform2D,
+    CircleStimulus, Deferred, LoadMode, RectStimulus, SceneConfig, SceneState, ShapeAppearance,
+    ShapeCommon, Stimulus, StimulusFlags, StimulusSceneEntry, Transform2D,
 };
 use vstimd::vtl_state::{VtlConfig, VtlNameEntry};
 use vtl::Direction;
-use uuid::Uuid;
 
-fn make_rect_entry() -> StimulusEntry {
-    StimulusEntry::new(
+fn make_rect_entry() -> StimulusSceneEntry {
+    StimulusSceneEntry::new(
         Uuid::new_v4(),
         Some("test_rect".into()),
-        Stimulus::Shape(ShapeStimulus::Rect(RectStimulus {
-            flags: StimulusFlags::enabled(true),
-            transform: Deferred::new(Transform2D { pos: [100.0, -50.0], angle: 45.0 }),
-            appearance: Deferred::new(ShapeAppearance {
-                fill_color: vstimd::Color::new(1.0, 0.5, 0.0, 1.0),
-                ..Default::default()
-            }),
+        Stimulus::Rect(RectStimulus {
+            common: ShapeCommon {
+                flags: StimulusFlags::enabled(true),
+                transform: Deferred::new(Transform2D {
+                    pos: [100.0, -50.0],
+                    angle: 45.0,
+                }),
+                appearance: Deferred::new(ShapeAppearance {
+                    fill_color: vstimd::Color::new(1.0, 0.5, 0.0, 1.0),
+                    ..Default::default()
+                }),
+            },
             size: Deferred::new([200.0, 80.0]),
-        })),
+        }),
     )
 }
 
-fn make_circle_entry() -> StimulusEntry {
-    StimulusEntry::new(
+fn make_circle_entry() -> StimulusSceneEntry {
+    StimulusSceneEntry::new(
         Uuid::new_v4(),
         Some("test_circle".into()),
-        Stimulus::Shape(ShapeStimulus::Circle(CircleStimulus {
-            flags: StimulusFlags::enabled(false),
-            transform: Deferred::new(Transform2D { pos: [-200.0, 300.0], angle: 0.0 }),
-            appearance: Deferred::new(ShapeAppearance {
-                fill_color: vstimd::Color::new(0.0, 0.0, 1.0, 1.0),
-                ..Default::default()
-            }),
+        Stimulus::Circle(CircleStimulus {
+            common: ShapeCommon {
+                flags: StimulusFlags::enabled(false),
+                transform: Deferred::new(Transform2D {
+                    pos: [-200.0, 300.0],
+                    angle: 0.0,
+                }),
+                appearance: Deferred::new(ShapeAppearance {
+                    fill_color: vstimd::Color::new(0.0, 0.0, 1.0, 1.0),
+                    ..Default::default()
+                }),
+            },
             radius: Deferred::new(75.0),
-        })),
+        }),
     )
 }
 
@@ -62,11 +71,11 @@ fn roundtrip_rect_stimulus() {
     assert_eq!(loaded.stimuli.len(), 1);
     let entry = loaded.stimuli.values().next().unwrap();
     assert_eq!(entry.name.as_deref(), Some("test_rect"));
-    let Stimulus::Shape(ShapeStimulus::Rect(rect)) = &entry.stimulus else {
+    let Stimulus::Rect(rect) = &entry.stimulus else {
         panic!("expected rect");
     };
-    assert_eq!(rect.transform.live.pos, [100.0, -50.0]);
-    assert!((rect.appearance.live.fill_color.r - 1.0).abs() < 1e-6);
+    assert_eq!(rect.common.transform.live.pos, [100.0, -50.0]);
+    assert!((rect.common.appearance.live.fill_color.r - 1.0).abs() < 1e-6);
 }
 
 #[test]
@@ -87,8 +96,18 @@ fn roundtrip_vtl_names() {
     let scene = SceneConfig::default();
     let vtl = VtlConfig {
         names: vec![
-            VtlNameEntry { name: "stim_onset".into(), bank: 0, bit: 0, direction: Direction::Output },
-            VtlNameEntry { name: "trial_start".into(), bank: 0, bit: 1, direction: Direction::Input },
+            VtlNameEntry {
+                name: "stim_onset".into(),
+                bank: 0,
+                bit: 0,
+                direction: Direction::Output,
+            },
+            VtlNameEntry {
+                name: "trial_start".into(),
+                bank: 0,
+                bit: 1,
+                direction: Direction::Input,
+            },
         ],
     };
     let json = retrieve_config_json(&scene, &vtl).unwrap();
@@ -103,14 +122,19 @@ fn roundtrip_vtl_names() {
 
 #[test]
 fn roundtrip_background_color() {
-    let mut scene = SceneConfig::default();
-    scene.background = Deferred::new(vstimd::Color::new(0.2, 0.3, 0.4, 1.0));
+    let scene = SceneConfig {
+        background: Deferred::new(vstimd::Color::new(0.2, 0.3, 0.4, 1.0)),
+        ..Default::default()
+    };
 
     let vtl = VtlConfig::default();
     let json = retrieve_config_json(&scene, &vtl).unwrap();
     let (loaded, _io) = parse_config_json(&json).unwrap();
 
-    assert_eq!(loaded.background.live, vstimd::Color::new(0.2, 0.3, 0.4, 1.0));
+    assert_eq!(
+        loaded.background.live,
+        vstimd::Color::new(0.2, 0.3, 0.4, 1.0)
+    );
 }
 
 #[test]
@@ -128,7 +152,14 @@ fn roundtrip_additive_load_remaps_handles() {
     // Should now have 2 stimuli with no handle collision
     assert_eq!(scene.stimuli.len(), 2);
     let handles: Vec<u32> = scene.stimuli.keys().copied().collect();
-    assert_eq!(handles.iter().cloned().collect::<std::collections::HashSet<_>>().len(), 2);
+    assert_eq!(
+        handles
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        2
+    );
     assert!(handles.contains(&h1));
 }
 

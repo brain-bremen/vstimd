@@ -13,6 +13,7 @@ const BACKEND = "ws://127.0.0.1:8138";
 test.beforeEach(async () => {
   const conn = await Connection.connect(BACKEND);
   await conn.system.deleteAll();
+  for (const a of await conn.animations.list()) await conn.animations.delete(a.handle);
   conn.close();
 });
 
@@ -33,6 +34,86 @@ test("creates a stimulus", async ({ page }) => {
   const row = page.locator("table tbody tr").first();
   await expect(row).toContainText("rect");
   await expect(row).toContainText("0, 0");
+});
+
+test("toggles a VTL bit in the binary grid", async ({ page }) => {
+  // Register a named input line server-side, then load the UI.
+  const conn = await Connection.connect(BACKEND);
+  await conn.vtl.setName(0, 1, "input", "trig");
+  await conn.vtl.setInput("trig", false); // known starting level
+  conn.close();
+
+  await page.goto("/");
+  await expect(page.getByText("connected")).toBeVisible();
+
+  // Every bit is a clickable cell; the named input bit starts low (0).
+  const cell = page.getByTitle("input bank 0 bit 1: trig");
+  await expect(cell).toHaveText("0");
+
+  // Clicking toggles the line high (reconciled via the next snapshot).
+  await cell.click();
+  await expect(cell).toHaveText("1");
+});
+
+test("lists an animation and arms it", async ({ page }) => {
+  // Create a stimulus + a flash animation server-side, then load the UI.
+  const conn = await Connection.connect(BACKEND);
+  const h = await conn.stimuli.shapes.createRect({ name: "anim-rect" });
+  await conn.animations.flash(h, { durationFrames: 30, name: "fl" });
+  conn.close();
+
+  await page.goto("/");
+  await expect(page.getByText("connected")).toBeVisible();
+
+  // The animation appears in the panel (polled) with its canonical type tag.
+  const row = page.locator("tr", { hasText: "fl" });
+  await expect(row).toContainText("FlashForNFrames");
+  await expect(row).toContainText("idle");
+
+  // Arming starts it; the polled state leaves idle (armed → running → done).
+  await row.getByRole("button", { name: "arm", exact: true }).click();
+  await expect(row).not.toContainText("idle");
+});
+
+test("system: Hide all disables every stimulus", async ({ page }) => {
+  const conn = await Connection.connect(BACKEND);
+  await conn.stimuli.shapes.createRect({ name: "sys-rect" });
+  conn.close();
+
+  await page.goto("/");
+  await expect(page.getByText("connected")).toBeVisible();
+
+  const checkbox = page.locator("tr", { hasText: "sys-rect" }).locator("input[type=checkbox]");
+  await expect(checkbox).toBeChecked();
+
+  await page.getByRole("button", { name: "Hide all" }).click();
+  await expect(checkbox).not.toBeChecked(); // reconciled via the next snapshot
+});
+
+test("config: save then load restores the scene", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("connected")).toBeVisible();
+
+  // Create a named stimulus, then save the scene under a name.
+  const conn = await Connection.connect(BACKEND);
+  await conn.stimuli.shapes.createRect({ name: "cfg-rect" });
+  await expect(page.locator("tr", { hasText: "cfg-rect" })).toBeVisible();
+
+  await page.getByText("overwrite if exists").click(); // tolerate re-runs
+  await page.getByPlaceholder("save as…").fill("ui_test_cfg");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("tr", { hasText: "ui_test_cfg" })).toBeVisible();
+
+  // Clear the scene, then Load must restore the stimulus.
+  await conn.system.deleteAll();
+  await expect(page.locator("tr", { hasText: "cfg-rect" })).toHaveCount(0);
+
+  await page
+    .locator("tr", { hasText: "ui_test_cfg" })
+    .getByRole("button", { name: "Load", exact: true })
+    .click();
+  await expect(page.locator("tr", { hasText: "cfg-rect" })).toBeVisible();
+  conn.close();
 });
 
 test("drag on the map moves the stimulus (RF mapping)", async ({ page }) => {

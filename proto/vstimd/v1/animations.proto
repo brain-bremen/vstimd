@@ -127,6 +127,9 @@ message QueryAnimationResponse {
   uint32                 handle = 1;
   AnimationState         state  = 2;
   CreateAnimationRequest params = 3;
+  // Canonical animation-type tag — same string as AnimationInfo.type_name and the
+  // serde config-file enum tag (the Rust variant name). Clients pass it through.
+  string                 type_name = 4;
 }
 
 message ListAnimationsResponse {

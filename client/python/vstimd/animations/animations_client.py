@@ -136,12 +136,14 @@ class AnimationClient:
         ))
         r = resp.query_animation_response
         p = r.params
-        type_name = p.WhichOneof("body") or "unknown"
+        # `type_name` is the server's canonical tag (the Rust variant name, which
+        # is also the serde config-file tag) — sent verbatim in both list and
+        # query, so it matches list_animations() and never drifts from configs.
         return AnimationDetails(
             handle=AnimationHandle(r.handle),
             name=p.name,
             state=AnimationState(r.state),
-            type_name=type_name,
+            type_name=r.type_name,
             stimuli=tuple(StimulusHandle(s) for s in p.stimuli),
             final_action=FinalAction(p.final_action_mask),
         )

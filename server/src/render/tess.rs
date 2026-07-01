@@ -9,7 +9,7 @@ use crate::geom::Vertex;
 use crate::Color;
 use crate::scene::photodiode::PhotoDiodeState;
 use crate::scene::stimulus::{
-    CircleStimulus, DrawMode, EllipseStimulus, RectStimulus, ShapeAppearance, ShapeStimulus,
+    CircleStimulus, DrawMode, EllipseStimulus, RectStimulus, ShapeAppearance, Stimulus,
     Transform2D,
 };
 
@@ -34,23 +34,27 @@ const NO_UV: [f32; 2] = [0.0, 0.0];
 
 /// Tessellate a shape stimulus into fill and stroke geometry ready for GPU upload.
 /// All positions are in NDC space, z = 0 (flat / billboard geometry).
-/// Returns empty vecs for invisible stimuli.
+/// Returns empty vecs for invisible stimuli, and `None` for non-shape stimuli.
 pub fn tessellate_shape_stimulus(
-    stimulus: &ShapeStimulus,
+    stimulus: &Stimulus,
     screen_size: (u32, u32),
-) -> ShapeTessellationResult {
+) -> Option<ShapeTessellationResult> {
     let empty = ShapeTessellationResult { fill: (vec![], vec![]), stroke: (vec![], vec![]) };
+    if !stimulus.is_shape() {
+        return None;
+    }
     if !stimulus.flags().is_visible() {
-        return empty;
+        return Some(empty);
     }
     let half_w = screen_size.0 as f32 * 0.5;
     let half_h = screen_size.1 as f32 * 0.5;
 
-    match stimulus {
-        ShapeStimulus::Rect(s)    => tessellate_rect(s, half_w, half_h),
-        ShapeStimulus::Ellipse(s) => tessellate_ellipse(s, half_w, half_h),
-        ShapeStimulus::Circle(s)  => tessellate_circle(s, half_w, half_h),
-    }
+    Some(match stimulus {
+        Stimulus::Rect(s)    => tessellate_rect(s, half_w, half_h),
+        Stimulus::Ellipse(s) => tessellate_ellipse(s, half_w, half_h),
+        Stimulus::Circle(s)  => tessellate_circle(s, half_w, half_h),
+        _ => unreachable!("is_shape() checked"),
+    })
 }
 
 // ── Per-type tessellators ─────────────────────────────────────────────────────
@@ -63,14 +67,14 @@ fn tessellate_rect(s: &RectStimulus, half_w: f32, half_h: f32) -> ShapeTessellat
         Winding::Positive,
     );
     let path = builder.build();
-    tessellate_path(&path, s.transform.live, &s.appearance.live, half_w, half_h)
+    tessellate_path(&path, s.common.transform.live, &s.common.appearance.live, half_w, half_h)
 }
 
 fn tessellate_circle(s: &CircleStimulus, half_w: f32, half_h: f32) -> ShapeTessellationResult {
     let mut builder = Path::builder();
     builder.add_circle(point(0.0, 0.0), s.radius.live, Winding::Positive);
     let path = builder.build();
-    tessellate_path(&path, s.transform.live, &s.appearance.live, half_w, half_h)
+    tessellate_path(&path, s.common.transform.live, &s.common.appearance.live, half_w, half_h)
 }
 
 fn tessellate_ellipse(s: &EllipseStimulus, half_w: f32, half_h: f32) -> ShapeTessellationResult {
@@ -83,7 +87,7 @@ fn tessellate_ellipse(s: &EllipseStimulus, half_w: f32, half_h: f32) -> ShapeTes
         Winding::Positive,
     );
     let path = builder.build();
-    tessellate_path(&path, s.transform.live, &s.appearance.live, half_w, half_h)
+    tessellate_path(&path, s.common.transform.live, &s.common.appearance.live, half_w, half_h)
 }
 
 // ── Shared tessellation ───────────────────────────────────────────────────────

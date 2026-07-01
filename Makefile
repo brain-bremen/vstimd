@@ -31,15 +31,40 @@ RPM_ARM64 := $(DIST_DIR)/$(DEB_NAME)-$(VERSION)-$(REVISION).aarch64.rpm
 RUST_SRCS     := Cargo.toml Cargo.lock $(shell find server/src vtl/src proto -type f 2>/dev/null)
 PKG_SRCS      := $(shell find packaging -type f)
 
-.PHONY: build install uninstall setup-user \
+WEB_DIR  := client/web
+WEB_DIST := $(WEB_DIR)/dist/index.html
+WEB_SRCS := $(shell find $(WEB_DIR)/src -type f 2>/dev/null) \
+            $(WEB_DIR)/index.html $(WEB_DIR)/package.json $(WEB_DIR)/vite.config.ts
+
+.PHONY: build build-server web install uninstall setup-user \
         deb-amd64 deb-arm64 deb \
         rpm-amd64 rpm-arm64 rpm \
         packages
 
-build:
+# Build the React bundle that gets baked into the binary (requires Node/npm).
+# File target so it only rebuilds when the web sources change.
+$(WEB_DIST): $(WEB_SRCS)
+	$(MAKE) -C $(WEB_DIR) build
+
+web: $(WEB_DIST)
+
+# Deployable binary WITH the browser UI embedded: serves the React app at
+# http://<device>:8080 so any machine on the LAN can control vstimd. Requires
+# Node/npm to build the frontend first. Use `build-server` for a UI-less build.
+build: web
+	cargo build --release --features embed-ui
+
+# Server-only binary (no embedded UI, no Node/npm needed). The web control
+# surface still runs, but `/` serves a placeholder instead of the React app.
+build-server:
 	cargo build --release
 
+# Install a pre-built binary. Kept separate from `build` so the usual flow is
+# `make build` (as your user, with cargo) then `sudo make install` (as root,
+# which has no cargo/rustup in PATH). Fails clearly if the binary is missing.
 install:
+	@test -x $(BINARY) || { echo "error: $(BINARY) not found — run 'make build' first (as your user, not via sudo)"; exit 1; }
+	@test -n "$(VSTIMD_ALLOW_NO_UI)" || grep -aq 'id="root"' $(BINARY) || { echo "error: $(BINARY) has no embedded web UI — a dev target (make dev/dev-null, cargo build/run) rebuilt it without the UI. Run 'make build' before installing, or set VSTIMD_ALLOW_NO_UI=1 to install a server-only binary."; exit 1; }
 	install -D -m 0755 $(BINARY)      $(DESTDIR)$(PREFIX)/bin/vstimd
 	install -D -m 0755 $(BOOT_SCRIPT) $(DESTDIR)$(PREFIX)/sbin/vstimd-boot-entry
 	install -D -m 0644 $(SERVICE)     $(DESTDIR)$(UNITDIR)/vstimd.service

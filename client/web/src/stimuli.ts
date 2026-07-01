@@ -4,6 +4,7 @@
 
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { RequestSchema } from "./_proto/vstimd/v1/service_pb.js";
+import { ShapeDrawMode as ProtoDrawMode } from "./_proto/vstimd/v1/stimuli/shapes_pb.js";
 import { GratingClient } from "./grating.js";
 import { TextClient } from "./text.js";
 import type { Send } from "./transport.js";
@@ -11,6 +12,15 @@ import type { Color, StimulusHandle, Vec2 } from "./types.js";
 
 const WHITE: Color = { r: 1, g: 1, b: 1, a: 1 };
 const ORIGIN: Vec2 = { x: 0, y: 0 };
+
+/** Shape fill/stroke draw mode. Maps to the proto `ShapeDrawMode` enum. */
+export type ShapeDrawMode = "filled" | "outlined" | "filledAndOutlined";
+
+const DRAW_MODE: Record<ShapeDrawMode, ProtoDrawMode> = {
+  filled: ProtoDrawMode.FILLED,
+  outlined: ProtoDrawMode.OUTLINED,
+  filledAndOutlined: ProtoDrawMode.FILLED_AND_OUTLINED,
+};
 
 /** Shape-stimulus constructors (rect / circle / ellipse). */
 export class ShapesClient {
@@ -140,6 +150,45 @@ export class StimuliClient {
   /** Set opacity in [0, 1]. */
   async setAlpha(handle: StimulusHandle, opacity: number): Promise<void> {
     await this.stimulusCmd(handle, { case: "setAlpha", value: { opacity } });
+  }
+
+  /** Set the stimulus name (label shown in the UI / snapshots). */
+  async setName(handle: StimulusHandle, name: string): Promise<void> {
+    await this.stimulusCmd(handle, { case: "setName", value: { name } });
+  }
+
+  /** Fill / outline / both. */
+  async setDrawMode(handle: StimulusHandle, mode: ShapeDrawMode): Promise<void> {
+    await this.stimulusCmd(handle, { case: "setDrawMode", value: { mode: DRAW_MODE[mode] } });
+  }
+
+  async setOutlineColor(handle: StimulusHandle, color: Color): Promise<void> {
+    await this.stimulusCmd(handle, { case: "setOutlineColor", value: { color } });
+  }
+
+  /** Outline stroke width in pixels. */
+  async setOutlineWidth(handle: StimulusHandle, lineWidth: number): Promise<void> {
+    await this.stimulusCmd(handle, { case: "setOutlineWidth", value: { lineWidth } });
+  }
+
+  /** Move this stimulus to the top of the draw order (drawn last = in front). */
+  async bringToFront(handle: StimulusHandle): Promise<void> {
+    await this.stimulusCmd(handle, { case: "bringToFront", value: {} });
+  }
+
+  /** Move this stimulus to the bottom of the draw order (drawn first = behind). */
+  async sendToBack(handle: StimulusHandle): Promise<void> {
+    await this.stimulusCmd(handle, { case: "sendToBack", value: {} });
+  }
+
+  /** Swap the draw-order positions of two stimuli. Scene-targeted (not per-stimulus). */
+  async swapDrawOrder(handleA: StimulusHandle, handleB: StimulusHandle): Promise<void> {
+    await this.send(
+      create(RequestSchema, {
+        target: { case: "system", value: {} },
+        body: { case: "swapDrawOrder", value: { handleA, handleB } },
+      }),
+    );
   }
 
   // Build + send a stimulus-targeted Request from a oneof body case.

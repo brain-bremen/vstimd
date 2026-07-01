@@ -1,7 +1,7 @@
 use crate::scene::SceneConfig;
 use crate::vtl_state::VtlConfig;
 
-pub const CONFIG_VERSION: u32 = 1;
+pub const CONFIG_VERSION: u32 = 2;
 
 /// Borrowed view of I/O config assembled at save time — never stored.
 #[derive(serde::Serialize)]
@@ -24,12 +24,13 @@ struct ConfigFileRef<'a> {
     io:      IoConfigRef<'a>,
 }
 
-/// Owned top-level struct — used only during load. Fields are moved to their owners.
+/// Owned top-level struct — used only during load. Fields are moved to their
+/// owners. `version` is validated separately via `VersionProbe`, so it is not
+/// repeated here (unknown JSON keys are ignored).
 #[derive(serde::Deserialize)]
 struct ConfigFile {
-    version: u32,
-    scene:   SceneConfig,
-    io:      IoConfigFile,
+    scene: SceneConfig,
+    io:    IoConfigFile,
 }
 
 /// Serialize current state to pretty JSON without touching the filesystem.
@@ -52,13 +53,20 @@ pub fn save_config(scene: &SceneConfig, vtl: &VtlConfig, path: &std::path::Path)
 /// Parse and validate a config JSON string without touching the filesystem.
 /// Used by both `load_config` and `UploadConfig` validation.
 pub fn parse_config_json(s: &str) -> anyhow::Result<(SceneConfig, IoConfigFile)> {
-    let f: ConfigFile = serde_json::from_str(s)?;
+    // Check the version before the full parse so an older-format file fails with
+    // a clear version error rather than a confusing deserialization error.
+    #[derive(serde::Deserialize)]
+    struct VersionProbe {
+        version: u32,
+    }
+    let probe: VersionProbe = serde_json::from_str(s)?;
     anyhow::ensure!(
-        f.version == CONFIG_VERSION,
+        probe.version == CONFIG_VERSION,
         "Unsupported config version {} (expected {})",
-        f.version,
+        probe.version,
         CONFIG_VERSION
     );
+    let f: ConfigFile = serde_json::from_str(s)?;
     Ok((f.scene, f.io))
 }
 

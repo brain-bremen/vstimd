@@ -7,11 +7,24 @@
 export { Connection } from "./connection.js";
 export type { SnapshotListener, EventSubscription } from "./connection.js";
 
-export { StimuliClient, ShapesClient } from "./stimuli.js";
+export { StimuliClient, ShapesClient, type ShapeDrawMode } from "./stimuli.js";
 export { GratingClient, type Waveform, type GratingMask } from "./grating.js";
 export { TextClient } from "./text.js";
+export { ConfigClient, type UploadOpts } from "./config.js";
 export { SystemClient, type ServerInfo } from "./system.js";
 export { VtlClient, type VtlDirection, type VtlLine } from "./vtl.js";
+export {
+  AnimationsClient,
+  type AnimationState,
+  type AnimationTypeName,
+  type VtlEdge,
+  type StartAction,
+  type FinalAction,
+  type AnimationInfo,
+  type AnimationDetails,
+  type AnimationOpts,
+  type Stimuli,
+} from "./animations.js";
 
 export type { SceneSnapshot, StimulusView, VtlLineView } from "./snapshot.js";
 

@@ -1,8 +1,10 @@
 // Stimuli list + quick create/delete/visibility, reading from the snapshot and
 // issuing commands through the connection.
 
+import { useState } from "react";
 import type { Connection, SceneSnapshot } from "../index.js";
 import { rgb } from "../index.js";
+import { GratingDialog } from "./GratingDialog.js";
 
 interface Props {
   conn: Connection | null;
@@ -11,6 +13,7 @@ interface Props {
 
 export function StimuliPanel({ conn, snapshot }: Props) {
   const stimuli = snapshot?.stimuli ?? [];
+  const [showGrating, setShowGrating] = useState(false);
 
   async function addRect() {
     await conn?.stimuli.shapes.createRect({
@@ -37,7 +40,15 @@ export function StimuliPanel({ conn, snapshot }: Props) {
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
         <button onClick={addRect} disabled={!conn}>+ Rect</button>
         <button onClick={addCircle} disabled={!conn}>+ Circle</button>
+        <button onClick={() => setShowGrating(true)} disabled={!conn}>+ Grating…</button>
       </div>
+      {showGrating && conn && (
+        <GratingDialog
+          conn={conn}
+          defaultName={`grating ${stimuli.length + 1}`}
+          onClose={() => setShowGrating(false)}
+        />
+      )}
       <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ textAlign: "left", color: "#888" }}>
@@ -56,7 +67,9 @@ export function StimuliPanel({ conn, snapshot }: Props) {
               </td>
               <td>{s.name || <em>—</em>}</td>
               <td>{s.kind}</td>
-              <td>{Math.round(s.pos.x)}, {Math.round(s.pos.y)}</td>
+              <td style={{ fontFamily: "monospace", whiteSpace: "pre" }}>
+                {String(Math.round(s.pos.x)).padStart(6)},{String(Math.round(s.pos.y)).padStart(6)}
+              </td>
               <td><button onClick={() => conn?.stimuli.delete(s.handle)}>✕</button></td>
             </tr>
           ))}

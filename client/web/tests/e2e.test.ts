@@ -9,13 +9,13 @@
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { connect as netConnect } from "node:net";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { Connection, rgb } from "../src/index.js";
+import { Connection, NotSupportedError, rgb } from "../src/index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const WEB_PORT = 8137; // dedicated test ports; never collide with a real server
@@ -58,6 +58,7 @@ async function waitForPort(port: number, attempts = 40): Promise<void> {
 
 let server: ChildProcess;
 let conn: Connection;
+let configDir: string;
 
 describe("vstimd web client e2e (--null)", () => {
   beforeAll(async () => {
@@ -65,11 +66,15 @@ describe("vstimd web client e2e (--null)", () => {
     // with a real vstimd the developer may be running.
     const rig = join(tmpdir(), `vstimd-e2e-rig-${process.pid}.toml`);
     writeFileSync(rig, `[vtl]\nshm_name = "/vstimd_e2e_${process.pid}"\n`);
+    // Isolated config dir so saved configs don't litter the repo (the default
+    // dir is the cwd) and don't collide between runs.
+    configDir = mkdtempSync(join(tmpdir(), "vstimd-e2e-cfg-"));
     server = spawn(
       serverBinary(),
       [
         "--null", "--web-port", String(WEB_PORT),
         "--zmq-port", String(ZMQ_PORT), "--rig-config", rig,
+        "--config-dir", configDir,
       ],
       { stdio: "ignore" },
     );
@@ -80,6 +85,7 @@ describe("vstimd web client e2e (--null)", () => {
   afterAll(() => {
     conn?.close();
     server?.kill("SIGTERM");
+    if (configDir) rmSync(configDir, { recursive: true, force: true });
   });
 
   it("creates a stimulus and returns a handle", async () => {
@@ -173,5 +179,72 @@ describe("vstimd web client e2e (--null)", () => {
     expect(ours!.handle).toBe(handle);
     expect(ours!.pos.x).toBeCloseTo(333, 3);
     expect(ours!.pos.y).toBeCloseTo(-111, 3);
+  });
+
+  it("applies the generic outline / draw-mode setters", async () => {
+    const h = await conn.stimuli.shapes.createRect({ width: 40, height: 40, name: "outlined" });
+    // No snapshot field for these yet — assert the commands are accepted (no throw).
+    await conn.stimuli.setDrawMode(h, "filledAndOutlined");
+    await conn.stimuli.setOutlineColor(h, rgb(0, 0, 1));
+    await conn.stimuli.setOutlineWidth(h, 3);
+    await conn.stimuli.setName(h, "outlined-2");
+
+    const snap = await conn.nextSnapshot();
+    expect(snap.stimuli.find((s) => s.name === "outlined-2")).toBeDefined();
+  });
+
+  it("sends draw-order commands (server-side gap: throws NotSupported)", async () => {
+    // The client builds these correctly, but the server does not yet implement
+    // them — see https://github.com/braemons/vstimd/issues/43. Tighten this to
+    // assert the reorder once the server supports it.
+    const a = await conn.stimuli.shapes.createRect({ width: 10, height: 10, name: "order-a" });
+    const b = await conn.stimuli.shapes.createRect({ width: 10, height: 10, name: "order-b" });
+    await expect(conn.stimuli.bringToFront(a)).rejects.toBeInstanceOf(NotSupportedError);
+    await expect(conn.stimuli.sendToBack(b)).rejects.toBeInstanceOf(NotSupportedError);
+    await expect(conn.stimuli.swapDrawOrder(a, b)).rejects.toBeInstanceOf(NotSupportedError);
+  });
+
+  it("lists VTL lines via conn.vtl.list()", async () => {
+    await conn.vtl.setName(0, 2, "output", "shutter");
+    const lines = await conn.vtl.list();
+    const ours = lines.find((l) => l.name === "shutter");
+    expect(ours).toBeDefined();
+    expect(ours!.direction).toBe("output");
+    expect(ours!.bank).toBe(0);
+    expect(ours!.bit).toBe(2);
+  });
+
+  it("creates, arms, and lists an animation", async () => {
+    const h = await conn.stimuli.shapes.createRect({ width: 20, height: 20, name: "flash-me" });
+    const anim = await conn.animations.flash(h, { durationFrames: 5, name: "flash-anim" });
+    expect(anim).toBeGreaterThan(0);
+
+    await conn.animations.arm(anim);
+    const list = await conn.animations.list();
+    const ours = list.find((a) => a.handle === anim);
+    expect(ours).toBeDefined();
+    expect(ours!.name).toBe("flash-anim");
+
+    const details = await conn.animations.query(anim);
+    expect(details.stimuli).toContain(h);
+    // Single source of truth: the server sends the same canonical type_name (the
+    // serde config tag) in both list() and query(); the client passes it through.
+    expect(ours!.typeName).toBe("FlashForNFrames");
+    expect(details.typeName).toBe("FlashForNFrames");
+  });
+
+  it("saves, lists, retrieves, and loads a config", async () => {
+    await conn.stimuli.shapes.createRect({ width: 50, height: 50, name: "cfg-rect" });
+    await conn.config.save("e2e_web", { overwrite: true });
+
+    expect(await conn.config.list()).toContain("e2e_web");
+
+    const json = await conn.config.retrieve();
+    expect(json).toContain("cfg-rect");
+
+    // Reload (replace) and confirm the stimulus is restored.
+    await conn.config.load("e2e_web");
+    const snap = await conn.nextSnapshot();
+    expect(snap.stimuli.find((s) => s.name === "cfg-rect")).toBeDefined();
   });
 });

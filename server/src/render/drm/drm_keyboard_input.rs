@@ -7,9 +7,17 @@ use crate::render::overlay_ui::OverlayGroup;
 
 // ── TTY keyboard suppression guard ───────────────────────────────────────────
 
-/// Disables echo and canonical processing on the controlling TTY for the
-/// lifetime of DRM mode. Flushes any buffered input on drop so characters
-/// typed during the session don't appear in the shell afterwards.
+/// Disables echo and canonical processing on the target VT (tty3 by default,
+/// `VSTIMD_TTY` override) for the lifetime of DRM mode. Flushes any buffered
+/// input on drop so characters typed during the session don't appear once
+/// the VT returns to text mode.
+///
+/// Deliberately opens the target VT device directly rather than `/dev/tty`
+/// (the calling process's controlling terminal) — same reasoning as
+/// [`super::drm_virtual_terminal::DrmVtGuard`]. Over SSH (no `DISPLAY` →
+/// DRM auto-detected), `/dev/tty` is the SSH pty, not the console VT; tweaking
+/// its termios would affect the SSH session itself and had previously
+/// swallowed Ctrl+C there.
 ///
 /// Uses tcsetattr rather than KDSKBMODE: the latter only works on real VT
 /// console nodes and requires CAP_SYS_TTY_CONFIG; tcsetattr works on any
@@ -21,9 +29,10 @@ struct TtyKbdGuard {
 
 impl TtyKbdGuard {
     fn acquire() -> Option<Self> {
-        let fd = unsafe { libc::open(c"/dev/tty".as_ptr(), libc::O_RDWR | libc::O_CLOEXEC) };
+        let target_vt = super::drm_virtual_terminal::vt_number_from_env();
+        let fd = super::drm_virtual_terminal::open_vt(target_vt);
         if fd < 0 {
-            log::warn!("vstimd: could not open /dev/tty — keys may echo to terminal");
+            log::warn!("vstimd: could not open /dev/tty{target_vt} — keys may echo to terminal");
             return None;
         }
         let mut saved: libc::termios = unsafe { std::mem::zeroed() };
@@ -32,9 +41,13 @@ impl TtyKbdGuard {
             return None;
         }
         let mut raw = saved;
-        // Disable echo and canonical (line-buffered) mode.
-        raw.c_lflag &=
-            !(libc::ECHO | libc::ECHOE | libc::ECHOK | libc::ECHONL | libc::ICANON | libc::ISIG);
+        // Disable echo, canonical (line-buffered) mode, and signal generation
+        // (Ctrl+C/Ctrl+\/Ctrl+Z) on the console VT. Real keyboard input is
+        // grabbed exclusively via libinput and never reaches this tty, so
+        // ISIG here is inert — but it's the console VT's own termios, not
+        // whatever terminal launched the process, so it can't interfere with
+        // signal delivery over SSH.
+        raw.c_lflag &= !(libc::ECHO | libc::ECHOE | libc::ECHOK | libc::ECHONL | libc::ICANON | libc::ISIG);
         if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw) } < 0 {
             log::warn!("vstimd: tcsetattr failed — keys may echo to terminal");
             unsafe { libc::close(fd) };
@@ -145,6 +158,14 @@ impl InputState {
                 29 | 97 => { self.modifiers.ctrl  = pressed; continue; } // L/R CTRL
                 56 | 100 => { self.modifiers.alt  = pressed; continue; } // L/R ALT
                 _ => {}
+            }
+
+            // Ctrl+Q → quit. DRM mode has no window manager to send a close
+            // request (unlike winit's Alt+F4/CloseRequested), so this is the
+            // only in-session hotkey; SIGINT/SIGTERM still work too.
+            if pressed && self.modifiers.ctrl && !self.modifiers.alt && code == 16 {
+                app_keys.push(AppKey::Quit);
+                continue;
             }
 
             // Ctrl+Alt+F1–F12 → VT switch (libinput grabs input exclusively, so the

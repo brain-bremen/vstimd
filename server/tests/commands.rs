@@ -5,7 +5,7 @@
 use prost::Message;
 use vstimd::proto;
 use vstimd::proto::request;
-use vstimd::scene::{SceneState, ShapeStimulus, Stimulus};
+use vstimd::scene::{SceneState, Stimulus};
 use vstimd::Color;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -81,15 +81,14 @@ fn test_create_rect_with_fill() {
             center: None,
             width: 0.0,
             height: 0.0,
-            fill_color: Some(fill.clone()),
+            fill_color: Some(fill),
             ..Default::default()
         },
     ), None);
     assert!(is_ok(&resp));
     let h = resp.handle as u32;
     let entry = scene.stimuli.get_mut(&h).unwrap();
-    let Stimulus::Shape(s) = &mut entry.stimulus else { panic!("expected shape stimulus") };
-    let appearance = s.appearance();
+    let appearance = entry.stimulus.shape_appearance().expect("expected shape stimulus");
     assert_eq!(appearance.live.fill_color.r, fill.r);
     assert_eq!(appearance.live.fill_color.g, fill.g);
     assert_eq!(appearance.live.fill_color.b, fill.b);
@@ -108,9 +107,9 @@ fn test_create_rect_defaults() {
     let h = resp.handle as u32;
     let entry = scene.stimuli.get_mut(&h).unwrap();
 
-    let Stimulus::Shape(ShapeStimulus::Rect(r)) = &mut entry.stimulus else { panic!("expected Rect stimulus") };
+    let Stimulus::Rect(r) = &mut entry.stimulus else { panic!("expected Rect stimulus") };
     assert_eq!(r.size.live, [50.0, 50.0]);
-    assert_eq!(r.appearance.live.fill_color, default_fill);
+    assert_eq!(r.common.appearance.live.fill_color, default_fill);
 }
 
 #[test]
@@ -224,11 +223,11 @@ fn test_create_ellipse() {
     assert!(is_ok(&resp), "unexpected error: {}", resp.error);
     let h = resp.handle as u32;
     assert!(h > 0);
-    let Stimulus::Shape(ShapeStimulus::Ellipse(e)) = &scene.stimuli[&h].stimulus else {
+    let Stimulus::Ellipse(e) = &scene.stimuli[&h].stimulus else {
         panic!("expected Ellipse stimulus");
     };
     assert_eq!(e.radii.live, [60.0, 30.0]);
-    assert_eq!(e.transform.live.angle, 45.0);
+    assert_eq!(e.common.transform.live.angle, 45.0);
 }
 
 #[test]
@@ -258,8 +257,7 @@ fn test_set_fill_color() {
         })),
     }, None);
     assert!(is_ok(&resp));
-    let Stimulus::Shape(s) = &scene.stimuli.get(&h).unwrap().stimulus else { panic!("expected shape") };
-    let app = s.appearance();
+    let app = scene.stimuli.get(&h).unwrap().stimulus.shape_appearance().expect("expected shape");
     assert_eq!(app.live.fill_color, Color::new(1.0, 0.0, 0.5, 0.8));
 }
 
@@ -319,13 +317,12 @@ fn test_immediate_mode_composes_mutations_and_marks_dirty() {
     assert_eq!(t.live.pos, [15.0, 25.0]);
     assert_eq!(t.live.angle, 30.0);
 
-    let Stimulus::Shape(s) = stim else { panic!("expected shape") };
-    let app = s.appearance();
+    let app = stim.shape_appearance().expect("expected shape");
     assert_eq!(app.live.fill_color, Color::new(0.1, 0.2, 0.3, 0.9));
     assert!(app.live.draw_mode == vstimd::scene::DrawMode::Stroke);
     assert_eq!(app.live.outline_color, Color::new(0.8, 0.7, 0.6, 0.5));
     assert_eq!(app.live.stroke_width, 7.0);
-    assert!(s.flags().dirty);
+    assert!(stim.flags().dirty);
 }
 
 #[test]
@@ -337,15 +334,14 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
 
     let stim_obj = &mut scene.stimuli.get_mut(&h).unwrap().stimulus;
     stim_obj.transform_mut().live = vstimd::scene::Transform2D { pos: [1.0, 2.0], angle: 3.0 };
-    let Stimulus::Shape(s) = stim_obj else { panic!("expected shape") };
     {
-        let app = s.appearance_mut();
+        let app = stim_obj.shape_appearance_mut().expect("expected shape");
         app.live.fill_color = Color::new(0.11, 0.12, 0.13, 0.14);
         app.live.outline_color = Color::new(0.21, 0.22, 0.23, 0.24);
         app.live.stroke_width = 2.5;
         app.live.draw_mode = vstimd::scene::DrawMode::FillAndStroke;
     }
-    s.flags_mut().dirty = false;
+    stim_obj.flags_mut().dirty = false;
 
     let resp = scene.handle_request(set_deferred_mode_req(true, false), None);
     assert!(is_ok(&resp));
@@ -401,8 +397,7 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     assert_eq!(t.copy.pos, [15.0, 25.0]);
     assert_eq!(t.copy.angle, 30.0);
 
-    let Stimulus::Shape(s) = stim else { panic!("expected shape") };
-    let app = s.appearance();
+    let app = stim.shape_appearance().expect("expected shape");
     assert_eq!(app.live.fill_color, Color::new(0.11, 0.12, 0.13, 0.14));
     assert_eq!(app.live.outline_color, Color::new(0.21, 0.22, 0.23, 0.24));
     assert_eq!(app.live.stroke_width, 2.5);
@@ -411,7 +406,7 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     assert_eq!(app.copy.outline_color, Color::new(0.8, 0.7, 0.6, 0.5));
     assert_eq!(app.copy.stroke_width, 7.0);
     assert!(app.copy.draw_mode == vstimd::scene::DrawMode::Stroke);
-    assert!(!s.flags().dirty);
+    assert!(!stim.flags().dirty);
 
     let resp = scene.handle_request(set_deferred_mode_req(false, false), None);
     assert!(is_ok(&resp));
@@ -426,13 +421,12 @@ fn test_deferred_mode_stages_composed_mutations_until_flip() {
     let t = stim.transform();
     assert_eq!(t.live.pos, [15.0, 25.0]);
     assert_eq!(t.live.angle, 30.0);
-    let Stimulus::Shape(s) = stim else { panic!("expected shape") };
-    let app = s.appearance();
+    let app = stim.shape_appearance().expect("expected shape");
     assert_eq!(app.live.fill_color, Color::new(0.1, 0.2, 0.3, 0.9));
     assert_eq!(app.live.outline_color, Color::new(0.8, 0.7, 0.6, 0.5));
     assert_eq!(app.live.stroke_width, 7.0);
     assert!(app.live.draw_mode == vstimd::scene::DrawMode::Stroke);
-    assert!(s.flags().dirty);
+    assert!(stim.flags().dirty);
 }
 
 #[test]
@@ -449,7 +443,7 @@ fn test_set_rect_size() {
         })),
     }, None);
     assert!(is_ok(&resp));
-    let Stimulus::Shape(ShapeStimulus::Rect(r)) = &scene.stimuli[&h].stimulus else { panic!("expected Rect") };
+    let Stimulus::Rect(r) = &scene.stimuli[&h].stimulus else { panic!("expected Rect") };
     assert_eq!(r.size.live, [40.0, 20.0]);
 }
 
