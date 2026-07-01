@@ -160,6 +160,14 @@ impl InputState {
                 _ => {}
             }
 
+            // Ctrl+Q → quit. DRM mode has no window manager to send a close
+            // request (unlike winit's Alt+F4/CloseRequested), so this is the
+            // only in-session hotkey; SIGINT/SIGTERM still work too.
+            if pressed && self.modifiers.ctrl && !self.modifiers.alt && code == 16 {
+                app_keys.push(AppKey::Quit);
+                continue;
+            }
+
             // Ctrl+Alt+F1–F12 → VT switch (libinput grabs input exclusively, so the
             // kernel never sees these; we forward them ourselves). Takes priority
             // over plain-Fn group selection.
