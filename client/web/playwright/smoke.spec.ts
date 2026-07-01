@@ -90,6 +90,32 @@ test("system: Hide all disables every stimulus", async ({ page }) => {
   await expect(checkbox).not.toBeChecked(); // reconciled via the next snapshot
 });
 
+test("config: save then load restores the scene", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("connected")).toBeVisible();
+
+  // Create a named stimulus, then save the scene under a name.
+  const conn = await Connection.connect(BACKEND);
+  await conn.stimuli.shapes.createRect({ name: "cfg-rect" });
+  await expect(page.locator("tr", { hasText: "cfg-rect" })).toBeVisible();
+
+  await page.getByText("overwrite if exists").click(); // tolerate re-runs
+  await page.getByPlaceholder("save as…").fill("ui_test_cfg");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.locator("tr", { hasText: "ui_test_cfg" })).toBeVisible();
+
+  // Clear the scene, then Load must restore the stimulus.
+  await conn.system.deleteAll();
+  await expect(page.locator("tr", { hasText: "cfg-rect" })).toHaveCount(0);
+
+  await page
+    .locator("tr", { hasText: "ui_test_cfg" })
+    .getByRole("button", { name: "Load", exact: true })
+    .click();
+  await expect(page.locator("tr", { hasText: "cfg-rect" })).toBeVisible();
+  conn.close();
+});
+
 test("drag on the map moves the stimulus (RF mapping)", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByText("connected")).toBeVisible();

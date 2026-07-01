@@ -4,6 +4,7 @@ import { StimuliPanel } from "./StimuliPanel.js";
 import { VtlPanel } from "./VtlPanel.js";
 import { AnimationsPanel } from "./AnimationsPanel.js";
 import { SystemPanel } from "./SystemPanel.js";
+import { ConfigPanel } from "./ConfigPanel.js";
 
 export function App() {
   const { conn, snapshot, connected } = useScene();
@@ -28,6 +29,7 @@ export function App() {
         <VtlPanel conn={conn} snapshot={snapshot} />
         <AnimationsPanel conn={conn} />
         <SystemPanel conn={conn} snapshot={snapshot} />
+        <ConfigPanel conn={conn} />
       </div>
       <p style={{ color: "#666", fontSize: 12, marginTop: 12 }}>
         Drag a stimulus on the map to move it (receptive-field mapping).
