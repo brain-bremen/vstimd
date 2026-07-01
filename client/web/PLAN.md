@@ -62,6 +62,12 @@ React UI  ──uses──▶  client library (public API)  ──wraps──▶
 2. **UI panels** to match the egui overlay: VTL, Animations, System
    (background/photodiode/deferred), Config (save/load), Log
    (snapshot.commandLog + server log). Creation dialogs for all stimulus types.
+   - Modal `Dialog` shell (`src/app/Dialog.tsx`) with a grating creation dialog
+     (`GratingDialog.tsx`) and a couple-visibility animation dialog
+     (`CoupleVisibilityDialog.tsx`). These are hand-written for now; all three
+     carry a TODO to regenerate from the config JSON Schema (step 1) so the
+     fields stay in sync with the server. Remaining stimulus/animation dialogs
+     still to add.
 3. **Map enhancements**: select + resize/rotate handles (→ setRectSize/
    setCircleRadius/setEllipseSize/setOrientation); grating/text richer rendering;
    click-to-select wired to the panels.

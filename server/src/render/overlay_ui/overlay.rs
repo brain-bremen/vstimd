@@ -212,7 +212,9 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                                                 egui::Color32::DARK_GRAY
                                             } else { egui::Color32::WHITE }
                                         )).on_hover_text(&uuid_str);
-                                        ui.label(format!("{:.0},{:.0}", pos[0], pos[1]));
+                                        ui.label(egui::RichText::new(
+                                            format!("{:>6.0},{:>6.0}", pos[0], pos[1])
+                                        ).monospace());
                                         ui.label(size_label);
                                         if ui.small_button("x")
                                             .on_hover_text("Delete stimulus").clicked() {

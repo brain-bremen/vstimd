@@ -23,11 +23,11 @@ export function App() {
           </span>
         )}
       </header>
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }}>
         <StimulusMap conn={conn} snapshot={snapshot} />
         <StimuliPanel conn={conn} snapshot={snapshot} />
         <VtlPanel conn={conn} snapshot={snapshot} />
-        <AnimationsPanel conn={conn} />
+        <AnimationsPanel conn={conn} snapshot={snapshot} />
         <SystemPanel conn={conn} snapshot={snapshot} />
         <ConfigPanel conn={conn} />
       </div>

@@ -3,10 +3,12 @@
 // this panel polls conn.animations.list() and refreshes after each action.
 
 import { useCallback, useEffect, useState } from "react";
-import type { AnimationInfo, AnimationState, Connection } from "../index.js";
+import type { AnimationInfo, AnimationState, Connection, SceneSnapshot } from "../index.js";
+import { CoupleVisibilityDialog } from "./CoupleVisibilityDialog.js";
 
 interface Props {
   conn: Connection | null;
+  snapshot: SceneSnapshot | null;
 }
 
 const STATE_COLOR: Record<AnimationState, string> = {
@@ -16,8 +18,9 @@ const STATE_COLOR: Record<AnimationState, string> = {
   done: "#666",
 };
 
-export function AnimationsPanel({ conn }: Props) {
+export function AnimationsPanel({ conn, snapshot }: Props) {
   const [anims, setAnims] = useState<AnimationInfo[]>([]);
+  const [showCouple, setShowCouple] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!conn) return;
@@ -43,6 +46,20 @@ export function AnimationsPanel({ conn }: Props) {
   return (
     <div style={{ minWidth: 280 }}>
       <h3>Animations</h3>
+      <div style={{ marginBottom: 8 }}>
+        <button disabled={!conn} onClick={() => setShowCouple(true)}>+ Couple visibility…</button>
+      </div>
+      {showCouple && conn && (
+        <CoupleVisibilityDialog
+          conn={conn}
+          snapshot={snapshot}
+          defaultName={`couple ${anims.length + 1}`}
+          onClose={() => {
+            setShowCouple(false);
+            void refresh();
+          }}
+        />
+      )}
       {anims.length === 0 ? (
         <p style={{ color: "#666", fontSize: 13 }}>No animations.</p>
       ) : (
