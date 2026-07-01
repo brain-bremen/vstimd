@@ -19,10 +19,12 @@ The repo ships a `Makefile` with a `DESTDIR`-aware `install` target — the same
 target used by the `.deb` and `.rpm` packaging backends.
 
 ```bash
-# 1. Build
-cargo build --release          # or: make build
+# 1. Build as your user (embeds the browser control UI — needs Node/npm + cargo).
+#    Run this WITHOUT sudo: root has no cargo/rustup in its PATH.
+make build
 
-# 2. Install files and create the vstimd system user
+# 2. Install files and create the vstimd system user (installs the binary from
+#    step 1 — does not rebuild, so cargo is not needed under sudo).
 sudo make install              # → /usr/bin/vstimd, /usr/lib/systemd/system/, /usr/lib/sysusers.d/
 sudo make setup-user           # runs systemd-sysusers to create the vstimd user/groups
 
@@ -31,12 +33,19 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now vstimd
 ```
 
+`make build` compiles the React UI (`client/web`) and bakes it into the binary
+via the `embed-ui` feature, so the running server serves the full control UI at
+`http://<device>:8080` — no separate web deployment needed (see
+[Web control surface](#web-control-surface)). This requires Node/npm on the build
+host; use `make build-server` for a UI-less binary that needs no Node.
+
 ### Makefile targets
 
 | Target | Effect |
 |---|---|
-| `make build` | `cargo build --release` |
-| `make install` | Install binary, unit file, and sysusers conf to `$(DESTDIR)$(PREFIX)/…` |
+| `make build` | Build the React UI, then `cargo build --release --features embed-ui` (deployable binary with the browser UI baked in) |
+| `make build-server` | `cargo build --release` — server only, no embedded UI, no Node needed |
+| `make install` | Install the pre-built binary, unit file, and sysusers conf to `$(DESTDIR)$(PREFIX)/…` (run `make build` first) |
 | `make uninstall` | Stop, disable, and remove all installed files |
 | `make setup-user` | Create the `vstimd` system user via `systemd-sysusers` |
 
@@ -52,6 +61,22 @@ sudo make install PREFIX=/usr/local UNITDIR=/usr/local/lib/systemd/system
 `make setup-user` then calls `systemd-sysusers` to create the `vstimd` system user
 and add it to the `input`, `video`, and `render` groups.  Package installs (`.deb`,
 `.rpm`) run this step automatically in their post-install hooks.
+
+### Web control surface
+
+The server runs an HTTP + WebSocket control surface, enabled by default and bound
+to `0.0.0.0:8080` (all interfaces). Once vstimd is running, browse to
+`http://<device-ip>:8080` from any machine on the same network to control it — no
+client install needed.
+
+* The full React UI is served here **only when the binary was built with the
+  embedded UI** (`make build`, or the `.deb`/`.rpm` packages — all of which now
+  embed it). A plain `cargo build --release` / `make build-server` binary still
+  runs the server but serves a placeholder page at `/`; the WebSocket API stays
+  fully functional.
+* Configure via the rig-config (`[web] enabled`, `[web] port`) or CLI flags
+  (`--no-web`, `--web-port <N>`).
+* If the device runs a firewall, open the port: e.g. `sudo ufw allow 8080/tcp`.
 
 ---
 
@@ -282,23 +307,26 @@ Both `.deb` and `.rpm` backends delegate file installation to `make install` via
 
 ### Build the .deb (Docker — recommended)
 
-```bash
-# 1. Build the binary.
-cargo build --release
+The container builds everything itself — Rust, Node (for the embedded web UI),
+and the packaging tools are all in the image — so no host toolchain or prior
+`cargo build` is needed. The web UI is compiled and baked into the binary
+automatically.
 
-# 2. Build the .deb inside a container (no packaging tools needed on host).
+```bash
+make deb-amd64        # → dist/braemons-vstimd_<version>-1_amd64.deb
+
+# …or invoke the builder directly:
 docker build -f packaging/docker/Dockerfile.deb-builder -t vstimd-deb-builder .
-docker run --rm -v $(pwd)/packaging:/output vstimd-deb-builder
-# packaging/vstimd_0.1.0-1_amd64.deb is ready
+docker run --rm -v $(pwd)/dist:/output vstimd-deb-builder
 ```
 
 ### Build the .deb (native)
 
-Requires `debhelper` >= 13 and `dpkg-dev` on the host.
+Requires `debhelper` >= 13 and `dpkg-dev` (plus Node/npm for the UI) on the host.
 `dpkg-buildpackage` expects `debian/` at the repo root, so symlink it first:
 
 ```bash
-cargo build --release
+make build            # embedded binary → target/release/vstimd (builds the web UI)
 ln -sf packaging/debian debian
 dpkg-buildpackage -b --no-sign
 rm debian
@@ -307,13 +335,11 @@ rm debian
 
 ### Cross-compile for arm64 (Jetson / Raspberry Pi)
 
-```bash
-sudo apt install gcc-aarch64-linux-gnu
-cargo build --release --target aarch64-unknown-linux-gnu
+The Docker builder handles the arm64 cross-compile and the (host-arch) web UI
+build in one step:
 
-# Docker build picks up the cross-compiled binary automatically via debian/rules.
-docker build -f packaging/docker/Dockerfile.deb-builder -t vstimd-deb-builder .
-docker run --rm -v $(pwd)/packaging:/output vstimd-deb-builder
+```bash
+make deb-arm64        # → dist/braemons-vstimd_<version>-1_arm64.deb
 ```
 
 ### Install on target

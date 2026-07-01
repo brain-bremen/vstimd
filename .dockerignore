@@ -1,6 +1,15 @@
 target/
 .git/
+# Exclude client/ except the web frontend, which the deb builder compiles and
+# embeds into the binary (--features embed-ui). Keep node_modules / generated
+# artifacts out so they're rebuilt cleanly (and never leak host-arch binaries).
 client/
+!client/web/
+client/web/node_modules/
+client/web/dist/
+client/web/src/_proto/
+client/web/test-results/
+client/web/playwright-report/
 extern/
 docs/
 dev/
