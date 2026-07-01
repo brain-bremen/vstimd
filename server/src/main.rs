@@ -284,6 +284,10 @@ fn parse_args() -> Args {
                 });
                 web_port = Some(p);
             }
+            "--version" | "-V" => {
+                print_version();
+                std::process::exit(0);
+            }
             "--help" | "-h" => {
                 print_usage();
                 std::process::exit(0);
@@ -369,6 +373,43 @@ fn notify_ready() {
     }
 }
 
+/// Print version and build provenance: how the binary was compiled (profile,
+/// target, enabled features — notably whether the browser UI is embedded) and
+/// when. Goes to stdout so `vstimd --version` is pipe-friendly.
+fn print_version() {
+    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+
+    // Enabled Cargo features that affect deployment.
+    let mut features: Vec<&str> = Vec::new();
+    if cfg!(feature = "web") {
+        features.push("web");
+    }
+    if cfg!(feature = "embed-ui") {
+        features.push("embed-ui");
+    }
+    let features = if features.is_empty() {
+        "(none)".to_string()
+    } else {
+        features.join(", ")
+    };
+
+    println!("vstimd {}", env!("CARGO_PKG_VERSION"));
+    println!("  commit:   {}", env!("VSTIMD_GIT_HASH"));
+    println!("  built:    {}", env!("VSTIMD_BUILD_DATE"));
+    println!("  target:   {}", env!("VSTIMD_TARGET"));
+    println!("  profile:  {profile}");
+    println!("  features: {features}");
+    // The single question this flag most often answers: is the web UI baked in?
+    let web_ui = if cfg!(feature = "embed-ui") {
+        "embedded (served at http://<host>:8080)"
+    } else if cfg!(feature = "web") {
+        "not embedded (WebSocket API only; `/` serves a placeholder)"
+    } else {
+        "disabled (compiled out)"
+    };
+    println!("  web UI:   {web_ui}");
+}
+
 fn print_usage() {
     eprintln!("Usage: vstimd [OPTIONS]");
     eprintln!();
@@ -383,6 +424,7 @@ fn print_usage() {
     eprintln!("      --config <path>       Load stim-config file at startup");
     eprintln!("      --config-dir <path>   Directory for named stim-config files (default: .)");
 
+    eprintln!("  -V, --version             Show version and build info (features, target, date)");
     eprintln!("  -h, --help                Show this help message");
     eprintln!();
     eprintln!("Render target is automatically detected:");

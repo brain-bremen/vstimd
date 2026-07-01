@@ -7,6 +7,28 @@ fn main() {
         .unwrap_or_else(|| "unknown\n".to_string());
     println!("cargo:rustc-env=VSTIMD_BUILD_DATE={}", build_date.trim());
 
+    // Short git commit (with a `-dirty` suffix for uncommitted changes). Falls
+    // back to "unknown" when built from a tarball without a .git dir.
+    let git_hash = std::process::Command::new("git")
+        .args(["describe", "--always", "--dirty", "--abbrev=12"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=VSTIMD_GIT_HASH={git_hash}");
+    // Re-run (refreshing build date + git hash) when HEAD moves.
+    println!("cargo:rerun-if-changed=../.git/HEAD");
+    println!("cargo:rerun-if-changed=../.git/index");
+
+    // Target triple the binary is built for (e.g. aarch64-unknown-linux-gnu).
+    println!(
+        "cargo:rustc-env=VSTIMD_TARGET={}",
+        std::env::var("TARGET").unwrap_or_else(|_| "unknown".to_string())
+    );
+
     for proto in &[
         "../proto/vstimd/v1/vec2.proto",
         "../proto/vstimd/v1/color.proto",
