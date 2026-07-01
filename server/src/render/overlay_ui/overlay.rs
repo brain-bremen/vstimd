@@ -684,7 +684,13 @@ fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Opti
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Banks").strong());
         ui.separator();
-        ui.selectable_value(&mut fmt, BankFmt::Dec, "Dec");
+        // Anchor keyboard focus here when the panel is F-keyed: this row is always
+        // present, so Tab navigation starts inside the VTL panel even when there
+        // are no named input lines (whose fire buttons used to be the only anchor).
+        let dec = ui.selectable_value(&mut fmt, BankFmt::Dec, "Dec");
+        if want_focus {
+            dec.request_focus();
+        }
         ui.selectable_value(&mut fmt, BankFmt::Hex, "Hex");
         ui.selectable_value(&mut fmt, BankFmt::Bin, "Bin");
     });
