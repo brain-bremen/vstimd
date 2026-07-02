@@ -1,4 +1,30 @@
-/* Compact comparison matrix (used on why-vstimd.md).
+/* ── University of Bremen corporate-design colours ───────────────────────────
+   Pulled from uni-bremen.de: blue #00326d (primary), red #c60c2b (accent),
+   with darker/lighter tints. Applied as Material theme variables. */
+:root {
+  --ub-blue:        #00326d;
+  --ub-blue-dark:   #002857;
+  --ub-blue-light:  #d5e3f3;
+  --ub-red:         #c60c2b;
+  --ub-red-dark:    #aa1f44;
+
+  --md-primary-fg-color:        var(--ub-blue);
+  --md-primary-fg-color--light: #21467a;
+  --md-primary-fg-color--dark:  var(--ub-blue-dark);
+  --md-primary-bg-color:        #ffffff;
+
+  --md-accent-fg-color:             var(--ub-red);
+  --md-accent-fg-color--transparent: rgba(198, 12, 43, 0.1);
+}
+
+/* Dark mode: keep the blue header, brighten the red so links stay legible. */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: var(--ub-blue);
+  --md-accent-fg-color:  #ff5d6c;
+  --md-typeset-a-color:  #6ea8ff;
+}
+
+/* ── Compact comparison matrix (used on why-vstimd.md) ───────────────────────
    Many columns are needed, so shrink the font and padding for this table only
    so it fits the content column; horizontal scroll remains as a fallback. */
 .compare-matrix table {
@@ -11,8 +37,8 @@
   padding: 0.35em 0.45em;
 }
 
-/* Emphasise the vstimd column (last one). */
+/* Emphasise the vstimd column (last one) with a faint brand-blue tint. */
 .compare-matrix table td:last-child,
 .compare-matrix table th:last-child {
-  background: var(--md-code-bg-color);
+  background: rgba(0, 50, 109, 0.06);
 }
