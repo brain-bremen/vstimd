@@ -16,7 +16,7 @@ fn no_edges() -> VtlEdges {
 }
 
 fn bit(bank: usize, b: u8) -> VtlBit {
-    VtlBit { bank, bit: b }
+    VtlBit { bank, bit: b, direction: vtl::Direction::Output }
 }
 
 /// Simulate the render loop's copy-advance-writeback pattern.
@@ -25,8 +25,7 @@ fn advance_staged(
     scene: &mut SceneState,
     staged: &mut [u64; vtl::MAX_BANKS],
 ) {
-    let output_snapshot = [0u64; vtl::MAX_BANKS];
-    scene.advance_animations(&no_edges(), &output_snapshot, staged);
+    scene.advance_animations(&no_edges(), &VtlEdges::default(), staged);
 }
 
 // ── VtlState::set_staged_bit / set_staged_bank ────────────────────────────────
@@ -178,9 +177,11 @@ fn staged_bit_from_earlier_frame_not_overwritten_by_later_frame_with_no_animatio
 
 #[test]
 fn cascade_prevention_unaffected_by_persistent_staged() {
-    // Verify that the cascade-prevention guarantee still holds:
-    // animation A's output write is NOT visible to animation B's start_trigger
-    // check in the same frame.
+    // Verify same-frame cascade prevention: animation A's in-progress output
+    // write is NOT visible to animation B's output-directed start_trigger within
+    // the same pass. Output edges are computed *before* the animation pass (from
+    // the committed staged of the previous frame), so B reacts one frame later —
+    // not from A's mid-pass write. Here output_edges is empty, so B stays Armed.
     use vstimd::vtl_state::Edge;
     use vstimd::scene::animation::AnimState;
 
@@ -201,18 +202,18 @@ fn cascade_prevention_unaffected_by_persistent_staged() {
             Animation::FlashForNFrames { duration_frames: 1 },
             vec![],
         );
-        // B starts on a rising edge on output bit 0 — but it checks input_edges, not staged.
+        // B starts on a rising edge of output bit 0. It reads the pre-pass output
+        // edges, not A's mid-pass write into staged.
         e.start_trigger = Some((bit(0, 0), Edge::Rising));
         e
     });
 
     // Frame 0: A completes and writes bit 0 into staged.
-    // B's start_trigger checks input_edges (empty) — B must stay Armed.
-    let output_snapshot = [0u64; vtl::MAX_BANKS]; // snapshot taken before animations
-    scene.advance_animations(&no_edges(), &output_snapshot, &mut staged);
+    // B's start_trigger sees no output edge this pass — B must stay Armed.
+    scene.advance_animations(&no_edges(), &VtlEdges::default(), &mut staged);
 
     assert_eq!(scene.animations[&a].state, AnimState::Done, "A done");
     assert_ne!(staged[0] & 1, 0, "A wrote bit 0 into staged");
     assert_eq!(scene.animations[&b].state, AnimState::Armed,
-        "B stays Armed — does not fire from staged, only from input_edges");
+        "B stays Armed — A's mid-pass write is not visible as an output edge this frame");
 }

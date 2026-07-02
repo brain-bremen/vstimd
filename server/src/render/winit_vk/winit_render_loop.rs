@@ -193,16 +193,16 @@ impl WinitRenderLoopData {
         // render_frame(), so this poll fires at the top of the render loop rather
         // than at the true vblank boundary.  DRM mode gets exact vblank alignment.
         if let Some(vtl) = &self.vtl {
-            let (input_edges, output_snapshot, mut staged) = {
+            let (input_edges, output_edges, mut staged) = {
                 let mut v = vtl.lock().unwrap();
                 v.commit_staged();
-                let edges = v.poll();
-                let snap  = v.output_snapshot();
+                let input_edges = v.poll();
+                let output_edges = v.output_edges();
                 let staged = v.staged;
-                (edges, snap, staged)
+                (input_edges, output_edges, staged)
             };
             self.rs.scene_renderer.scene.write().unwrap().advance_animations(
-                &input_edges, &output_snapshot, &mut staged,
+                &input_edges, &output_edges, &mut staged,
             );
             vtl.lock().unwrap().staged = staged;
         }

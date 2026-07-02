@@ -13,16 +13,20 @@
 ///
 /// **Input lines** (`input_state`, `input_rise_latch`, `input_fall_latch`)
 /// represent signals arriving *into* vstimd from the outside world.
-/// Canonical writer: `nidaqd` — sets bits and latches when a DAQ edge fires.
-/// Software writer: ZMQ `SetInput*` commands (simulate a hardware trigger for testing).
+/// Canonical writer: `daqd` — sets bits and latches when a DAQ edge fires.
+/// Software writer: ZMQ `SetVirtualTriggerLine` (direction=INPUT) commands
+/// (simulate a hardware trigger for testing).
 /// Reader: the render loop, via [`VtlState::poll`].
 /// **vstimd never writes input lines** — not in animations, not in the render loop.
 ///
 /// **Output lines** (`output_state`) represent signals driven *by* vstimd.
 /// Canonical writers: the render loop (animations + vblank trigger).
-/// Software writer: ZMQ `SetOutput*` commands — **debug/manual override only**.
+/// Software writer: ZMQ `SetVirtualTriggerLine` (direction=OUTPUT) commands —
+/// **debug/manual override only**.
 /// In normal operation all output writes come from the render loop.
-/// Reader: `nidaqd` — pulses hardware DAQ lines when a bit goes high.
+/// Reader: `daqd` — woken by the output semaphore strobe that `commit_staged`
+/// posts each frame (it does not poll), then reads `output_state` and pulses
+/// hardware DAQ lines where a bit is high.
 ///
 /// # Timing: where VTL fits in the render loop
 ///
@@ -41,7 +45,7 @@
 ///            mode the write lands within microseconds of the actual scan-out
 ///            flip, aligning outputs with display visibility rather than with
 ///            GPU submission (~0–8 ms earlier).  Outputs stay stable for a full
-///            frame period, giving nidaqd a reliable sampling window.
+///            frame period, giving daqd a reliable sampling window.
 ///         2. The vblank trigger bit is ORed in.  It goes HIGH here to signal
 ///            that vstimd has just woken from vblank and is starting to compute
 ///            the next frame.
@@ -114,6 +118,27 @@
 /// A dedicated animation concept ("pre-final output trigger", N frames before
 /// completion) would make this pattern explicit.  Not yet implemented.
 ///
+/// **Intra-server chaining — deterministic one-frame reaction (no gap):**
+/// An animation's `start_trigger` / `cancel_trigger` may address an *output*
+/// line (see [`VtlBit::direction`]). This lets one animation start or cancel
+/// another entirely inside the server, with no hardware loopback or Python
+/// round-trip. The timing is a fixed one-frame *reaction*, not a gap:
+///
+///   - Animation A pulses an output bit during frame N's animation pass (into
+///     `output_pending`, i.e. `staged`).
+///   - At frame N+1's [A], `commit_staged` writes that bit to shm; [S] then
+///     reads it back via [`VtlState::output_edges`] as a rising edge.
+///   - Animation B, whose trigger reads output edges, reacts in frame N+1's pass.
+///
+/// Because B reads the pre-pass output-edge snapshot — not A's in-progress
+/// `output_pending` — the reaction is independent of animation iteration order
+/// (mirroring `output_ordering_chained_animations_one_frame_latency`). Whether
+/// the visual result is seamless, a one-frame blank, or a one-frame overlap
+/// depends only on when A stops drawing (its `final_action`), not on the trigger
+/// plumbing. A true same-tick (zero-frame) path would require reading
+/// `output_pending` mid-pass with a defined evaluation order and cycle
+/// detection — deliberately out of scope.
+///
 /// **Vblank trigger (special):** Not part of output_pending.  Goes HIGH at [A]
 /// (ORed into the output_pending_prev write) and LOW at [C] (the same
 /// output_pending_prev written again, without the vblank bit).  The pulse width
@@ -125,11 +150,17 @@
 /// > commands provide an additional software-only path for testing and override.
 use vtl::{Direction, VtlOwner, MAX_BANKS};
 
-/// A resolved (bank, bit) address into the VTL shared memory.
+/// A resolved (bank, bit, direction) address into the VTL shared memory.
+///
+/// The direction distinguishes the two independent banks that share the same
+/// (bank, bit) index space. It selects which edge set a trigger reads (input
+/// vs. output); for write-only uses (action trigger lines, the vblank bit) it
+/// is informational.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct VtlBit {
     pub bank: usize,
     pub bit:  u8,
+    pub direction: Direction,
 }
 
 /// A signal edge direction on a VTL line.
@@ -202,7 +233,7 @@ impl VtlState {
         &self.owner
     }
 
-    /// Commit `staged` to shm and signal gpiochip-daqd.
+    /// Commit `staged` to shm and signal daqd.
     /// Called at [A] once per frame from the render thread.
     pub fn commit_staged(&self) {
         let n = self.owner.num_output_banks() as usize;
@@ -249,18 +280,29 @@ impl VtlState {
         edges
     }
 
-    /// Read the current output_state from shm and return a frozen snapshot.
-    /// Called at [S] — after the vblank trigger write, before the animation pass.
-    /// Animations use this to detect edges on output lines (for animation chaining).
-    /// Also updates `prev_output` for the next frame's edge detection.
-    pub fn output_snapshot(&mut self) -> [u64; MAX_BANKS] {
+    /// Read output_state from shm and return the output-line edges since the
+    /// last call, analogous to [`VtlState::poll`] for inputs.
+    ///
+    /// Called at [S] — after `commit_staged` at [A] has written the previous
+    /// frame's animation outputs to shm, and before the animation pass.  Because
+    /// the read happens *after* commit but *before* animations run, an output bit
+    /// raised by animation A during frame N's pass is committed at frame N+1's
+    /// [A] and seen here as a rising edge in frame N+1 — giving a deterministic
+    /// one-frame reaction for animation-to-animation chaining that is independent
+    /// of animation iteration order.
+    ///
+    /// Updates `prev_output` for the next frame's edge detection.
+    pub fn output_edges(&mut self) -> VtlEdges {
         let n = self.owner.num_output_banks() as usize;
-        let mut snapshot = [0u64; MAX_BANKS];
-        for (bank, slot) in snapshot.iter_mut().enumerate().take(n.min(MAX_BANKS)) {
-            *slot = self.owner.output_state(bank);
-            self.prev_output[bank] = *slot;
+        let mut edges = VtlEdges::default();
+        for bank in 0..n.min(MAX_BANKS) {
+            let cur = self.owner.output_state(bank);
+            edges.rising[bank]  = (!self.prev_output[bank]) & cur;
+            edges.falling[bank] = self.prev_output[bank] & (!cur);
+            edges.current[bank] = cur;
+            self.prev_output[bank] = cur;
         }
-        snapshot
+        edges
     }
 
     /// Returns a bitmask array with the vblank trigger bit set (if configured).

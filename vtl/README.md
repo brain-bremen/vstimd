@@ -1,7 +1,8 @@
 # vtl — Virtual Trigger Lines
 
 A lock-free POSIX shared memory segment for exchanging hardware trigger line state
-between vstimd and companion daemons (e.g. `nidaqd` for NI-DAQ hardware).
+between vstimd and companion `*-daqd` hardware bridges (e.g. `gpiochip-daqd` for
+GPIO lines; future `ni-daqd`, `labjack-daqd`, etc.).
 
 ## Concepts
 
@@ -11,7 +12,7 @@ Represent signals arriving *into* vstimd from the outside world.
 
 | Role | Actor |
 |---|---|
-| Canonical writer | `nidaqd` — writes `input_state` and sets latches when a DAQ edge is detected |
+| Canonical writer | `daqd` — writes `input_state` and sets latches when a DAQ edge is detected |
 | Software writer | ZMQ `SetInput*` commands — simulate a hardware trigger for testing |
 | Intended reader | vstimd render loop — calls `VtlState::poll()` once per frame at the **start** of each frame, drains rise/fall latches, and feeds detected edges to the animation system |
 
@@ -23,7 +24,7 @@ Represent signals driven *by* vstimd to report what is on screen.
 |---|---|
 | Canonical writer | vstimd render loop — calls `VtlState::write_outputs()` once per frame at the **end** of each frame, after present/vsync, to commit the frame's output state |
 | Software writer | ZMQ `SetOutput*` commands — manual override for testing |
-| Intended reader | `nidaqd` — polls `output_state` to pulse NI-DAQ hardware lines (frame-sync pulses, stimulus-onset markers) |
+| Intended reader | `daqd` — woken by the output semaphore strobe (posted once per frame), then reads `output_state` to pulse DAQ hardware lines (frame-sync pulses, stimulus-onset markers) |
 
 > **Current status:** `VtlState::poll()` and `VtlState::write_outputs()` are implemented
 > but not yet wired into the render loop.  Currently both directions are accessible only
@@ -194,7 +195,7 @@ let rising  = owner.drain_input_rise(0, u64::MAX);
 let falling = owner.drain_input_fall(0, u64::MAX);
 ```
 
-### Client (nidaqd or test tool)
+### Client (daqd or test tool)
 
 ```rust
 use vtl::VtlClient;

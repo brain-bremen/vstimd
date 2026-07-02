@@ -306,17 +306,17 @@ impl DrmRenderLoopData {
 
             // [A] Commit staged outputs; poll inputs; advance animations.
             if let Some(vtl) = &self.vtl {
-                let (input_edges, output_snapshot, mut staged) = {
+                let (input_edges, output_edges, mut staged) = {
                     let mut v = vtl.lock().unwrap();
                     v.commit_staged();
-                    let edges = v.poll();
-                    let snap  = v.output_snapshot();
+                    let input_edges = v.poll();
+                    let output_edges = v.output_edges();
                     let staged = v.staged;
-                    (edges, snap, staged)
+                    (input_edges, output_edges, staged)
                 };
                 self.rs.scene_renderer.scene.write().unwrap().advance_animations(
                     &input_edges,
-                    &output_snapshot,
+                    &output_edges,
                     &mut staged,
                 );
                 vtl.lock().unwrap().staged = staged;

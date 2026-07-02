@@ -43,7 +43,7 @@ fn rise_latch_set_and_drain() {
     let name = unique_name();
     let owner = VtlOwner::create(&name, 1, 1).expect("create");
 
-    // Simulate nidaqd: OR two rising bits.
+    // Simulate daqd: OR two rising bits.
     owner.set_input_rise(0, 0b0101);
     owner.set_input_rise(0, 0b1010);
 
@@ -94,7 +94,7 @@ fn cross_process_latch_via_client() {
     let owner = VtlOwner::create(&name, 1, 1).expect("create");
     let client = VtlClient::open(&name).expect("open");
 
-    // nidaqd (client) sets a rising edge.
+    // daqd (client) sets a rising edge.
     client.set_input_rise(0, 1 << 5);
     client.set_input_state(0, 1 << 5);
 

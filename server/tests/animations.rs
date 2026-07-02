@@ -13,7 +13,7 @@ use vstimd::scene::deferred::Deferred;
 ///   becomes 1 after the call returns.
 use vstimd::scene::{
     SceneState,
-    animation::{AnimState, Animation, AnimationEntry, CancelAction, FinalAction},
+    animation::{AnimState, Animation, AnimationEntry, CancelAction, FinalAction, StartAction},
     stimulus::{
         RectStimulus, ShapeAppearance, ShapeCommon, Stimulus, StimulusSceneEntry, StimulusFlags,
         Transform2D,
@@ -36,10 +36,19 @@ fn advance(scene: &mut SceneState) -> [u64; vtl::MAX_BANKS] {
     advance_with(scene, &no_edges())
 }
 
-/// Advance by one frame with given input edges.  Returns output_pending.
+/// Advance by one frame with given input edges (no output edges).  Returns output_pending.
 fn advance_with(scene: &mut SceneState, edges: &VtlEdges) -> [u64; vtl::MAX_BANKS] {
+    advance_with_edges(scene, edges, &no_edges())
+}
+
+/// Advance by one frame with explicit input and output edges.  Returns output_pending.
+fn advance_with_edges(
+    scene: &mut SceneState,
+    input_edges: &VtlEdges,
+    output_edges: &VtlEdges,
+) -> [u64; vtl::MAX_BANKS] {
     let mut out = no_outputs();
-    scene.advance_animations(edges, &no_outputs(), &mut out);
+    scene.advance_animations(input_edges, output_edges, &mut out);
     out
 }
 
@@ -133,7 +142,11 @@ fn current_high(bank: usize, bit: u8) -> VtlEdges {
 }
 
 fn bit(bank: usize, bit: u8) -> VtlBit {
-    VtlBit { bank, bit }
+    VtlBit { bank, bit, direction: vtl::Direction::Input }
+}
+
+fn out_bit(bank: usize, bit: u8) -> VtlBit {
+    VtlBit { bank, bit, direction: vtl::Direction::Output }
 }
 
 // ── FlashForNFrames ───────────────────────────────────────────────────────────
@@ -1002,7 +1015,7 @@ fn output_ordering_chained_animations_one_frame_latency() {
         "B stays Armed in same frame A completes (one-frame latency)"
     );
 
-    // Frame N+1: simulate caller committing out and nidaqd delivering a rising edge.
+    // Frame N+1: simulate caller committing out and daqd delivering a rising edge.
     advance_with(&mut scene, &rising_edge(0, 0));
     assert!(
         matches!(anim_state(&scene, b), &AnimState::Running { .. }),
@@ -1429,4 +1442,66 @@ fn two_animations_same_stimulus_last_write_wins() {
         anim_state(&scene, a1),
         &AnimState::Running { frame_counter: 1 }
     ));
+}
+
+// ── Output-edge triggers (intra-server chaining) ──────────────────────────────
+
+fn out_rising_edge(bank: usize, bit: u8) -> VtlEdges {
+    let mut e = VtlEdges::default();
+    e.rising[bank] |= 1u64 << bit;
+    e.current[bank] |= 1u64 << bit;
+    e
+}
+
+#[test]
+fn output_edge_starts_armed_animation() {
+    // B is armed with an OUTPUT-directed start_trigger. It ignores input edges
+    // and fires only when the matching output edge is presented — the deterministic
+    // one-frame handoff a chained animation A would produce.
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, false);
+
+    let b = scene.add_animation({
+        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 5 }, vec![s]);
+        e.start_action = StartAction::ENABLE;
+        e.start_trigger = Some((out_bit(0, 0), Edge::Rising));
+        e
+    });
+
+    // An input edge on the same (bank, bit) must NOT start an output-directed trigger.
+    advance_with(&mut scene, &rising_edge(0, 0));
+    assert!(matches!(anim_state(&scene, b), &AnimState::Armed), "input edge ignored");
+    assert!(!is_enabled(&scene, s));
+
+    // The matching output edge starts B.
+    advance_with_edges(&mut scene, &no_edges(), &out_rising_edge(0, 0));
+    assert!(matches!(anim_state(&scene, b), &AnimState::Running { .. }), "output edge starts B");
+    assert!(is_enabled(&scene, s), "start_action ENABLE applied");
+}
+
+#[test]
+fn output_edge_cancels_running_animation() {
+    // A running animation is cancelled by an OUTPUT-directed cancel_trigger.
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+
+    let a = scene.add_animation({
+        let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 100 }, vec![s]);
+        e.cancel_action = CancelAction::DISABLE;
+        e.cancel_trigger = Some((out_bit(1, 3), Edge::Rising));
+        e
+    });
+
+    advance(&mut scene); // Armed → Running
+    assert!(matches!(anim_state(&scene, a), &AnimState::Running { .. }));
+
+    // Input edge on the same (bank, bit) is not the output line — no cancel.
+    advance_with(&mut scene, &rising_edge(1, 3));
+    assert!(matches!(anim_state(&scene, a), &AnimState::Running { .. }), "input edge ignored");
+
+    // Output edge cancels and runs the DISABLE teardown.
+    advance_with_edges(&mut scene, &no_edges(), &out_rising_edge(1, 3));
+    assert_eq!(anim_state(&scene, a), &AnimState::Done, "output edge cancels A");
+    assert!(!is_enabled(&scene, s), "cancel_action DISABLE applied");
 }

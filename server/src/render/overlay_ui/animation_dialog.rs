@@ -7,6 +7,7 @@
 
 use crate::scene::animation::{Animation, CancelAction, FinalAction, StartAction};
 use crate::scene::{AnimState, AnimationEntry, Edge, VtlBit};
+use vtl::Direction;
 
 /// A VTL line offered as a trigger choice: display label + resolved address.
 #[derive(Clone)]
@@ -54,11 +55,13 @@ pub struct AnimationDialog {
     start_bank: u32,
     start_bit: u32,
     start_trig_rising: bool,
+    start_trig_output: bool,
     // Cancel trigger: abort the animation on a VTL edge.
     cancel_trig_enabled: bool,
     cancel_bank: u32,
     cancel_bit: u32,
     cancel_trig_rising: bool,
+    cancel_trig_output: bool,
     // Cancel actions: applied on cancel (edge or software).
     cancel_disable: bool,
     cancel_toggle_pd: bool,
@@ -99,10 +102,12 @@ impl Default for AnimationDialog {
             start_bank: 0,
             start_bit: 0,
             start_trig_rising: true,
+            start_trig_output: false,
             cancel_trig_enabled: false,
             cancel_bank: 0,
             cancel_bit: 0,
             cancel_trig_rising: true,
+            cancel_trig_output: false,
             cancel_disable: false,
             cancel_toggle_pd: false,
             cancel_restore: false,
@@ -152,12 +157,12 @@ impl AnimationDialog {
                 start_on_phase: self.start_on_phase,
             },
             Kind::EnableOnEdge => Animation::EnableOnTriggerEdge {
-                trigger: trigger.unwrap_or(VtlBit { bank: 0, bit: 0 }),
+                trigger: trigger.unwrap_or(VtlBit { bank: 0, bit: 0, direction: Direction::Input }),
                 edge,
                 enabled: self.enable_to,
             },
             Kind::CoupleVisibility => Animation::CoupleVisibilityToTriggerLine {
-                trigger: trigger.unwrap_or(VtlBit { bank: 0, bit: 0 }),
+                trigger: trigger.unwrap_or(VtlBit { bank: 0, bit: 0, direction: Direction::Input }),
                 polarity: self.polarity,
             },
             Kind::MoveSegments => Animation::MoveAlongSegments2D {
@@ -173,13 +178,15 @@ impl AnimationDialog {
         }
         if self.start_trig_enabled {
             let edge = if self.start_trig_rising { Edge::Rising } else { Edge::Falling };
+            let direction = if self.start_trig_output { Direction::Output } else { Direction::Input };
             entry.config.start_trigger =
-                Some((VtlBit { bank: self.start_bank as usize, bit: self.start_bit as u8 }, edge));
+                Some((VtlBit { bank: self.start_bank as usize, bit: self.start_bit as u8, direction }, edge));
         }
         if self.cancel_trig_enabled {
             let edge = if self.cancel_trig_rising { Edge::Rising } else { Edge::Falling };
+            let direction = if self.cancel_trig_output { Direction::Output } else { Direction::Input };
             entry.config.cancel_trigger =
-                Some((VtlBit { bank: self.cancel_bank as usize, bit: self.cancel_bit as u8 }, edge));
+                Some((VtlBit { bank: self.cancel_bank as usize, bit: self.cancel_bit as u8, direction }, edge));
         }
         // Cancel actions apply to both edge and software cancel.
         let mut cancel_action = CancelAction::empty();
@@ -191,13 +198,17 @@ impl AnimationDialog {
             entry.config.cancel_action_trigger_line = Some(VtlBit {
                 bank: self.cancel_pulse_bank as usize,
                 bit: self.cancel_pulse_bit as u8,
+                direction: Direction::Output,
             });
         }
         entry.config.cancel_action = cancel_action;
         if self.final_trig_enabled {
             entry.config.final_action |= FinalAction::FINAL_ACTION_TRIGGER_LINE;
-            entry.config.final_action_trigger_line =
-                Some(VtlBit { bank: self.final_bank as usize, bit: self.final_bit as u8 });
+            entry.config.final_action_trigger_line = Some(VtlBit {
+                bank: self.final_bank as usize,
+                bit: self.final_bit as u8,
+                direction: Direction::Output,
+            });
         }
         if self.arm_immediately {
             entry.config.state = AnimState::Armed;
@@ -312,6 +323,11 @@ impl AnimationDialog {
                         ui.selectable_value(&mut self.start_trig_rising, true, "Rising");
                         ui.selectable_value(&mut self.start_trig_rising, false, "Falling");
                     });
+                    ui.horizontal(|ui| {
+                        ui.label("Line");
+                        ui.selectable_value(&mut self.start_trig_output, false, "Input");
+                        ui.selectable_value(&mut self.start_trig_output, true, "Output");
+                    });
                 }
                 ui.checkbox(&mut self.cancel_trig_enabled, "Cancel on VTL edge");
                 if self.cancel_trig_enabled {
@@ -321,6 +337,11 @@ impl AnimationDialog {
                         ui.add(egui::DragValue::new(&mut self.cancel_bit).range(0..=63));
                         ui.selectable_value(&mut self.cancel_trig_rising, true, "Rising");
                         ui.selectable_value(&mut self.cancel_trig_rising, false, "Falling");
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Line");
+                        ui.selectable_value(&mut self.cancel_trig_output, false, "Input");
+                        ui.selectable_value(&mut self.cancel_trig_output, true, "Output");
                     });
                 }
                 ui.horizontal(|ui| {

@@ -51,7 +51,7 @@ impl VtlSegment {
     /// Signal the output semaphore, waking one `wait_output` caller.
     ///
     /// Called by the VTL owner (vstimd) after each output-state write so that
-    /// gpiochip-daqd wakes immediately instead of on the next polling interval.
+    /// daqd wakes immediately instead of on the next polling interval.
     pub fn signal_output(&self) {
         #[cfg(unix)]
         unsafe { libc::sem_post(self.output_sem_ptr()); }
@@ -59,7 +59,7 @@ impl VtlSegment {
 
     /// Block until the output semaphore is signaled.
     ///
-    /// Called by gpiochip-daqd in its output loop.  Returns immediately if a
+    /// Called by daqd in its output loop.  Returns immediately if a
     /// signal is already pending (the semaphore count is > 0).  Retries
     /// automatically on `EINTR`.  On non-Unix platforms this is a no-op.
     pub fn wait_output(&self) {
@@ -100,7 +100,7 @@ impl VtlSegment {
 
     // ── Input latches ─────────────────────────────────────────────────────────
 
-    /// Atomically OR `bits` into the rising latch (nidaqd / software-trigger side).
+    /// Atomically OR `bits` into the rising latch (daqd / software-trigger side).
     pub fn set_input_rise(&self, bank: usize, bits: u64) {
         self.state().input_rise_latch[bank].fetch_or(bits, Ordering::AcqRel);
     }
@@ -146,7 +146,7 @@ impl VtlSegment {
         self.state().output_set_pulse[bank].fetch_or(bits, Ordering::AcqRel);
     }
 
-    /// Atomically drain output pulse bits (nidaqd side: call after driving hardware).
+    /// Atomically drain output pulse bits (daqd side: call after driving hardware).
     pub fn drain_output_pulse(&self, bank: usize, mask: u64) -> u64 {
         self.state().output_set_pulse[bank].fetch_and(!mask, Ordering::AcqRel) & mask
     }

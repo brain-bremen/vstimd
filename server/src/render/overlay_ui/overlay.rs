@@ -566,7 +566,11 @@ fn collect_dialog_inputs(
         .map(|vst| {
             vst.names.iter().map(|e| TriggerLine {
                 label: format!("{} ({}/{}, {:?})", e.name, e.bank, e.bit, e.direction),
-                bit: crate::scene::VtlBit { bank: e.bank as usize, bit: e.bit },
+                bit: crate::scene::VtlBit {
+                    bank: e.bank as usize,
+                    bit: e.bit,
+                    direction: e.direction,
+                },
             }).collect()
         })
         .unwrap_or_default();

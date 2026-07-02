@@ -93,15 +93,15 @@ const _: () = assert!(std::mem::size_of::<VtlNamesSection>() == 15424);
 /// Five arrays of atomics, one per bank. Cache-line aligned at STATE_OFFSET.
 #[repr(C)]
 pub struct VtlStateSection {
-    /// Current input levels — nidaqd writes, vstimd reads.
+    /// Current input levels — daqd writes, vstimd reads.
     pub input_state:      [AtomicU64; MAX_BANKS],
-    /// Sticky rising edge latches — nidaqd `fetch_or`s, vstimd `fetch_and`-clears.
+    /// Sticky rising edge latches — daqd `fetch_or`s, vstimd `fetch_and`-clears.
     pub input_rise_latch: [AtomicU64; MAX_BANKS],
     /// Sticky falling edge latches.
     pub input_fall_latch: [AtomicU64; MAX_BANKS],
-    /// Output line levels — vstimd writes, nidaqd reads.
+    /// Output line levels — vstimd writes, daqd reads.
     pub output_state:     [AtomicU64; MAX_BANKS],
-    /// One-shot output pulses — vstimd OR-sets, nidaqd clears after driving hardware.
+    /// One-shot output pulses — vstimd OR-sets, daqd clears after driving hardware.
     pub output_set_pulse: [AtomicU64; MAX_BANKS],
 }
 
