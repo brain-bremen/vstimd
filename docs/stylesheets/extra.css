@@ -20,18 +20,24 @@
   --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
 }
 
-/* Accent = UB red (used for links on hover, focus, selection). */
+/* Accent = UB red (hover, focus, selection). */
 [data-md-color-accent="custom"] {
   --md-accent-fg-color:              var(--ub-red);
   --md-accent-fg-color--transparent: rgba(198, 12, 43, 0.1);
 }
 
-/* Dark mode: brighten the red/links so they stay legible on dark backgrounds. */
+/* Make body links UB red so the brand red is actually visible (by default
+   Material colours links with the primary, i.e. blue). Header stays blue. */
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: var(--ub-red);
+}
+
+/* Dark mode: brighten the red so links/accents stay legible on dark. */
+[data-md-color-scheme="slate"] {
+  --md-typeset-a-color: #ff5d6c;
+}
 [data-md-color-scheme="slate"][data-md-color-accent="custom"] {
   --md-accent-fg-color: #ff5d6c;
-}
-[data-md-color-scheme="slate"] {
-  --md-typeset-a-color: #6ea8ff;
 }
 
 /* ── Compact comparison matrix (used on why-vstimd.md) ───────────────────────
