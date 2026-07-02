@@ -8,6 +8,12 @@ vstimd is controlled along two complementary paths: **direct** commands from a s
 client over ZMQ/protobuf, and **trigger-driven** reactions via Virtual Trigger Lines (VTL)
 fed by hardware DAQ or a software simulator.
 
+!!! tip "New here? Start with these"
+    - **[Why vstimd?](why-vstimd.md)** — what a dedicated timing device buys you over
+      PsychoPy / Psychtoolbox / MWorks, and how it fuses with ephys and imaging.
+    - **[Choosing an API path](tutorial/index.md)** — the two ways to drive vstimd and
+      when to use each, with hands-on tutorials.
+
 ```
 Experiment PC                               Stimulus PC (Linux, DRM)
 ┌──────────────────┐                        ┌─────────────────────────────────┐

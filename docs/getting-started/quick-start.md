@@ -88,5 +88,5 @@ Use deferred mode to make multiple changes visible on the exact same frame:
 
 - [Coordinate system](../concepts/coordinate-system.md) — pixel space, origin, Y-up
 - [Deferred mode](../concepts/deferred-mode.md) — atomic multi-stimulus frame flips
-- [Python API reference](../api/python/index.md)
+- [The command API](../tutorial/command-api.md) — driving vstimd from Python step by step
 - [Bare-metal Linux](bare-metal.md) — running without a compositor on Jetson/Pi

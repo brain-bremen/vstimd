@@ -1,5 +1,8 @@
 target
 .claude/worktrees/
+
+# MkDocs build output
+/site/
 packaging/*.deb
 packaging/*.ddeb
 packaging/*.rpm

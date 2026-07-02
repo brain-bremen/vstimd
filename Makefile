@@ -37,6 +37,7 @@ WEB_SRCS := $(shell find $(WEB_DIR)/src -type f 2>/dev/null) \
             $(WEB_DIR)/index.html $(WEB_DIR)/package.json $(WEB_DIR)/vite.config.ts
 
 .PHONY: build build-server web install uninstall setup-user \
+        docs docs-build \
         deb-amd64 deb-arm64 deb \
         rpm-amd64 rpm-arm64 rpm \
         packages
@@ -90,6 +91,16 @@ uninstall:
 
 setup-user:
 	systemd-sysusers $(abspath $(SYSUSERS))
+
+# ── Documentation (MkDocs + Material, via uv; see docs/pyproject.toml) ───────
+
+# Live preview at http://127.0.0.1:8000 with auto-reload.
+docs:
+	uv run --project docs mkdocs serve
+
+# Static site build to site/ (matches the Read the Docs build).
+docs-build:
+	uv run --project docs mkdocs build --strict
 
 # ── Package targets (Docker-based, output to $(DIST_DIR)/) ───────────────────
 

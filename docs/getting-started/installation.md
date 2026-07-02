@@ -42,12 +42,21 @@ pip install ./client/python
 
 ## MATLAB client
 
-See [MATLAB API](../api/matlab/index.md).
+See the [MATLAB client](https://github.com/braemons/vstimd/tree/main/client/matlab)
+in the repository.
 
 ## Building the docs
 
+The documentation is built with [MkDocs](https://www.mkdocs.org) (1.x) and the
+[Material](https://squidfunk.github.io/mkdocs-material/) theme. The build
+environment is declared in `docs/pyproject.toml` and managed with
+[uv](https://docs.astral.sh/uv/):
+
 ```sh
-pip install -r docs/requirements.txt
-mkdocs serve        # live preview at http://127.0.0.1:8000
-mkdocs build        # static output in site/
+uv run --project docs mkdocs serve   # live preview at http://127.0.0.1:8000
+uv run --project docs mkdocs build   # static output in site/
 ```
+
+The published site is built automatically by
+[Read the Docs](https://readthedocs.org) (see `.readthedocs.yaml`), which runs the
+same `uv run --project docs mkdocs build`.

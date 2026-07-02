@@ -1,0 +1,18 @@
+/* Compact comparison matrix (used on why-vstimd.md).
+   Many columns are needed, so shrink the font and padding for this table only
+   so it fits the content column; horizontal scroll remains as a fallback. */
+.compare-matrix table {
+  font-size: 0.6rem;
+  line-height: 1.35;
+}
+
+.compare-matrix table th,
+.compare-matrix table td {
+  padding: 0.35em 0.45em;
+}
+
+/* Emphasise the vstimd column (last one). */
+.compare-matrix table td:last-child,
+.compare-matrix table th:last-child {
+  background: var(--md-code-bg-color);
+}
