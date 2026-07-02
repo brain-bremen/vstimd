@@ -306,7 +306,7 @@ pub(crate) fn advance_one(
 /// cancel action). An empty `cancel_action` is a hard abort that leaves state
 /// as-is. Works while `Running` (the `anim_enabled` hold is released) or `Armed`
 /// (never started: no hold to release, and `RESTORE_STATE` is a no-op with no
-/// capture). Returns false if the handle is unknown.
+/// capture). `Idle`/`Done` are a no-op. Returns false if the handle is unknown.
 pub(crate) fn cancel_one(
     handle: u32,
     scene: &mut SceneState,
@@ -335,11 +335,7 @@ pub(crate) fn cancel_one(
             );
         }
         // Idle (never armed) or already Done: nothing to tear down.
-        _ => {
-            if let Some(entry) = scene.config.animations.get_mut(&handle) {
-                entry.state = AnimState::Done;
-            }
-        }
+        _ => {}
     }
     true
 }

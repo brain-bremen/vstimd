@@ -342,7 +342,7 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                                         if ui.small_button("Arm").clicked() { arm = Some(*h); }
                                         if ui.small_button("Disarm").clicked() { disarm = Some(*h); }
                                         if ui.small_button("Cancel")
-                                            .on_hover_text("Clean teardown (runs final action)").clicked() {
+                                            .on_hover_text("Clean teardown (applies configured cancel action)").clicked() {
                                             cancel = Some(*h);
                                         }
                                         if ui.small_button("Trigger")
@@ -361,7 +361,7 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                         if let Some(h) = arm    { sc.arm_animation(h); }
                         if let Some(h) = disarm { sc.disarm_animation(h); }
                         if let Some(h) = cancel {
-                            // Seed from staged outputs so a final_action trigger-line
+                            // Seed from staged outputs so a cancel_action trigger-line
                             // pulse is applied, then commit changed banks back.
                             let mut output_pending = (*vtl)
                                 .and_then(|v| v.try_lock().ok().map(|g| g.staged))

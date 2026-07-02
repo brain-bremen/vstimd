@@ -191,11 +191,13 @@ impl SceneState {
     }
 
     /// Cancel an animation with a clean teardown, distinct from `disarm` — see
-    /// [`super::animation::cancel_one`]. A `Running` animation runs its
-    /// `final_action` (leaving visibility defined) and ends in `Done`; an
-    /// `Armed` one is stopped before it starts. `output_pending` receives any
-    /// trigger-line pulse; callers outside the render loop pass a scratch buffer
-    /// seeded from `VtlState::staged`. Returns false if the handle is unknown.
+    /// [`super::animation::cancel_one`]. A `Running` animation applies its
+    /// configured `cancel_action` (which may be empty for a hard abort) and
+    /// ends in `Done`; an `Armed` one is stopped before it starts. For
+    /// `CANCEL_ACTION_TRIGGER_LINE`, `output_pending` receives the pulse on
+    /// `cancel_action_trigger_line`; callers outside the render loop pass a
+    /// scratch buffer seeded from `VtlState::staged`. Returns false if the
+    /// handle is unknown.
     /// Shared by `cmd_cancel_animation` and the overlay UI.
     pub fn cancel_animation(
         &mut self,
@@ -395,4 +397,3 @@ fn make_entry_dirty(mut entry: StimulusSceneEntry) -> StimulusSceneEntry {
     entry.stimulus.make_copy();
     entry
 }
-

@@ -186,9 +186,11 @@ export class AnimationsClient {
 
   /**
    * Cancel an animation with a clean teardown (ends in DONE). Unlike `disarm`
-   * (which just returns to IDLE), cancel runs the animation's final action —
-   * leaving visibility in a defined state, pulsing any trigger line, and
-   * releasing the hold. `restart` is not honored. Works while ARMED or RUNNING.
+   * (which just returns to IDLE), cancel applies the configured cancel actions
+   * (`cancelActionMask`, independent of `finalActionMask`, and possibly empty
+   * for a hard abort), including any `cancelActionTriggerLine` pulse, and
+   * releases the hold when cancelling from RUNNING. Works while ARMED or
+   * RUNNING.
    */
   async cancel(handle: AnimationHandle): Promise<void> {
     await this.system({ case: "cancelAnimation", value: { handle } });

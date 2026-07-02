@@ -1801,8 +1801,8 @@ impl SceneState {
         cmd: proto::CancelAnimationRequest,
         vtl: Option<&mut VtlState>,
     ) -> proto::Response {
-        // Seed a scratch output buffer from the current staged outputs so a
-        // final_action trigger-line pulse from the teardown is applied. Outside
+        // Seed a scratch output buffer from the current staged outputs so any
+        // cancel_action trigger-line pulse from the teardown is applied. Outside
         // the render loop there is no per-frame output_pending, so we commit any
         // changed banks straight through to shm.
         let mut output_pending = vtl.as_ref().map_or([0u64; vtl::MAX_BANKS], |v| v.staged);

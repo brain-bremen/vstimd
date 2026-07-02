@@ -108,12 +108,12 @@ class AnimationClient:
     def cancel(self, handle: AnimationHandle) -> ServerResponse:
         """Cancel an animation with a clean teardown (ends in DONE).
 
-        Unlike :meth:`disarm` (which just returns to IDLE), cancel runs the
-        animation's ``final_action`` — leaving stimulus visibility in a defined
-        state (``RESTORE_STATE`` / ``DISABLE``), pulsing any configured trigger
-        line, and releasing the animation hold. ``RESTART`` is not honored.
-        Works whether the animation is ARMED (stopped before it starts) or
-        RUNNING.
+        Unlike :meth:`disarm` (which just returns to IDLE), cancel applies the
+        animation's configured ``cancel_action_mask`` (independent of
+        ``final_action`` and possibly empty for a hard abort), including any
+        ``cancel_action_trigger_line`` pulse, and releases the animation hold
+        when cancelling from RUNNING. Works whether the animation is ARMED
+        (stopped before it starts) or RUNNING.
         """
         return ServerResponse._from_proto(self._send(service_pb2.Request(
             system=_sys(),

@@ -1384,6 +1384,22 @@ fn cancel_command_on_armed_stops_before_start() {
 }
 
 #[test]
+fn cancel_command_on_idle_is_noop() {
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, false);
+    let a = scene.add_animation(AnimationEntry::new(
+        Animation::FlashForNFrames { duration_frames: 5 },
+        vec![s],
+    ));
+    assert_eq!(anim_state(&scene, a), &AnimState::Idle);
+
+    cancel_via_request(&mut scene, a);
+    assert_eq!(anim_state(&scene, a), &AnimState::Idle);
+    assert!(!is_enabled(&scene, s), "idle cancel should not alter stimulus");
+}
+
+#[test]
 fn cancel_command_unknown_handle_errors() {
     use vstimd::proto;
     use vstimd::proto::request;
