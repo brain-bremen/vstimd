@@ -4,14 +4,65 @@
 hardware and accepts commands from experiment scripts over the network, rendering stimuli with
 precise, vsync-locked frame timing.
 
+vstimd is controlled along two complementary paths: **direct** commands from a software
+client over ZMQ/protobuf, and **trigger-driven** reactions via Virtual Trigger Lines (VTL)
+fed by hardware DAQ or a software simulator.
+
 ```
-Experiment PC                    Stimulus PC (Linux, DRM)
-┌─────────────┐    ZMQ/TCP      ┌──────────────────────┐
-│ Python /    │ ──────────────► │  vstimd              │
-│ MATLAB /    │                 │  (Vulkan + KMS/DRM)  │ ──► Monitor
-│ C#  script  │ ◄────────────── │                      │
-└─────────────┘    protobuf     └──────────────────────┘
+Experiment PC                               Stimulus PC (Linux, DRM)
+┌──────────────────┐                        ┌─────────────────────────────────┐
+│ Software client  │       ZMQ / TCP        │ vstimd  (Vulkan + KMS/DRM)       │
+│ Py / MATLAB / C# │    ─── protobuf ──►    │                                  │
+└──────────────────┘                        │  scene state ──► render loop ────┼─► Monitor
+                                            │        ▲                         │
+┌──────────────────┐                        │        │  (VTL-driven anims)     │
+│ Hardware DAQ     │       TTL pulse        │        │                         │
+│ (daqd) or        │    ── shared mem ─►    │  VTL banks (shared memory)       │
+│ software sim     │                        │                                  │
+└──────────────────┘                        └─────────────────────────────────┘
 ```
+
+## Two ways to control vstimd
+
+Stimuli can be driven along two complementary paths. Most experiments use both: a
+software client sets the scene up, and hardware trigger lines drive the timing-critical
+reactions frame-by-frame.
+
+**Path 1 — Direct control (imperative).** A software client sends commands over
+ZMQ/protobuf that take effect on the next frame: create a stimulus, set its position,
+enable or disable it.
+
+```
+┌───────────────┐   ZMQ / protobuf     ┌──────────────────────────────────┐
+│ Software       │ ──── command ─────►  │ vstimd                           │
+│ client         │  "create rect",      │  scene state ──► render ──► Monitor
+│ (Py/MATLAB/C#) │  "set enabled"       │                                  │
+└───────────────┘                       └──────────────────────────────────┘
+```
+
+**Path 2 — VTL-driven animations (reactive).** *Virtual Trigger Lines* (VTL) are a bank
+of trigger bits in POSIX shared memory. A hardware bridge (e.g. `daqd`) maps real TTL
+lines onto them — or a software client simulates lines over ZMQ. vstimd polls them once
+per frame with zero syscall overhead, and **animations** react to edges/levels to drive
+stimulus visibility, position, and output markers in hardware time — no round-trip back
+to the experiment PC.
+
+```
+┌────────────────┐  TTL pulse           ┌───────────────────────────────────┐
+│ Hardware DAQ    │ ── (or ZMQ sim) ──►  │ VTL banks (shared memory)         │
+│ (daqd) or       │                      │       │ poll @ frame start        │
+│ software sim    │                      │       ▼                           │
+└────────────────┘                      │  animations ──► scene ──► render ──┼─► Monitor
+                                         │       │ output markers @ frame end │
+                                         │       ▼                            │
+                                         │  VTL output banks ──► back to DAQ  │
+                                         └───────────────────────────────────┘
+```
+
+Animations are declarative (flash for N frames, couple visibility to a line, move along a
+path, …) and carry a rich start/final/cancel action vocabulary. Because vstimd both reads
+input lines and writes output lines each frame, animations can even **chain each other
+entirely inside the server**, staying synchronised to the display and to DAQ markers.
 
 ## Key features
 
@@ -19,6 +70,7 @@ Experiment PC                    Stimulus PC (Linux, DRM)
 - **Cross-language clients** — Python, MATLAB, C# (and PsychoPy-compatible Python layer)
 - **Bare-metal Linux rendering** — runs without a compositor (X11/Wayland) via KMS/DRM
 - **Deferred mode** — batch multiple stimulus changes into a single atomic frame flip
+- **Virtual Trigger Lines (VTL)** — hardware TTL / software triggers via shared memory drive frame-accurate, trigger-reactive animations with no DAQ code inside vstimd
 - **Live debug overlay** — frame timing, stimulus list, command log (toggle with F1)
 
 ## Stimulus types

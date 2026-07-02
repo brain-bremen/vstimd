@@ -5,7 +5,10 @@
    :members:
    :undoc-members:
 
-.. autoclass:: vstimd.VtlDirection
+.. autoclass:: vstimd.VtlHandle
+   :members:
+
+.. autoclass:: vstimd.VtlKind
    :members:
 
 .. autoclass:: vstimd.VtlLineInfo

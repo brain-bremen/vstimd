@@ -284,12 +284,6 @@ Add `#[derive(Serialize, Deserialize)]` to:
 `bitflags!` types (`StartAction`, `FinalAction`) — `#[serde(transparent)]` wrapping u8.
 `uuid` needs the `"serde"` feature. `indexmap` needs the `"serde"` feature.
 
-If `vtl::Direction` lacks serde, use a remote derive:
-```rust
-#[derive(Serialize, Deserialize)]
-#[serde(remote = "vtl::Direction")]
-enum DirectionDef { In, Out }
-```
 
 ---
 
