@@ -40,7 +40,9 @@ Press **D** to spawn demo stimuli, **F1** to toggle the debug overlay, **Esc** t
         conn.stimuli.delete(h)
     ```
 
-=== "MATLAB"
+=== "MATLAB (planned)"
+
+    !!! note "The MATLAB client is planned — it does not exist yet."
 
     ```matlab
     conn = vstimd.Connection();   % default: tcp://localhost:5555
@@ -88,5 +90,5 @@ Use deferred mode to make multiple changes visible on the exact same frame:
 
 - [Coordinate system](../concepts/coordinate-system.md) — pixel space, origin, Y-up
 - [Deferred mode](../concepts/deferred-mode.md) — atomic multi-stimulus frame flips
-- [Python API reference](../api/python/index.md)
+- [The command API](../tutorial/command-api.md) — driving vstimd from Python step by step
 - [Bare-metal Linux](bare-metal.md) — running without a compositor on Jetson/Pi

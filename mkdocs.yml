@@ -1,0 +1,115 @@
+site_name: vstimd
+site_description: >-
+  A visual stimulus server with guaranteed frame timing for neuroscience and
+  psychophysics — driven from any language over the network.
+site_author: Joscha Schmiedt
+site_url: https://vstimd.readthedocs.io/
+
+repo_name: braemons/vstimd
+repo_url: https://github.com/braemons/vstimd
+edit_uri: edit/main/docs/
+
+copyright: >-
+  Copyright &copy; 2026 Joscha Schmiedt, University of Bremen —
+  licensed under the GNU AGPLv3.
+
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  # Header sits on UB blue, so use the dark-background wordmark (white "stim").
+  logo: assets/vstimd-logo-dark.svg
+  favicon: assets/favicon.png
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+    - search.suggest
+    - search.highlight
+  # Colours come from University of Bremen's corporate design (blue + red).
+  # `custom` activates the [data-md-color-primary=custom]/[…-accent=custom]
+  # rules defined in stylesheets/extra.css.
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.keys
+
+plugins:
+  - search
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Why vstimd?: why-vstimd.md
+  - Tutorial:
+      - Choosing an API path: tutorial/index.md
+      - The command API: tutorial/command-api.md
+      - Triggers & animations (VTL): tutorial/vtl-and-animations.md
+      - Integrating recording systems: tutorial/recording-integration.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quick start: getting-started/quick-start.md
+      - Bare-metal Linux: getting-started/bare-metal.md
+  - Concepts:
+      - Architecture: concepts/architecture.md
+      - Frame timing: concepts/frame-timing.md
+      - Coordinate system: concepts/coordinate-system.md
+      - Deferred mode: concepts/deferred-mode.md
+      - Scene serialization: concepts/scene-serialization.md
+  - Protocol:
+      - Overview: protocol/index.md
+      - Command reference: protocol/commands.md
+  - Reference:
+      - Server (Rust) API: api/server.md
+      - Deployment: deploy.md

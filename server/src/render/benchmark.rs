@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use crate::scene::{
-    GratingParams, GratingStimulus, SceneState, Stimulus, StimulusSceneEntry, Waveform,
+    GratingParams, GratingStimulus, SceneState, Stimulus, StimulusSceneEntry, Waveform, GratingMask
 };
 use crate::timing::FrameStats;
 use uuid::Uuid;
@@ -86,6 +86,7 @@ impl BenchmarkState {
                                     drift_speed: 1.0,
                                     waveform: Waveform::Sin,
                                     drift_coupled: true,
+                                    mask: GratingMask::RaisedCos,
                                     ..Default::default()
                                 },
                             )),
