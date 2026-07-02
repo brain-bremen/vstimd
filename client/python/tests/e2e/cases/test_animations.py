@@ -12,7 +12,7 @@ import pytest
 from vstimd import Connection
 from vstimd.animations import AnimationState, CancelAction, FinalAction, StartAction, VtlEdge
 from vstimd.stimuli.stimuli_models import Color, Vec2
-from vstimd.vtl import VtlDirection
+from vstimd.vtl import VtlDirection, VtlHandle
 
 from ._helpers import (
     label as _label,
@@ -111,7 +111,7 @@ def test_anim_flash_start_trigger(
     a = conn.animations.create_flash(
         s,
         duration_frames=30,
-        start_trigger=(0, 10),
+        start_trigger=VtlHandle.input(0, 10),
         start_edge=VtlEdge.RISING,
         final_action_mask=FinalAction.DISABLE,
     )
@@ -125,9 +125,9 @@ def test_anim_flash_start_trigger(
     _update_label(conn, lbl, tid, "ARMED — waiting for trigger")
     time.sleep(step_delay)
 
-    conn.vtl.set_input_line((0, 10), True)
+    conn.vtl.set_line(VtlHandle.input(0, 10), True)
     time.sleep(0.1)
-    conn.vtl.set_input_line((0, 10), False)
+    conn.vtl.set_line(VtlHandle.input(0, 10), False)
 
     _update_label(conn, lbl, tid, "triggered — rect ON")
     time.sleep(step_delay)
@@ -149,7 +149,7 @@ def test_anim_flash_disarm_resets_state(
     s = _make_rect(conn, x=0, y=-100, enabled=False)
 
     a = conn.animations.create_flash(
-        s, duration_frames=120, start_trigger=(0, 11), start_edge=VtlEdge.RISING
+        s, duration_frames=120, start_trigger=VtlHandle.input(0, 11), start_edge=VtlEdge.RISING
     )
     conn.animations.arm(a)
 
@@ -220,7 +220,7 @@ def test_anim_cancel_trigger_running(
     a = conn.animations.create_flash(
         s,
         duration_frames=600,
-        cancel_trigger=(0, 50),
+        cancel_trigger=VtlHandle.input(0, 50),
         cancel_edge=VtlEdge.RISING,
         cancel_action_mask=CancelAction.DISABLE,
     )
@@ -233,9 +233,9 @@ def test_anim_cancel_trigger_running(
     _update_label(conn, lbl, tid, "RUNNING — firing cancel edge")
     time.sleep(step_delay)
 
-    conn.vtl.set_input_line((0, 50), True)
+    conn.vtl.set_line(VtlHandle.input(0, 50), True)
     time.sleep(0.1)
-    conn.vtl.set_input_line((0, 50), False)
+    conn.vtl.set_line(VtlHandle.input(0, 50), False)
 
     final = _wait_for_state(conn, a, AnimationState.DONE, timeout=2.0)
     assert final == AnimationState.DONE
@@ -262,9 +262,9 @@ def test_anim_cancel_trigger_while_armed(
     a = conn.animations.create_flash(
         s,
         duration_frames=120,
-        start_trigger=(0, 51),
+        start_trigger=VtlHandle.input(0, 51),
         start_edge=VtlEdge.RISING,
-        cancel_trigger=(0, 52),
+        cancel_trigger=VtlHandle.input(0, 52),
         cancel_edge=VtlEdge.RISING,
     )
     conn.animations.arm(a)
@@ -275,9 +275,9 @@ def test_anim_cancel_trigger_while_armed(
     _update_label(conn, lbl, tid, "ARMED — firing cancel edge")
     time.sleep(step_delay)
 
-    conn.vtl.set_input_line((0, 52), True)
+    conn.vtl.set_line(VtlHandle.input(0, 52), True)
     time.sleep(0.1)
-    conn.vtl.set_input_line((0, 52), False)
+    conn.vtl.set_line(VtlHandle.input(0, 52), False)
 
     final = _wait_for_state(conn, a, AnimationState.DONE, timeout=2.0)
     assert final == AnimationState.DONE, "cancelled before start → DONE"
@@ -402,7 +402,7 @@ def test_anim_enable_on_trigger_edge_rising(
     s = _make_rect(conn, x=-100, y=-100, enabled=False)
 
     a = conn.animations.create_enable_on_trigger_edge(
-        (0, 20),
+        VtlHandle.input(0, 20),
         s,
         edge=VtlEdge.RISING,
         enabled=True,
@@ -420,9 +420,9 @@ def test_anim_enable_on_trigger_edge_rising(
     _update_label(conn, lbl, tid, "RUNNING — waiting for rising edge")
     time.sleep(step_delay)
 
-    conn.vtl.set_input_line((0, 20), True)
+    conn.vtl.set_line(VtlHandle.input(0, 20), True)
     time.sleep(0.1)
-    conn.vtl.set_input_line((0, 20), False)
+    conn.vtl.set_line(VtlHandle.input(0, 20), False)
 
     final = _wait_for_state(conn, a, AnimationState.DONE, timeout=2.0)
     assert final == AnimationState.DONE
@@ -448,20 +448,20 @@ def test_anim_enable_on_trigger_edge_falling(
     s = _make_rect(conn, x=100, y=-100, enabled=True)
 
     a = conn.animations.create_enable_on_trigger_edge(
-        (0, 21),
+        VtlHandle.input(0, 21),
         s,
         edge=VtlEdge.FALLING,
         enabled=False,
     )
     conn.animations.arm(a)
 
-    conn.vtl.set_input_line((0, 21), True)
+    conn.vtl.set_line(VtlHandle.input(0, 21), True)
     time.sleep(0.1)
 
     _update_label(conn, lbl, tid, "RUNNING — waiting for falling edge")
     time.sleep(step_delay)
 
-    conn.vtl.set_input_line((0, 21), False)
+    conn.vtl.set_line(VtlHandle.input(0, 21), False)
 
     final = _wait_for_state(conn, a, AnimationState.DONE, timeout=2.0)
     assert final == AnimationState.DONE
@@ -487,7 +487,7 @@ def test_anim_couple_visibility_to_vtl_line(
     s = _make_rect(conn, x=0, y=-200, enabled=False)
 
     a = conn.animations.create_couple_visibility_to_trigger_line(
-        (0, 30),
+        VtlHandle.input(0, 30),
         s,
         polarity=True,
     )
@@ -502,7 +502,7 @@ def test_anim_couple_visibility_to_vtl_line(
     _update_label(conn, lbl, tid, "line LOW → rect OFF")
     time.sleep(step_delay)
 
-    conn.vtl.set_input_line((0, 30), True)
+    conn.vtl.set_line(VtlHandle.input(0, 30), True)
     time.sleep(0.1)
     assert conn.stimuli.query(s).anim_enabled is True, (
         "anim_enabled should be True when line is HIGH"
@@ -511,7 +511,7 @@ def test_anim_couple_visibility_to_vtl_line(
     _update_label(conn, lbl, tid, "line HIGH → rect ON")
     time.sleep(step_delay)
 
-    conn.vtl.set_input_line((0, 30), False)
+    conn.vtl.set_line(VtlHandle.input(0, 30), False)
     time.sleep(0.1)
     assert conn.stimuli.query(s).anim_enabled is False, (
         "anim_enabled should be False when line returns LOW"
@@ -540,7 +540,7 @@ def test_anim_couple_visibility_inverted_polarity(
     s = _make_rect(conn, x=-250, y=-200, enabled=False)
 
     a = conn.animations.create_couple_visibility_to_trigger_line(
-        (0, 31),
+        VtlHandle.input(0, 31),
         s,
         polarity=False,
     )
@@ -555,7 +555,7 @@ def test_anim_couple_visibility_inverted_polarity(
     _update_label(conn, lbl, tid, "line LOW → rect ON (inverted)")
     time.sleep(step_delay)
 
-    conn.vtl.set_input_line((0, 31), True)
+    conn.vtl.set_line(VtlHandle.input(0, 31), True)
     time.sleep(0.1)
     assert conn.stimuli.query(s).anim_enabled is False, (
         "inverted polarity: line HIGH → anim_enabled=False"
@@ -716,7 +716,7 @@ def test_anim_final_action_trigger_line(
         s,
         duration_frames=15,
         final_action_mask=FinalAction.FINAL_ACTION_TRIGGER_LINE | FinalAction.DISABLE,
-        final_action_trigger_line="anim_done_out",
+        final_action_trigger_line=VtlHandle.named("anim_done_out", VtlDirection.OUTPUT),
     )
     conn.animations.arm(a)
 
@@ -955,3 +955,55 @@ def test_anim_external_position_2d(conn: Connection) -> None:
 
     conn.animations.delete(a)
     conn.stimuli.delete(s)
+
+
+def test_anim_output_edge_chaining(
+    conn: Connection, request: pytest.FixtureRequest, step_delay: float
+) -> None:
+    """Animation A pulses an output line on completion; animation B starts off
+    that OUTPUT edge — chaining entirely inside the server, no input loopback."""
+    tid = request.node.name
+    lbl = _label(conn, tid, "A finishes → pulses output (0,20) → B starts")
+    sa = _make_rect(conn, x=-150, y=0, enabled=False)
+    sb = _make_rect(conn, x=150, y=0, enabled=False)
+
+    # A: short flash that pulses output bit (0, 20) when it completes.
+    a = conn.animations.create_flash(
+        sa,
+        duration_frames=6,
+        start_action_mask=StartAction.ENABLE,
+        final_action_mask=FinalAction.DISABLE | FinalAction.FINAL_ACTION_TRIGGER_LINE,
+        final_action_trigger_line=VtlHandle.output(0, 20),
+    )
+    # B: waits for a rising edge on the OUTPUT line (0, 20).
+    b = conn.animations.create_flash(
+        sb,
+        duration_frames=30,
+        start_action_mask=StartAction.ENABLE,
+        final_action_mask=FinalAction.DISABLE,
+        start_trigger=VtlHandle.output(0, 20),
+        start_edge=VtlEdge.RISING,
+    )
+
+    conn.animations.arm(a)
+    conn.animations.arm(b)
+    assert conn.animations.query(b).state == AnimationState.ARMED, (
+        "B must wait for A's output edge"
+    )
+
+    # A completes on its own; its output pulse starts B one frame later.
+    assert _wait_for_state(conn, a, AnimationState.DONE, timeout=3.0) == AnimationState.DONE
+    started = _wait_for_state(conn, b, AnimationState.RUNNING, timeout=2.0)
+    assert started in (AnimationState.RUNNING, AnimationState.DONE), (
+        f"B should start off A's output edge (got {started!r})"
+    )
+
+    _update_label(conn, lbl, tid, "B started from A's output edge")
+    time.sleep(step_delay * 0.5)
+
+    _wait_for_state(conn, b, AnimationState.DONE, timeout=3.0)
+    conn.animations.delete(a)
+    conn.animations.delete(b)
+    conn.stimuli.delete(sa)
+    conn.stimuli.delete(sb)
+    conn.stimuli.delete(lbl)

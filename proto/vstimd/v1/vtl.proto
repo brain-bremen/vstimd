@@ -46,9 +46,10 @@ message VirtualTriggerLineBankBit {
 // output banks are independent signals that share the same (bank, bit) space.
 // The direction is therefore part of every handle.
 //
-// For a `bank_bit` handle the `direction` field selects input vs. output.
-// For a `name` handle the registered name already carries a direction, so the
-// named entry's direction is authoritative and `direction` is ignored.
+// The `direction` field is always significant: for a `bank_bit` handle it
+// selects input vs. output; for a `name` handle it selects which registered
+// entry to match (a name may be registered separately for input and output).
+// Direction is never inferred — the caller states it explicitly.
 message VirtualTriggerLineHandle {
   oneof handle {
     VirtualTriggerLineBankBit bank_bit = 1;

@@ -2027,9 +2027,10 @@ fn proto_to_animation(
 
 /// Resolve a proto handle to a direction-carrying [`VtlBit`].
 ///
-/// For a `bank_bit` handle the `direction` field selects the bank; for a `name`
-/// handle the registered entry's direction is authoritative (the wire
-/// `direction` is ignored, since a name already implies its direction).
+/// The caller is always explicit about direction: the `direction` field selects
+/// the bank for a `bank_bit` handle, and for a `name` handle it selects which
+/// registered entry to match (a name may be registered independently for input
+/// and output). The direction is never inferred from the registry.
 fn resolve_vtl_handle(
     handle: Option<&proto::VirtualTriggerLineHandle>,
     names: &[VtlNameEntry],
@@ -2061,20 +2062,23 @@ fn resolve_vtl_handle(
                 direction: proto_direction(h.direction),
             })
         }
-        Some(Handle::Name(name)) => names
-            .iter()
-            .find(|e| e.name == *name)
-            .map(|e| VtlBit {
-                bank: e.bank as usize,
-                bit: e.bit,
-                direction: e.direction,
-            })
-            .ok_or_else(|| {
-                Box::new(err(
-                    proto::ErrorCode::InvalidArgument,
-                    format!("no virtual trigger line named {name:?}"),
-                ))
-            }),
+        Some(Handle::Name(name)) => {
+            let direction = proto_direction(h.direction);
+            names
+                .iter()
+                .find(|e| e.name == *name && e.direction == direction)
+                .map(|e| VtlBit {
+                    bank: e.bank as usize,
+                    bit: e.bit,
+                    direction,
+                })
+                .ok_or_else(|| {
+                    Box::new(err(
+                        proto::ErrorCode::InvalidArgument,
+                        format!("no {direction:?} virtual trigger line named {name:?}"),
+                    ))
+                })
+        }
         None => Err(Box::new(err(
             proto::ErrorCode::InvalidArgument,
             "handle must be set",
