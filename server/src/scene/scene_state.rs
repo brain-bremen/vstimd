@@ -190,6 +190,21 @@ impl SceneState {
         true
     }
 
+    /// Cancel an animation with a clean teardown, distinct from `disarm` — see
+    /// [`super::animation::cancel_one`]. A `Running` animation runs its
+    /// `final_action` (leaving visibility defined) and ends in `Done`; an
+    /// `Armed` one is stopped before it starts. `output_pending` receives any
+    /// trigger-line pulse; callers outside the render loop pass a scratch buffer
+    /// seeded from `VtlState::staged`. Returns false if the handle is unknown.
+    /// Shared by `cmd_cancel_animation` and the overlay UI.
+    pub fn cancel_animation(
+        &mut self,
+        handle: u32,
+        output_pending: &mut [u64; vtl::MAX_BANKS],
+    ) -> bool {
+        super::animation::cancel_one(handle, self, output_pending)
+    }
+
     /// Remove an animation, releasing any flicker hold if it was running.
     /// Returns false if the handle is unknown. Shared by `cmd_delete_animation`
     /// and the overlay UI.

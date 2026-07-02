@@ -170,6 +170,129 @@ def test_anim_flash_disarm_resets_state(
     conn.stimuli.delete(lbl)
 
 
+def test_anim_cancel_command_running(
+    conn: Connection, request: pytest.FixtureRequest, step_delay: float
+) -> None:
+    """Cancelling a RUNNING animation via the software command is a clean teardown → DONE.
+
+    Distinct from disarm (which returns to IDLE): cancel runs the final action
+    (DISABLE here) and lands in DONE.
+    """
+    tid = request.node.name
+    lbl = _label(conn, tid, "flash cancelled while running (→DONE, disabled)")
+    s = _make_rect(conn, x=0, y=0, enabled=False)
+
+    # Long duration so it is still running when we cancel.
+    a = conn.animations.create_flash(
+        s, duration_frames=600, final_action_mask=FinalAction.DISABLE
+    )
+    conn.animations.arm(a)
+
+    _wait_for_state(conn, a, AnimationState.RUNNING, timeout=2.0)
+    time.sleep(0.05)
+    assert conn.stimuli.query(s).enabled is True, "stimulus enabled while running"
+
+    _update_label(conn, lbl, tid, "RUNNING — about to cancel")
+    time.sleep(step_delay)
+
+    conn.animations.cancel(a)
+
+    final = _wait_for_state(conn, a, AnimationState.DONE, timeout=2.0)
+    assert final == AnimationState.DONE, "cancel ends in DONE (not IDLE like disarm)"
+    assert conn.stimuli.query(s).enabled is False, "cancel runs DISABLE teardown"
+
+    _update_label(conn, lbl, tid, "cancelled — DONE, rect OFF")
+    time.sleep(step_delay * 0.5)
+
+    conn.animations.delete(a)
+    conn.stimuli.delete(s)
+    conn.stimuli.delete(lbl)
+
+
+def test_anim_cancel_trigger_running(
+    conn: Connection, request: pytest.FixtureRequest, step_delay: float
+) -> None:
+    """A cancel_trigger VTL edge aborts a RUNNING animation with clean teardown → DONE."""
+    tid = request.node.name
+    lbl = _label(conn, tid, "flash cancelled by VTL edge (0,50)")
+    s = _make_rect(conn, x=0, y=0, enabled=False)
+
+    a = conn.animations.create_flash(
+        s,
+        duration_frames=600,
+        cancel_trigger=(0, 50),
+        cancel_edge=VtlEdge.RISING,
+        final_action_mask=FinalAction.DISABLE,
+    )
+    conn.animations.arm(a)
+
+    _wait_for_state(conn, a, AnimationState.RUNNING, timeout=2.0)
+    time.sleep(0.05)
+    assert conn.stimuli.query(s).enabled is True
+
+    _update_label(conn, lbl, tid, "RUNNING — firing cancel edge")
+    time.sleep(step_delay)
+
+    conn.vtl.set_input_line((0, 50), True)
+    time.sleep(0.1)
+    conn.vtl.set_input_line((0, 50), False)
+
+    final = _wait_for_state(conn, a, AnimationState.DONE, timeout=2.0)
+    assert final == AnimationState.DONE
+    assert conn.stimuli.query(s).enabled is False, "cancel edge ran DISABLE teardown"
+
+    _update_label(conn, lbl, tid, "cancelled by edge — DONE")
+    time.sleep(step_delay * 0.5)
+
+    conn.animations.delete(a)
+    conn.stimuli.delete(s)
+    conn.stimuli.delete(lbl)
+
+
+def test_anim_cancel_trigger_while_armed(
+    conn: Connection, request: pytest.FixtureRequest, step_delay: float
+) -> None:
+    """A cancel_trigger edge stops an ARMED animation before it ever starts → DONE."""
+    tid = request.node.name
+    lbl = _label(conn, tid, "flash cancelled while ARMED (never starts)")
+    s = _make_rect(conn, x=0, y=0, enabled=False)
+
+    # Waits on start_trigger (0,51); we never fire it — instead we fire the
+    # cancel_trigger (0,52) while it is still ARMED.
+    a = conn.animations.create_flash(
+        s,
+        duration_frames=120,
+        start_trigger=(0, 51),
+        start_edge=VtlEdge.RISING,
+        cancel_trigger=(0, 52),
+        cancel_edge=VtlEdge.RISING,
+    )
+    conn.animations.arm(a)
+
+    time.sleep(0.1)
+    assert conn.animations.query(a).state == AnimationState.ARMED
+
+    _update_label(conn, lbl, tid, "ARMED — firing cancel edge")
+    time.sleep(step_delay)
+
+    conn.vtl.set_input_line((0, 52), True)
+    time.sleep(0.1)
+    conn.vtl.set_input_line((0, 52), False)
+
+    final = _wait_for_state(conn, a, AnimationState.DONE, timeout=2.0)
+    assert final == AnimationState.DONE, "cancelled before start → DONE"
+    assert conn.stimuli.query(s).enabled is False, (
+        "flash never started; stimulus stays off"
+    )
+
+    _update_label(conn, lbl, tid, "cancelled while ARMED — DONE")
+    time.sleep(step_delay * 0.5)
+
+    conn.animations.delete(a)
+    conn.stimuli.delete(s)
+    conn.stimuli.delete(lbl)
+
+
 def test_anim_flicker_cycles(
     conn: Connection, request: pytest.FixtureRequest, step_delay: float
 ) -> None:

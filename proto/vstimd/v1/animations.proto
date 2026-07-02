@@ -91,6 +91,10 @@ message CreateAnimationRequest {
   // Optional: if set, the animation waits for this edge before starting.
   VirtualTriggerLineHandle start_trigger = 4;
   VtlEdge                  start_edge    = 5;
+  // Optional: if set, this input edge cancels the animation (clean teardown via
+  // final_action) while it is Armed or Running. Same wiring as start_trigger.
+  VirtualTriggerLineHandle cancel_trigger = 9;
+  VtlEdge                  cancel_edge    = 16;
   // Stimuli affected by this animation (shared across all body types).
   repeated uint32          stimuli       = 6;
   // Actions applied when animation transitions Armed → Running (see bit values above).
@@ -111,6 +115,11 @@ message CreateAnimationRequest {
 
 message ArmAnimationRequest    { uint32 handle = 1; }
 message DisarmAnimationRequest { uint32 handle = 1; }
+// Cancel an animation with a clean teardown: runs the animation's final_action
+// (RESTORE_STATE / DISABLE / trigger-line pulse / photodiode), releases any
+// anim_enabled hold, and ends in DONE. Unlike disarm (which just returns to
+// IDLE), cancel leaves visibility in a defined state. RESTART is not honored.
+message CancelAnimationRequest { uint32 handle = 1; }
 message DeleteAnimationRequest { uint32 handle = 1; }
 message QueryAnimationRequest  { uint32 handle = 1; }
 message ListAnimationsRequest  {}

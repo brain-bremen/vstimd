@@ -20,6 +20,11 @@ pub struct AnimationConfig {
     pub final_action_trigger_line: Option<VtlBit>,
     /// If `Some`, the animation waits for this edge before starting.
     pub start_trigger: Option<(VtlBit, Edge)>,
+    /// If `Some`, this input edge cancels the animation (clean teardown via
+    /// `final_action`) while it is `Armed` or `Running`. Same wiring as
+    /// `start_trigger`; evaluated each frame in `advance_one`.
+    #[serde(default)]
+    pub cancel_trigger: Option<(VtlBit, Edge)>,
     pub animation: Animation,
 }
 
@@ -67,6 +72,7 @@ impl AnimationEntry {
                 final_action: FinalAction::empty(),
                 final_action_trigger_line: None,
                 start_trigger: None,
+                cancel_trigger: None,
                 animation,
             },
             captured_user_enabled: None,

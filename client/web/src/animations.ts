@@ -78,6 +78,9 @@ export interface AnimationOpts {
   /** Wait for this line's edge after arming before starting. */
   startTrigger?: VtlLine;
   startEdge?: VtlEdge;
+  /** Cancel (clean teardown) when this line's edge fires while Armed or Running. */
+  cancelTrigger?: VtlLine;
+  cancelEdge?: VtlEdge;
 }
 
 const EDGE: Record<VtlEdge, ProtoEdge> = {
@@ -155,6 +158,16 @@ export class AnimationsClient {
   /** Disarm an animation (back to IDLE). */
   async disarm(handle: AnimationHandle): Promise<void> {
     await this.system({ case: "disarmAnimation", value: { handle } });
+  }
+
+  /**
+   * Cancel an animation with a clean teardown (ends in DONE). Unlike `disarm`
+   * (which just returns to IDLE), cancel runs the animation's final action —
+   * leaving visibility in a defined state, pulsing any trigger line, and
+   * releasing the hold. `restart` is not honored. Works while ARMED or RUNNING.
+   */
+  async cancel(handle: AnimationHandle): Promise<void> {
+    await this.system({ case: "cancelAnimation", value: { handle } });
   }
 
   async delete(handle: AnimationHandle): Promise<void> {
@@ -303,6 +316,8 @@ export class AnimationsClient {
       finalActionTriggerLine: opts.finalActionTriggerLine ? vtlLineHandle(opts.finalActionTriggerLine) : undefined,
       startTrigger: opts.startTrigger ? vtlLineHandle(opts.startTrigger) : undefined,
       startEdge: EDGE[opts.startEdge ?? "rising"],
+      cancelTrigger: opts.cancelTrigger ? vtlLineHandle(opts.cancelTrigger) : undefined,
+      cancelEdge: EDGE[opts.cancelEdge ?? "rising"],
       stimuli: toStimuli(stimuli),
     };
   }

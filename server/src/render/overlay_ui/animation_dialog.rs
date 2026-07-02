@@ -54,6 +54,11 @@ pub struct AnimationDialog {
     start_bank: u32,
     start_bit: u32,
     start_trig_rising: bool,
+    // Cancel trigger: abort the animation (clean teardown) on a VTL edge.
+    cancel_trig_enabled: bool,
+    cancel_bank: u32,
+    cancel_bit: u32,
+    cancel_trig_rising: bool,
     // Final trigger: pulse a VTL output line when the animation completes.
     final_trig_enabled: bool,
     final_bank: u32,
@@ -87,6 +92,10 @@ impl Default for AnimationDialog {
             start_bank: 0,
             start_bit: 0,
             start_trig_rising: true,
+            cancel_trig_enabled: false,
+            cancel_bank: 0,
+            cancel_bit: 0,
+            cancel_trig_rising: true,
             final_trig_enabled: false,
             final_bank: 0,
             final_bit: 0,
@@ -153,6 +162,11 @@ impl AnimationDialog {
             let edge = if self.start_trig_rising { Edge::Rising } else { Edge::Falling };
             entry.config.start_trigger =
                 Some((VtlBit { bank: self.start_bank as usize, bit: self.start_bit as u8 }, edge));
+        }
+        if self.cancel_trig_enabled {
+            let edge = if self.cancel_trig_rising { Edge::Rising } else { Edge::Falling };
+            entry.config.cancel_trigger =
+                Some((VtlBit { bank: self.cancel_bank as usize, bit: self.cancel_bit as u8 }, edge));
         }
         if self.final_trig_enabled {
             entry.config.final_action |= FinalAction::FINAL_ACTION_TRIGGER_LINE;
@@ -271,6 +285,16 @@ impl AnimationDialog {
                         ui.add(egui::DragValue::new(&mut self.start_bit).range(0..=63));
                         ui.selectable_value(&mut self.start_trig_rising, true, "Rising");
                         ui.selectable_value(&mut self.start_trig_rising, false, "Falling");
+                    });
+                }
+                ui.checkbox(&mut self.cancel_trig_enabled, "Cancel on VTL edge");
+                if self.cancel_trig_enabled {
+                    ui.horizontal(|ui| {
+                        ui.label("Bank/Bit");
+                        ui.add(egui::DragValue::new(&mut self.cancel_bank).range(0..=bank_max));
+                        ui.add(egui::DragValue::new(&mut self.cancel_bit).range(0..=63));
+                        ui.selectable_value(&mut self.cancel_trig_rising, true, "Rising");
+                        ui.selectable_value(&mut self.cancel_trig_rising, false, "Falling");
                     });
                 }
                 ui.checkbox(&mut self.final_trig_enabled, "Pulse VTL line on completion");

@@ -78,6 +78,21 @@ fn arm(scene: &mut SceneState, anim: u32) {
     scene.animations.get_mut(&anim).unwrap().state = AnimState::Armed;
 }
 
+/// Cancel an animation through the proto boundary (exercises cmd_cancel_animation).
+fn cancel_via_request(scene: &mut SceneState, anim: u32) {
+    use vstimd::proto;
+    use vstimd::proto::request;
+    scene.handle_request(
+        proto::Request {
+            target: Some(request::Target::System(proto::SystemTarget {})),
+            body: Some(request::Body::CancelAnimation(
+                proto::CancelAnimationRequest { handle: anim },
+            )),
+        },
+        None,
+    );
+}
+
 // ── Accessors ─────────────────────────────────────────────────────────────────
 
 fn anim_state(scene: &SceneState, anim: u32) -> &AnimState {
@@ -1125,6 +1140,216 @@ fn flicker_anim_enabled_restored_on_delete() {
         is_anim_enabled(&scene, s),
         "anim_enabled restored on delete from off-phase"
     );
+}
+
+// ── Cancel: trigger edge + software command ───────────────────────────────────
+
+#[test]
+fn cancel_trigger_aborts_running_and_runs_final_action() {
+    // Flash(10) with RESTORE_STATE; a cancel edge while Running restores the
+    // captured enabled=false and ends Done — well before the flash duration.
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, false);
+
+    let a = scene.add_animation({
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
+        e.final_action = FinalAction::RESTORE_STATE;
+        e.cancel_trigger = Some((bit(0, 4), Edge::Rising));
+        e
+    });
+
+    advance(&mut scene); // frame 0: captures false, enables stim, Running
+    assert!(is_enabled(&scene, s));
+    assert!(matches!(anim_state(&scene, a), &AnimState::Running { .. }));
+
+    // Cancel edge fires → RESTORE_STATE restores enabled=false, Done.
+    advance_with(&mut scene, &rising_edge(0, 4));
+    assert_eq!(anim_state(&scene, a), &AnimState::Done);
+    assert!(!is_enabled(&scene, s), "cancel runs RESTORE_STATE teardown");
+}
+
+#[test]
+fn cancel_trigger_aborts_armed_before_start() {
+    // Armed flash with a start_trigger that never fires; a cancel edge stops it
+    // before it ever runs — stim never enabled, animation ends Done.
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, false);
+
+    let a = scene.add_animation({
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 5 }, vec![s]);
+        e.start_trigger = Some((bit(0, 1), Edge::Rising));
+        e.cancel_trigger = Some((bit(0, 2), Edge::Rising));
+        e
+    });
+
+    advance(&mut scene); // no edge → stays Armed
+    assert_eq!(anim_state(&scene, a), &AnimState::Armed);
+
+    advance_with(&mut scene, &rising_edge(0, 2)); // cancel edge while Armed
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Done,
+        "cancelled before start"
+    );
+    assert!(!is_enabled(&scene, s), "never enabled: flash never started");
+}
+
+#[test]
+fn cancel_trigger_wrong_edge_ignored() {
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    let a = scene.add_animation({
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 5 }, vec![s]);
+        e.cancel_trigger = Some((bit(0, 3), Edge::Rising));
+        e
+    });
+
+    advance(&mut scene); // Running
+
+    // Falling edge on the cancel bit — ignored (wants Rising).
+    advance_with(&mut scene, &falling_edge(0, 3));
+    assert!(
+        matches!(anim_state(&scene, a), &AnimState::Running { .. }),
+        "falling edge ignored"
+    );
+
+    // Rising on the wrong bit — ignored.
+    advance_with(&mut scene, &rising_edge(0, 5));
+    assert!(
+        matches!(anim_state(&scene, a), &AnimState::Running { .. }),
+        "wrong bit ignored"
+    );
+
+    // Correct rising edge — cancels.
+    advance_with(&mut scene, &rising_edge(0, 3));
+    assert_eq!(anim_state(&scene, a), &AnimState::Done);
+}
+
+#[test]
+fn cancel_trigger_pulses_final_action_trigger_line() {
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    let a = scene.add_animation({
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
+        e.final_action = FinalAction::FINAL_ACTION_TRIGGER_LINE;
+        e.final_action_trigger_line = Some(bit(0, 6));
+        e.cancel_trigger = Some((bit(0, 0), Edge::Rising));
+        e
+    });
+
+    advance(&mut scene); // Running
+    let out = advance_with(&mut scene, &rising_edge(0, 0)); // cancel
+    assert_eq!(anim_state(&scene, a), &AnimState::Done);
+    assert_ne!(
+        out[0] & (1u64 << 6),
+        0,
+        "cancel pulses the final_action trigger line"
+    );
+}
+
+#[test]
+fn cancel_does_not_honor_restart() {
+    // Even with RESTART set, cancel is a terminal stop — it lands in Done.
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    let a = scene.add_animation({
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
+        e.final_action = FinalAction::RESTART;
+        e.cancel_trigger = Some((bit(0, 0), Edge::Rising));
+        e
+    });
+
+    advance(&mut scene); // Running
+    advance_with(&mut scene, &rising_edge(0, 0)); // cancel
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Done,
+        "cancel overrides RESTART"
+    );
+}
+
+#[test]
+fn cancel_command_releases_anim_enabled_on_running_flicker() {
+    // Software CancelAnimation on a Running flicker releases the anim_enabled
+    // hold (like disarm) but ends in Done (unlike disarm's Idle).
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, true);
+
+    let a = scene.add_animation(AnimationEntry::armed(flicker(2, 2, None, true), vec![s]));
+    advance(&mut scene); // frame 0: on
+    advance(&mut scene); // frame 1: on
+    advance(&mut scene); // frame 2: off (phase_frame=2 >= 2)
+    assert!(!is_anim_enabled(&scene, s), "off-phase before cancel");
+
+    cancel_via_request(&mut scene, a);
+    assert_eq!(
+        anim_state(&scene, a),
+        &AnimState::Done,
+        "cancel ends in Done"
+    );
+    assert!(is_anim_enabled(&scene, s), "anim_enabled released on cancel");
+}
+
+#[test]
+fn cancel_command_runs_disable_teardown() {
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, true);
+    let a = scene.add_animation({
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
+        e.final_action = FinalAction::DISABLE;
+        e
+    });
+
+    advance(&mut scene); // Running, enabled
+    assert!(is_enabled(&scene, s));
+    cancel_via_request(&mut scene, a);
+    assert_eq!(anim_state(&scene, a), &AnimState::Done);
+    assert!(!is_enabled(&scene, s), "cancel runs DISABLE teardown");
+}
+
+#[test]
+fn cancel_command_on_armed_stops_before_start() {
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, false);
+    let a = scene.add_animation(AnimationEntry::armed(
+        Animation::FlashForNFrames { duration_frames: 5 },
+        vec![s],
+    ));
+
+    cancel_via_request(&mut scene, a); // cancel while Armed, before any advance
+    assert_eq!(anim_state(&scene, a), &AnimState::Done);
+
+    advance(&mut scene); // must not start
+    assert!(!is_enabled(&scene, s), "cancelled Armed animation never runs");
+    assert_eq!(anim_state(&scene, a), &AnimState::Done);
+}
+
+#[test]
+fn cancel_command_unknown_handle_errors() {
+    use vstimd::proto;
+    use vstimd::proto::request;
+    let mut scene = SceneState::new();
+    let resp = scene.handle_request(
+        proto::Request {
+            target: Some(request::Target::System(proto::SystemTarget {})),
+            body: Some(request::Body::CancelAnimation(
+                proto::CancelAnimationRequest { handle: 999 },
+            )),
+        },
+        None,
+    );
+    assert_eq!(resp.code, proto::ErrorCode::HandleNotFound as i32);
 }
 
 // ── Multiple animations on the same stimulus ──────────────────────────────────

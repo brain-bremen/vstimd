@@ -89,6 +89,13 @@ export function AnimationsPanel({ conn, snapshot }: Props) {
                     disarm
                   </button>{" "}
                   <button
+                    disabled={!conn || (a.state !== "armed" && a.state !== "running")}
+                    title="Clean teardown (runs final action)"
+                    onClick={() => act(() => conn!.animations.cancel(a.handle))}
+                  >
+                    cancel
+                  </button>{" "}
+                  <button
                     disabled={!conn}
                     onClick={() => act(() => conn!.animations.delete(a.handle))}
                   >

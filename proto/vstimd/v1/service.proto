@@ -146,6 +146,7 @@ message Request {
     DeleteAnimationRequest delete_animation = 103;
     ListAnimationsRequest list_animations = 104;
     QueryAnimationRequest query_animation = 105;
+    CancelAnimationRequest cancel_animation = 106;
 
     // ── Config persistence (system target) ───────────────────────────────────
     ListConfigsRequest   list_configs    = 110;

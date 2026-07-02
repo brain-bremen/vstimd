@@ -30,6 +30,23 @@ pub(crate) fn advance_one(
     _output_snapshot: &[u64; vtl::MAX_BANKS],
     output_pending: &mut [u64; vtl::MAX_BANKS],
 ) {
+    // ── 0. Cancel trigger (Armed or Running) ──────────────────────────────────
+    // Evaluated before anything else so a pending (Armed) animation can be
+    // cancelled before it ever starts, and a Running one aborts this frame.
+    {
+        let Some(entry) = scene.config.animations.get(&handle) else {
+            return;
+        };
+        let cancellable = matches!(entry.state, AnimState::Armed | AnimState::Running { .. });
+        if cancellable
+            && let Some((bit, edge)) = entry.cancel_trigger
+            && edge_fired(input_edges, bit, edge)
+        {
+            cancel_one(handle, scene, output_pending);
+            return;
+        }
+    }
+
     // ── 1. Armed → Running ────────────────────────────────────────────────────
     {
         let Some(entry) = scene.config.animations.get(&handle) else {
@@ -270,8 +287,38 @@ pub(crate) fn advance_one(
 
     // ── 3. Final actions ──────────────────────────────────────────────────────
     if done {
-        finalize(handle, scene, &stim_handles, output_pending);
+        finalize(handle, scene, &stim_handles, output_pending, true);
     }
+}
+
+/// Cancel an animation: a clean teardown, distinct from disarm. If the animation
+/// is `Running`, its `final_action` runs (leaving visibility in a defined state
+/// via `RESTORE_STATE` / `DISABLE`, pulsing any trigger line, releasing the
+/// `anim_enabled` hold) — but `RESTART` is *not* honored, so it always ends in
+/// `Done`. If it is `Armed`, it is stopped before it ever started (no teardown,
+/// since nothing was applied). Returns false if the handle is unknown.
+pub(crate) fn cancel_one(
+    handle: u32,
+    scene: &mut SceneState,
+    output_pending: &mut [u64; vtl::MAX_BANKS],
+) -> bool {
+    let Some(entry) = scene.config.animations.get(&handle) else {
+        return false;
+    };
+    match entry.state {
+        AnimState::Running { .. } => {
+            let stim_handles = entry.config.stimuli.clone();
+            finalize(handle, scene, &stim_handles, output_pending, false);
+        }
+        // Armed (never started), Idle or Done: nothing to tear down. Land in a
+        // defined stopped state so cancel is always a no-op-safe terminal.
+        _ => {
+            if let Some(entry) = scene.config.animations.get_mut(&handle) {
+                entry.state = AnimState::Done;
+            }
+        }
+    }
+    true
 }
 
 fn finalize(
@@ -279,6 +326,7 @@ fn finalize(
     scene: &mut SceneState,
     stim_handles: &[u32],
     output_pending: &mut [u64; vtl::MAX_BANKS],
+    allow_restart: bool,
 ) {
     let (final_action, trigger_line, captured, restart) = {
         let Some(entry) = scene.config.animations.get(&handle) else {
@@ -287,7 +335,7 @@ fn finalize(
         let fa = entry.final_action;
         let tl = entry.final_action_trigger_line;
         let cap = entry.captured_user_enabled.clone();
-        let restart = fa.contains(FinalAction::RESTART);
+        let restart = allow_restart && fa.contains(FinalAction::RESTART);
         (fa, tl, cap, restart)
     };
 
