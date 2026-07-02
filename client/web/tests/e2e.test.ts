@@ -169,6 +169,48 @@ describe("vstimd web client e2e (--null)", () => {
     expect(line.high).toBe(true);
   });
 
+  it("chains animations via an output edge (intra-server)", async () => {
+    const sa = await conn.stimuli.shapes.createRect({ name: "chain-a" });
+    const sb = await conn.stimuli.shapes.createRect({ name: "chain-b" });
+
+    // A pulses output line (0,25) when it finishes; B starts off that OUTPUT edge.
+    const a = await conn.animations.flash(sa, {
+      durationFrames: 6,
+      startActions: ["enable"],
+      finalActions: ["disable", "finalActionTriggerLine"],
+      finalActionTriggerLine: VtlHandle.output(0, 25),
+    });
+    const b = await conn.animations.flash(sb, {
+      durationFrames: 30,
+      startActions: ["enable"],
+      finalActions: ["disable"],
+      startTrigger: VtlHandle.output(0, 25),
+      startEdge: "rising",
+    });
+
+    await conn.animations.arm(a);
+    await conn.animations.arm(b);
+    expect((await conn.animations.query(b)).state).toBe("armed");
+
+    // A finishes on its own; its output pulse drives B — no input loopback.
+    const waitState = async (h: number, want: string, tries = 40): Promise<string> => {
+      for (let i = 0; i < tries; i++) {
+        const s = (await conn.animations.query(h)).state;
+        if (s === want || s === "done") return s;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      return (await conn.animations.query(h)).state;
+    };
+
+    expect(await waitState(a, "done")).toBe("done");
+    expect(["running", "done"]).toContain(await waitState(b, "running"));
+
+    await conn.animations.delete(a);
+    await conn.animations.delete(b);
+    await conn.stimuli.delete(sa);
+    await conn.stimuli.delete(sb);
+  });
+
   it("round-trips a position update (RF-mapping style)", async () => {
     const handle = await conn.stimuli.shapes.createCircle({ radius: 20, name: "drag-me" });
     await conn.stimuli.setPosition(handle, { x: 333, y: -111 });

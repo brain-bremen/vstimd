@@ -1007,3 +1007,110 @@ def test_anim_output_edge_chaining(
     conn.stimuli.delete(sa)
     conn.stimuli.delete(sb)
     conn.stimuli.delete(lbl)
+
+
+def test_anim_output_edge_cancel_chaining(
+    conn: Connection, request: pytest.FixtureRequest, step_delay: float
+) -> None:
+    """Animation A pulses an output line on completion; a long-running animation
+    B is cancelled off that OUTPUT edge — interlock entirely inside the server."""
+    tid = request.node.name
+    lbl = _label(conn, tid, "A finishes → pulses output (0,21) → B cancelled")
+    sa = _make_rect(conn, x=-150, y=0, enabled=False)
+    sb = _make_rect(conn, x=150, y=0, enabled=False)
+
+    # A: short flash that pulses output bit (0, 21) on completion.
+    a = conn.animations.create_flash(
+        sa,
+        duration_frames=6,
+        start_action_mask=StartAction.ENABLE,
+        final_action_mask=FinalAction.DISABLE | FinalAction.FINAL_ACTION_TRIGGER_LINE,
+        final_action_trigger_line=VtlHandle.output(0, 21),
+    )
+    # B: long-running; cancels on a rising edge of the OUTPUT line (0, 21).
+    b = conn.animations.create_flash(
+        sb,
+        duration_frames=100000,
+        start_action_mask=StartAction.ENABLE,
+        cancel_trigger=VtlHandle.output(0, 21),
+        cancel_edge=VtlEdge.RISING,
+        cancel_action_mask=CancelAction.DISABLE,
+    )
+
+    conn.animations.arm(a)
+    conn.animations.arm(b)
+    _wait_for_state(conn, b, AnimationState.RUNNING, timeout=2.0)
+    time.sleep(0.05)
+    assert conn.stimuli.query(sb).enabled is True, "B visible while running"
+
+    _update_label(conn, lbl, tid, "B running — A about to finish")
+    time.sleep(step_delay)
+
+    # A completes; its output pulse cancels B one frame later (DISABLE teardown).
+    assert _wait_for_state(conn, a, AnimationState.DONE, timeout=3.0) == AnimationState.DONE
+    assert _wait_for_state(conn, b, AnimationState.DONE, timeout=2.0) == AnimationState.DONE
+    time.sleep(0.05)
+    assert conn.stimuli.query(sb).enabled is False, "B ran DISABLE cancel teardown"
+
+    _update_label(conn, lbl, tid, "B cancelled by A's output edge")
+    time.sleep(step_delay * 0.5)
+
+    conn.animations.delete(a)
+    conn.animations.delete(b)
+    conn.stimuli.delete(sa)
+    conn.stimuli.delete(sb)
+    conn.stimuli.delete(lbl)
+
+
+def test_anim_output_edge_fan_out(
+    conn: Connection, request: pytest.FixtureRequest, step_delay: float
+) -> None:
+    """One output edge starts several animations at once (fan-out)."""
+    tid = request.node.name
+    lbl = _label(conn, tid, "A finishes → output (0,22) → B and C start")
+    sa = _make_rect(conn, x=-200, y=0, enabled=False)
+    sb = _make_rect(conn, x=0, y=0, enabled=False)
+    sc = _make_rect(conn, x=200, y=0, enabled=False)
+
+    a = conn.animations.create_flash(
+        sa,
+        duration_frames=6,
+        start_action_mask=StartAction.ENABLE,
+        final_action_mask=FinalAction.DISABLE | FinalAction.FINAL_ACTION_TRIGGER_LINE,
+        final_action_trigger_line=VtlHandle.output(0, 22),
+    )
+    followers = [
+        conn.animations.create_flash(
+            s,
+            duration_frames=30,
+            start_action_mask=StartAction.ENABLE,
+            final_action_mask=FinalAction.DISABLE,
+            start_trigger=VtlHandle.output(0, 22),
+            start_edge=VtlEdge.RISING,
+        )
+        for s in (sb, sc)
+    ]
+
+    conn.animations.arm(a)
+    for f in followers:
+        conn.animations.arm(f)
+        assert conn.animations.query(f).state == AnimationState.ARMED
+
+    assert _wait_for_state(conn, a, AnimationState.DONE, timeout=3.0) == AnimationState.DONE
+    for f in followers:
+        started = _wait_for_state(conn, f, AnimationState.RUNNING, timeout=2.0)
+        assert started in (AnimationState.RUNNING, AnimationState.DONE), (
+            f"follower {f} should start off A's output edge (got {started!r})"
+        )
+
+    _update_label(conn, lbl, tid, "B and C started from one output edge")
+    time.sleep(step_delay * 0.5)
+
+    for f in followers:
+        _wait_for_state(conn, f, AnimationState.DONE, timeout=3.0)
+        conn.animations.delete(f)
+    conn.animations.delete(a)
+    conn.stimuli.delete(sa)
+    conn.stimuli.delete(sb)
+    conn.stimuli.delete(sc)
+    conn.stimuli.delete(lbl)
