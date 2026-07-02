@@ -1,4 +1,4 @@
-# vstimd
+# ![vstimd](assets/vstimd-logo.svg#only-light){ .home-logo }![vstimd](assets/vstimd-logo-dark.svg#only-dark){ .home-logo }
 
 **vstimd** is a visual stimulus server for neuroscience experiments. It runs on dedicated
 hardware and accepts commands from experiment scripts over the network, rendering stimuli with

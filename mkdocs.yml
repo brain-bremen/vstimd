@@ -18,6 +18,9 @@ docs_dir: docs
 theme:
   name: material
   language: en
+  # Header sits on UB blue, so use the dark-background wordmark (white "stim").
+  logo: assets/vstimd-logo-dark.svg
+  favicon: assets/favicon.png
   icon:
     repo: fontawesome/brands/github
   features:
