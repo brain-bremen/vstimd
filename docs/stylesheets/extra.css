@@ -8,20 +8,30 @@
   --ub-red:         #c60c2b;
   --ub-red-dark:    #aa1f44;
 
+}
+
+/* Primary = UB blue. Attribute-targeted so it beats Material's built-in
+   [data-md-color-primary=…] rules regardless of load order. */
+[data-md-color-primary="custom"] {
   --md-primary-fg-color:        var(--ub-blue);
   --md-primary-fg-color--light: #21467a;
   --md-primary-fg-color--dark:  var(--ub-blue-dark);
   --md-primary-bg-color:        #ffffff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+}
 
-  --md-accent-fg-color:             var(--ub-red);
+/* Accent = UB red (used for links on hover, focus, selection). */
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color:              var(--ub-red);
   --md-accent-fg-color--transparent: rgba(198, 12, 43, 0.1);
 }
 
-/* Dark mode: keep the blue header, brighten the red so links stay legible. */
+/* Dark mode: brighten the red/links so they stay legible on dark backgrounds. */
+[data-md-color-scheme="slate"][data-md-color-accent="custom"] {
+  --md-accent-fg-color: #ff5d6c;
+}
 [data-md-color-scheme="slate"] {
-  --md-primary-fg-color: var(--ub-blue);
-  --md-accent-fg-color:  #ff5d6c;
-  --md-typeset-a-color:  #6ea8ff;
+  --md-typeset-a-color: #6ea8ff;
 }
 
 /* ── Compact comparison matrix (used on why-vstimd.md) ───────────────────────
