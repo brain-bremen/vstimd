@@ -7,7 +7,7 @@ from vstimd._handles import AnimationHandle, StimulusHandle
 from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import animations_pb2, vtl_pb2
 from vstimd.response import ServerResponse
-from .animations_models import AnimationDetails, AnimationInfo, AnimationState, FinalAction, StartAction, VtlEdge
+from .animations_models import AnimationDetails, AnimationInfo, AnimationState, CancelAction, FinalAction, StartAction, VtlEdge
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
@@ -105,6 +105,21 @@ class AnimationClient:
             disarm_animation=animations_pb2.DisarmAnimationRequest(handle=handle),
         )))
 
+    def cancel(self, handle: AnimationHandle) -> ServerResponse:
+        """Cancel an animation with a clean teardown (ends in DONE).
+
+        Unlike :meth:`disarm` (which just returns to IDLE), cancel applies the
+        animation's configured ``cancel_action_mask`` (independent of
+        ``final_action`` and possibly empty for a hard abort), including any
+        ``cancel_action_trigger_line`` pulse, and releases the animation hold
+        when cancelling from RUNNING. Works whether the animation is ARMED
+        (stopped before it starts) or RUNNING.
+        """
+        return ServerResponse._from_proto(self._send(service_pb2.Request(
+            system=_sys(),
+            cancel_animation=animations_pb2.CancelAnimationRequest(handle=handle),
+        )))
+
     def delete(self, handle: AnimationHandle) -> ServerResponse:
         """Delete an animation."""
         return ServerResponse._from_proto(self._send(service_pb2.Request(
@@ -146,6 +161,7 @@ class AnimationClient:
             type_name=r.type_name,
             stimuli=tuple(StimulusHandle(s) for s in p.stimuli),
             final_action=FinalAction(p.final_action_mask),
+            cancel_action=CancelAction(p.cancel_action_mask),
         )
 
     # ── Shared keyword args (passed through _make_req) ────────────────────────
@@ -162,6 +178,10 @@ class AnimationClient:
         final_action_trigger_line: Optional[VtlHandle],
         start_trigger: Optional[VtlHandle],
         start_edge: VtlEdge,
+        cancel_trigger: Optional[VtlHandle],
+        cancel_edge: VtlEdge,
+        cancel_action_mask: CancelAction,
+        cancel_action_trigger_line: Optional[VtlHandle],
     ) -> animations_pb2.CreateAnimationRequest:
         return animations_pb2.CreateAnimationRequest(
             name=name,
@@ -171,6 +191,10 @@ class AnimationClient:
             final_action_trigger_line=_make_vtl_handle(final_action_trigger_line) if final_action_trigger_line else None,
             start_trigger=_make_vtl_handle(start_trigger) if start_trigger else None,
             start_edge=int(start_edge),
+            cancel_trigger=_make_vtl_handle(cancel_trigger) if cancel_trigger else None,
+            cancel_edge=int(cancel_edge),
+            cancel_action_mask=int(cancel_action_mask),
+            cancel_action_trigger_line=_make_vtl_handle(cancel_action_trigger_line) if cancel_action_trigger_line else None,
             stimuli=_to_stimuli(stimuli),
             **body_kwargs,
         )
@@ -190,6 +214,10 @@ class AnimationClient:
         final_action_trigger_line: Optional[VtlHandle] = None,
         start_trigger: Optional[VtlHandle] = None,
         start_edge: VtlEdge = VtlEdge.RISING,
+        cancel_trigger: Optional[VtlHandle] = None,
+        cancel_edge: VtlEdge = VtlEdge.RISING,
+        cancel_action_mask: CancelAction = CancelAction(0),
+        cancel_action_trigger_line: Optional[VtlHandle] = None,
     ) -> AnimationHandle:
         """Mirror stimulus enabled state to the level of a trigger line (input or output)."""
         req = self._make_req(
@@ -206,6 +234,9 @@ class AnimationClient:
             final_action_mask=final_action_mask,
             final_action_trigger_line=final_action_trigger_line,
             start_trigger=start_trigger, start_edge=start_edge,
+            cancel_trigger=cancel_trigger, cancel_edge=cancel_edge,
+            cancel_action_mask=cancel_action_mask,
+            cancel_action_trigger_line=cancel_action_trigger_line,
         )
         return self._create(req)
 
@@ -223,6 +254,10 @@ class AnimationClient:
         final_action_trigger_line: Optional[VtlHandle] = None,
         start_trigger: Optional[VtlHandle] = None,
         start_edge: VtlEdge = VtlEdge.RISING,
+        cancel_trigger: Optional[VtlHandle] = None,
+        cancel_edge: VtlEdge = VtlEdge.RISING,
+        cancel_action_mask: CancelAction = CancelAction(0),
+        cancel_action_trigger_line: Optional[VtlHandle] = None,
     ) -> AnimationHandle:
         """Set stimulus enabled once when a trigger edge fires."""
         req = self._make_req(
@@ -239,6 +274,9 @@ class AnimationClient:
             final_action_mask=final_action_mask,
             final_action_trigger_line=final_action_trigger_line,
             start_trigger=start_trigger, start_edge=start_edge,
+            cancel_trigger=cancel_trigger, cancel_edge=cancel_edge,
+            cancel_action_mask=cancel_action_mask,
+            cancel_action_trigger_line=cancel_action_trigger_line,
         )
         return self._create(req)
 
@@ -255,6 +293,10 @@ class AnimationClient:
         final_action_trigger_line: Optional[VtlHandle] = None,
         start_trigger: Optional[VtlHandle] = None,
         start_edge: VtlEdge = VtlEdge.RISING,
+        cancel_trigger: Optional[VtlHandle] = None,
+        cancel_edge: VtlEdge = VtlEdge.RISING,
+        cancel_action_mask: CancelAction = CancelAction(0),
+        cancel_action_trigger_line: Optional[VtlHandle] = None,
     ) -> AnimationHandle:
         """Enable stimuli for the given duration.
 
@@ -273,6 +315,9 @@ class AnimationClient:
             final_action_mask=final_action_mask,
             final_action_trigger_line=final_action_trigger_line,
             start_trigger=start_trigger, start_edge=start_edge,
+            cancel_trigger=cancel_trigger, cancel_edge=cancel_edge,
+            cancel_action_mask=cancel_action_mask,
+            cancel_action_trigger_line=cancel_action_trigger_line,
         )
         return self._create(req)
 
@@ -294,6 +339,10 @@ class AnimationClient:
         final_action_trigger_line: Optional[VtlHandle] = None,
         start_trigger: Optional[VtlHandle] = None,
         start_edge: VtlEdge = VtlEdge.RISING,
+        cancel_trigger: Optional[VtlHandle] = None,
+        cancel_edge: VtlEdge = VtlEdge.RISING,
+        cancel_action_mask: CancelAction = CancelAction(0),
+        cancel_action_trigger_line: Optional[VtlHandle] = None,
     ) -> AnimationHandle:
         """Flicker stimuli on/off. Omit ``total_*`` to run forever.
 
@@ -315,6 +364,9 @@ class AnimationClient:
             final_action_mask=final_action_mask,
             final_action_trigger_line=final_action_trigger_line,
             start_trigger=start_trigger, start_edge=start_edge,
+            cancel_trigger=cancel_trigger, cancel_edge=cancel_edge,
+            cancel_action_mask=cancel_action_mask,
+            cancel_action_trigger_line=cancel_action_trigger_line,
         )
         return self._create(req)
 
@@ -331,6 +383,10 @@ class AnimationClient:
         final_action_trigger_line: Optional[VtlHandle] = None,
         start_trigger: Optional[VtlHandle] = None,
         start_edge: VtlEdge = VtlEdge.RISING,
+        cancel_trigger: Optional[VtlHandle] = None,
+        cancel_edge: VtlEdge = VtlEdge.RISING,
+        cancel_action_mask: CancelAction = CancelAction(0),
+        cancel_action_trigger_line: Optional[VtlHandle] = None,
     ) -> AnimationHandle:
         """Move stimulus through a sequence of 2-D positions, one per frame.
 
@@ -349,6 +405,9 @@ class AnimationClient:
             final_action_mask=final_action_mask,
             final_action_trigger_line=final_action_trigger_line,
             start_trigger=start_trigger, start_edge=start_edge,
+            cancel_trigger=cancel_trigger, cancel_edge=cancel_edge,
+            cancel_action_mask=cancel_action_mask,
+            cancel_action_trigger_line=cancel_action_trigger_line,
         )
         return self._create(req)
 
@@ -366,6 +425,10 @@ class AnimationClient:
         final_action_trigger_line: Optional[VtlHandle] = None,
         start_trigger: Optional[VtlHandle] = None,
         start_edge: VtlEdge = VtlEdge.RISING,
+        cancel_trigger: Optional[VtlHandle] = None,
+        cancel_edge: VtlEdge = VtlEdge.RISING,
+        cancel_action_mask: CancelAction = CancelAction(0),
+        cancel_action_trigger_line: Optional[VtlHandle] = None,
     ) -> AnimationHandle:
         """Move stimulus along piecewise-linear waypoints at a constant speed.
 
@@ -389,6 +452,9 @@ class AnimationClient:
             final_action_mask=final_action_mask,
             final_action_trigger_line=final_action_trigger_line,
             start_trigger=start_trigger, start_edge=start_edge,
+            cancel_trigger=cancel_trigger, cancel_edge=cancel_edge,
+            cancel_action_mask=cancel_action_mask,
+            cancel_action_trigger_line=cancel_action_trigger_line,
         )
         return self._create(req)
 
@@ -406,6 +472,10 @@ class AnimationClient:
         final_action_trigger_line: Optional[VtlHandle] = None,
         start_trigger: Optional[VtlHandle] = None,
         start_edge: VtlEdge = VtlEdge.RISING,
+        cancel_trigger: Optional[VtlHandle] = None,
+        cancel_edge: VtlEdge = VtlEdge.RISING,
+        cancel_action_mask: CancelAction = CancelAction(0),
+        cancel_action_trigger_line: Optional[VtlHandle] = None,
     ) -> AnimationHandle:
         """Read stimulus position from a POSIX shared memory float array each frame."""
         req = self._make_req(
@@ -422,6 +492,9 @@ class AnimationClient:
             final_action_mask=final_action_mask,
             final_action_trigger_line=final_action_trigger_line,
             start_trigger=start_trigger, start_edge=start_edge,
+            cancel_trigger=cancel_trigger, cancel_edge=cancel_edge,
+            cancel_action_mask=cancel_action_mask,
+            cancel_action_trigger_line=cancel_action_trigger_line,
         )
         return self._create(req)
 

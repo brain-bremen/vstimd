@@ -34,6 +34,20 @@ class FinalAction(IntFlag):
     END_DEFERRED              = 0x80
 
 
+class CancelAction(IntFlag):
+    """Actions applied when an animation is cancelled (edge or software).
+
+    Independent of :class:`FinalAction`; ``CancelAction(0)`` is a hard abort that
+    leaves visibility as-is. ``RESTART``/``REVERSE`` do not apply — cancel is
+    always terminal.
+    """
+    DISABLE                    = 0x01
+    TOGGLE_PHOTODIODE          = 0x04
+    CANCEL_ACTION_TRIGGER_LINE = 0x08
+    RESTORE_STATE              = 0x40
+    END_DEFERRED               = 0x80
+
+
 @dataclass(frozen=True)
 class AnimationInfo:
     handle: AnimationHandle
@@ -50,3 +64,4 @@ class AnimationDetails:
     type_name: str
     stimuli: tuple[StimulusHandle, ...]
     final_action: FinalAction
+    cancel_action: CancelAction = CancelAction(0)

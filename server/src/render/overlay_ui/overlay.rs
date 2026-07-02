@@ -319,6 +319,7 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                         }
                         let mut arm: Option<u32> = None;
                         let mut disarm: Option<u32> = None;
+                        let mut cancel: Option<u32> = None;
                         let mut trigger: Option<u32> = None;
                         let mut delete: Option<u32> = None;
                         egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
@@ -340,6 +341,10 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                                     ui.horizontal(|ui| {
                                         if ui.small_button("Arm").clicked() { arm = Some(*h); }
                                         if ui.small_button("Disarm").clicked() { disarm = Some(*h); }
+                                        if ui.small_button("Cancel")
+                                            .on_hover_text("Clean teardown (applies configured cancel action)").clicked() {
+                                            cancel = Some(*h);
+                                        }
                                         if ui.small_button("Trigger")
                                             .on_hover_text("Fire start trigger or run now").clicked() {
                                             trigger = Some(*h);
@@ -355,6 +360,23 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                         });
                         if let Some(h) = arm    { sc.arm_animation(h); }
                         if let Some(h) = disarm { sc.disarm_animation(h); }
+                        if let Some(h) = cancel {
+                            // Seed from staged outputs so a cancel_action trigger-line
+                            // pulse is applied, then commit changed banks back.
+                            let mut output_pending = (*vtl)
+                                .and_then(|v| v.try_lock().ok().map(|g| g.staged))
+                                .unwrap_or([0u64; ::vtl::MAX_BANKS]);
+                            sc.cancel_animation(h, &mut output_pending);
+                            if let Some(v) = *vtl
+                                && let Ok(mut g) = v.try_lock()
+                            {
+                                for (bank, &val) in output_pending.iter().enumerate() {
+                                    if g.staged[bank] != val {
+                                        g.set_staged_bank(bank, val);
+                                    }
+                                }
+                            }
+                        }
                         if let Some(h) = delete { sc.delete_animation(h); }
                         if let Some(h) = trigger {
                             let start_trigger = sc.animations.get(&h)

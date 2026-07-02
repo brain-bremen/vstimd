@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use super::animation::{
-    AnimState, Animation, AnimationEntry, Edge, FinalAction, StartAction, VtlBit,
+    AnimState, Animation, AnimationEntry, CancelAction, Edge, FinalAction, StartAction, VtlBit,
 };
 use super::deferred::Deferred;
 use super::scene_state::SceneState;
@@ -154,6 +154,7 @@ fn command_summary(req: &proto::Request) -> String {
         Some(request::Body::CreateAnimation(c)) => format!("CreateAnimation({:?})", c.name),
         Some(request::Body::ArmAnimation(c)) => format!("ArmAnimation({})", c.handle),
         Some(request::Body::DisarmAnimation(c)) => format!("DisarmAnimation({})", c.handle),
+        Some(request::Body::CancelAnimation(c)) => format!("CancelAnimation({})", c.handle),
         Some(request::Body::DeleteAnimation(c)) => format!("DeleteAnimation({})", c.handle),
         Some(request::Body::ListAnimations(_)) => "ListAnimations".into(),
         Some(request::Body::QueryAnimation(c)) => format!("QueryAnimation({})", c.handle),
@@ -289,6 +290,7 @@ impl SceneState {
             request::Body::CreateAnimation(cmd) => self.cmd_create_animation(cmd, vtl.as_deref()),
             request::Body::ArmAnimation(cmd) => self.cmd_arm_animation(cmd),
             request::Body::DisarmAnimation(cmd) => self.cmd_disarm_animation(cmd),
+            request::Body::CancelAnimation(cmd) => self.cmd_cancel_animation(cmd, vtl),
             request::Body::DeleteAnimation(cmd) => self.cmd_delete_animation(cmd),
             request::Body::ListAnimations(_) => self.cmd_list_animations(),
             request::Body::QueryAnimation(cmd) => self.cmd_query_animation(cmd),
@@ -336,6 +338,7 @@ impl SceneState {
             | request::Body::CreateAnimation(_)
             | request::Body::ArmAnimation(_)
             | request::Body::DisarmAnimation(_)
+            | request::Body::CancelAnimation(_)
             | request::Body::DeleteAnimation(_)
             | request::Body::ListAnimations(_)
             | request::Body::QueryAnimation(_)
@@ -1721,6 +1724,27 @@ impl SceneState {
             None
         };
 
+        let cancel_trigger = if cmd.cancel_trigger.is_some() {
+            match resolve_vtl_handle(cmd.cancel_trigger.as_ref(), vtl_names) {
+                Ok((bank, bit)) => Some((VtlBit { bank, bit }, proto_vtl_edge(cmd.cancel_edge))),
+                Err(e) => return *e,
+            }
+        } else {
+            None
+        };
+
+        let cancel_action = CancelAction::from_bits_truncate(cmd.cancel_action_mask as u8);
+
+        let cancel_action_trigger_line =
+            if cancel_action.contains(CancelAction::CANCEL_ACTION_TRIGGER_LINE) {
+                match resolve_vtl_handle(cmd.cancel_action_trigger_line.as_ref(), vtl_names) {
+                    Ok((bank, bit)) => Some(VtlBit { bank, bit }),
+                    Err(e) => return *e,
+                }
+            } else {
+                None
+            };
+
         let animation = match proto_to_animation(&cmd, vtl_names) {
             Ok(a) => a,
             Err(e) => return *e,
@@ -1739,6 +1763,9 @@ impl SceneState {
                     final_action,
                     final_action_trigger_line,
                     start_trigger,
+                    cancel_trigger,
+                    cancel_action,
+                    cancel_action_trigger_line,
                     animation,
                 },
                 captured_user_enabled: None,
@@ -1760,6 +1787,34 @@ impl SceneState {
 
     fn cmd_disarm_animation(&mut self, cmd: proto::DisarmAnimationRequest) -> proto::Response {
         if self.disarm_animation(cmd.handle) {
+            ok_ack()
+        } else {
+            err(
+                proto::ErrorCode::HandleNotFound,
+                format!("animation handle {} not found", cmd.handle),
+            )
+        }
+    }
+
+    fn cmd_cancel_animation(
+        &mut self,
+        cmd: proto::CancelAnimationRequest,
+        vtl: Option<&mut VtlState>,
+    ) -> proto::Response {
+        // Seed a scratch output buffer from the current staged outputs so any
+        // cancel_action trigger-line pulse from the teardown is applied. Outside
+        // the render loop there is no per-frame output_pending, so we commit any
+        // changed banks straight through to shm.
+        let mut output_pending = vtl.as_ref().map_or([0u64; vtl::MAX_BANKS], |v| v.staged);
+        let found = self.cancel_animation(cmd.handle, &mut output_pending);
+        if let Some(v) = vtl {
+            for (bank, &val) in output_pending.iter().enumerate() {
+                if v.staged[bank] != val {
+                    v.set_staged_bank(bank, val);
+                }
+            }
+        }
+        if found {
             ok_ack()
         } else {
             err(
@@ -1828,6 +1883,11 @@ impl SceneState {
             None => (None, 0),
         };
 
+        let (cancel_trigger, cancel_edge) = match entry.cancel_trigger {
+            Some((bit, edge)) => (Some(vtl_bit_to_proto(bit)), edge_to_proto(edge)),
+            None => (None, 0),
+        };
+
         let params = proto::CreateAnimationRequest {
             name: entry.name.clone(),
             start_action_mask: entry.start_action.bits() as u32,
@@ -1836,6 +1896,10 @@ impl SceneState {
             final_action_trigger_line: entry.final_action_trigger_line.map(vtl_bit_to_proto),
             start_trigger,
             start_edge,
+            cancel_trigger,
+            cancel_edge,
+            cancel_action_mask: entry.cancel_action.bits() as u32,
+            cancel_action_trigger_line: entry.cancel_action_trigger_line.map(vtl_bit_to_proto),
             stimuli: entry.stimuli.clone(),
             body: Some(animation_to_proto_body(&entry.animation)),
         };
