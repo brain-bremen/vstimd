@@ -163,7 +163,7 @@ describe("vstimd web client e2e (--null)", () => {
 
     const snap = await conn.nextSnapshot();
     const line = snap.vtlLines.find((l) => l.name === "trig")!;
-    expect(line.direction).toBe("input");
+    expect(line.kind).toBe("input");
     expect(line.bank).toBe(0);
     expect(line.bit).toBe(1);
     expect(line.high).toBe(true);
@@ -209,7 +209,7 @@ describe("vstimd web client e2e (--null)", () => {
     const lines = await conn.vtl.list();
     const ours = lines.find((l) => l.name === "shutter");
     expect(ours).toBeDefined();
-    expect(ours!.direction).toBe("output");
+    expect(ours!.kind).toBe("output");
     expect(ours!.bank).toBe(0);
     expect(ours!.bit).toBe(2);
   });

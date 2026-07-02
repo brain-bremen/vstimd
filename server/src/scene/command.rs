@@ -1,7 +1,7 @@
 use uuid::Uuid;
 
 use super::animation::{
-    AnimState, Animation, AnimationEntry, CancelAction, Edge, FinalAction, StartAction, VtlBit,
+    AnimState, Animation, AnimationEntry, CancelAction, VtlEdge, FinalAction, StartAction, VtlBit,
 };
 use super::deferred::Deferred;
 use super::scene_state::SceneState;
@@ -132,7 +132,7 @@ fn command_summary(req: &proto::Request) -> String {
         }
         Some(request::Body::SetVirtualTriggerLineBank(c)) => format!(
             "SetVirtualTriggerLineBank(dir={} bank={} val={:#018x})",
-            c.direction, c.bank, c.value
+            c.kind, c.bank, c.value
         ),
         Some(request::Body::BringToFront(_)) => "BringToFront".into(),
         Some(request::Body::SendToBack(_)) => "SendToBack".into(),
@@ -1365,7 +1365,7 @@ impl SceneState {
         cmd: proto::SetVirtualTriggerLineNameRequest,
         vtl: Option<&mut VtlState>,
     ) -> proto::Response {
-        use vtl::{Direction, MAX_BANKS};
+        use vtl::{VtlKind, MAX_BANKS};
 
         if cmd.bank >= MAX_BANKS as u32 {
             return err(proto::ErrorCode::InvalidArgument, "bank out of range");
@@ -1373,13 +1373,13 @@ impl SceneState {
         if cmd.bit >= 64 {
             return err(proto::ErrorCode::InvalidArgument, "bit must be 0..63");
         }
-        let dir = match proto::VirtualTriggerLineDirection::try_from(cmd.direction) {
-            Ok(proto::VirtualTriggerLineDirection::Input) => Direction::Input,
-            Ok(proto::VirtualTriggerLineDirection::Output) => Direction::Output,
+        let dir = match proto::VirtualTriggerLineKind::try_from(cmd.kind) {
+            Ok(proto::VirtualTriggerLineKind::Input) => VtlKind::Input,
+            Ok(proto::VirtualTriggerLineKind::Output) => VtlKind::Output,
             _ => {
                 return err(
                     proto::ErrorCode::InvalidArgument,
-                    "direction must be INPUT or OUTPUT",
+                    "kind must be INPUT or OUTPUT",
                 );
             }
         };
@@ -1409,7 +1409,7 @@ impl SceneState {
                 name: cmd.name,
                 bank: cmd.bank as u8,
                 bit: cmd.bit as u8,
-                direction: dir,
+                kind: dir,
             });
         }
 
@@ -1427,32 +1427,32 @@ impl SceneState {
 
         // Enumerate every physical bit in the configured banks (not just named
         // lines) so the UIs can trigger/observe any line for debugging. A name is
-        // attached when one is registered for that (bank, bit, direction).
+        // attached when one is registered for that (bank, bit, kind).
         const BITS_PER_BANK: u8 = 64;
-        let name_of = |bank: u8, bit: u8, dir: vtl::Direction| -> String {
+        let name_of = |bank: u8, bit: u8, dir: vtl::VtlKind| -> String {
             vtl.names
                 .iter()
-                .find(|e| e.bank == bank && e.bit == bit && e.direction == dir)
+                .find(|e| e.bank == bank && e.bit == bit && e.kind == dir)
                 .map(|e| e.name.clone())
                 .unwrap_or_default()
         };
 
         let mut lines: Vec<proto::VirtualTriggerLineInfo> = Vec::new();
         for (dir, proto_dir, n_banks) in [
-            (vtl::Direction::Input, proto::VirtualTriggerLineDirection::Input, owner.num_input_banks()),
-            (vtl::Direction::Output, proto::VirtualTriggerLineDirection::Output, owner.num_output_banks()),
+            (vtl::VtlKind::Input, proto::VirtualTriggerLineKind::Input, owner.num_input_banks()),
+            (vtl::VtlKind::Output, proto::VirtualTriggerLineKind::Output, owner.num_output_banks()),
         ] {
             for bank in 0..n_banks as usize {
                 let word = match dir {
-                    vtl::Direction::Input => owner.input_state(bank),
-                    vtl::Direction::Output => owner.output_state(bank),
+                    vtl::VtlKind::Input => owner.input_state(bank),
+                    vtl::VtlKind::Output => owner.output_state(bank),
                 };
                 for bit in 0..BITS_PER_BANK {
                     lines.push(proto::VirtualTriggerLineInfo {
                         name: name_of(bank as u8, bit, dir),
                         bank: bank as u32,
                         bit: bit as u32,
-                        direction: proto_dir as i32,
+                        kind: proto_dir as i32,
                         high: word >> bit & 1 == 1,
                     });
                 }
@@ -1478,8 +1478,8 @@ impl SceneState {
             Ok(v) => v,
             Err(e) => return *e,
         };
-        match bit.direction {
-            vtl::Direction::Input => {
+        match bit.kind {
+            vtl::VtlKind::Input => {
                 let owner = vtl.owner();
                 if cmd.value {
                     if owner.set_input_bit(bit.bank, bit.bit) {
@@ -1489,7 +1489,7 @@ impl SceneState {
                     owner.set_input_fall(bit.bank, 1u64 << bit.bit);
                 }
             }
-            vtl::Direction::Output => vtl.set_staged_bit(bit.bank, bit.bit, cmd.value),
+            vtl::VtlKind::Output => vtl.set_staged_bit(bit.bank, bit.bit, cmd.value),
         }
         ok_ack()
     }
@@ -1509,8 +1509,8 @@ impl SceneState {
             Ok(v) => v,
             Err(e) => return *e,
         };
-        let high = match bit.direction {
-            vtl::Direction::Input => {
+        let high = match bit.kind {
+            vtl::VtlKind::Input => {
                 let owner = vtl.owner();
                 let mask = 1u64 << bit.bit;
                 let rose = owner.toggle_input_bit(bit.bank, bit.bit);
@@ -1521,7 +1521,7 @@ impl SceneState {
                 }
                 rose
             }
-            vtl::Direction::Output => {
+            vtl::VtlKind::Output => {
                 let high = (vtl.staged[bit.bank] >> bit.bit) & 1 == 0; // high after toggle
                 vtl.set_staged_bit(bit.bank, bit.bit, high);
                 high
@@ -1547,7 +1547,7 @@ impl SceneState {
             Ok(v) => v,
             Err(e) => return *e,
         };
-        if bit.direction != vtl::Direction::Input {
+        if bit.kind != vtl::VtlKind::Input {
             return err(
                 proto::ErrorCode::InvalidArgument,
                 "only input lines have rise/fall latches to clear",
@@ -1575,8 +1575,12 @@ impl SceneState {
             return err(proto::ErrorCode::InvalidArgument, "bank out of range");
         }
         let bank = cmd.bank as usize;
-        match proto_direction(cmd.direction) {
-            vtl::Direction::Input => {
+        let kind = match proto_kind(cmd.kind) {
+            Ok(k) => k,
+            Err(e) => return *e,
+        };
+        match kind {
+            vtl::VtlKind::Input => {
                 let owner = vtl.owner();
                 let prev = owner.input_state(bank);
                 let next = cmd.value;
@@ -1590,7 +1594,7 @@ impl SceneState {
                     owner.set_input_fall(bank, falling);
                 }
             }
-            vtl::Direction::Output => vtl.set_staged_bank(bank, cmd.value),
+            vtl::VtlKind::Output => vtl.set_staged_bank(bank, cmd.value),
         }
         ok_ack()
     }
@@ -1863,21 +1867,21 @@ fn vtl_bit_to_proto(bit: VtlBit) -> proto::VirtualTriggerLineHandle {
             bank: bit.bank as u32,
             bit: bit.bit as u32,
         })),
-        direction: direction_to_proto(bit.direction) as i32,
+        kind: kind_to_proto(bit.kind) as i32,
     }
 }
 
-fn direction_to_proto(d: vtl::Direction) -> proto::VirtualTriggerLineDirection {
+fn kind_to_proto(d: vtl::VtlKind) -> proto::VirtualTriggerLineKind {
     match d {
-        vtl::Direction::Input => proto::VirtualTriggerLineDirection::Input,
-        vtl::Direction::Output => proto::VirtualTriggerLineDirection::Output,
+        vtl::VtlKind::Input => proto::VirtualTriggerLineKind::Input,
+        vtl::VtlKind::Output => proto::VirtualTriggerLineKind::Output,
     }
 }
 
-fn edge_to_proto(e: Edge) -> i32 {
+fn edge_to_proto(e: VtlEdge) -> i32 {
     match e {
-        Edge::Rising => proto::VtlEdge::Rising as i32,
-        Edge::Falling => proto::VtlEdge::Falling as i32,
+        VtlEdge::Rising => proto::VtlEdge::Rising as i32,
+        VtlEdge::Falling => proto::VtlEdge::Falling as i32,
     }
 }
 
@@ -1939,10 +1943,10 @@ fn animation_to_proto_body(anim: &Animation) -> proto::create_animation_request:
     }
 }
 
-fn proto_vtl_edge(e: i32) -> Edge {
+fn proto_vtl_edge(e: i32) -> VtlEdge {
     match proto::VtlEdge::try_from(e).unwrap_or(proto::VtlEdge::Rising) {
-        proto::VtlEdge::Rising => Edge::Rising,
-        proto::VtlEdge::Falling => Edge::Falling,
+        proto::VtlEdge::Rising => VtlEdge::Rising,
+        proto::VtlEdge::Falling => VtlEdge::Falling,
     }
 }
 
@@ -1959,7 +1963,7 @@ fn proto_to_animation(
             resolve_vtl_handle(h, vtl_names)
         };
 
-    let proto_edge = |e: i32| -> Edge { proto_vtl_edge(e) };
+    let proto_edge = |e: i32| -> VtlEdge { proto_vtl_edge(e) };
 
     match cmd.body.as_ref() {
         Some(PBody::CoupleVisibilityToTriggerLine(c)) => {
@@ -2025,12 +2029,12 @@ fn proto_to_animation(
 
 // ── Module-private helpers ────────────────────────────────────────────────────
 
-/// Resolve a proto handle to a direction-carrying [`VtlBit`].
+/// Resolve a proto handle to a kind-carrying [`VtlBit`].
 ///
-/// The caller is always explicit about direction: the `direction` field selects
+/// The caller is always explicit about kind: the `kind` field selects
 /// the bank for a `bank_bit` handle, and for a `name` handle it selects which
 /// registered entry to match (a name may be registered independently for input
-/// and output). The direction is never inferred from the registry.
+/// and output). The kind is never inferred from the registry.
 fn resolve_vtl_handle(
     handle: Option<&proto::VirtualTriggerLineHandle>,
     names: &[VtlNameEntry],
@@ -2059,23 +2063,23 @@ fn resolve_vtl_handle(
             Ok(VtlBit {
                 bank: bb.bank as usize,
                 bit: bb.bit as u8,
-                direction: proto_direction(h.direction),
+                kind: proto_kind(h.kind)?,
             })
         }
         Some(Handle::Name(name)) => {
-            let direction = proto_direction(h.direction);
+            let kind = proto_kind(h.kind)?;
             names
                 .iter()
-                .find(|e| e.name == *name && e.direction == direction)
+                .find(|e| e.name == *name && e.kind == kind)
                 .map(|e| VtlBit {
                     bank: e.bank as usize,
                     bit: e.bit,
-                    direction,
+                    kind,
                 })
                 .ok_or_else(|| {
                     Box::new(err(
                         proto::ErrorCode::InvalidArgument,
-                        format!("no {direction:?} virtual trigger line named {name:?}"),
+                        format!("no {kind:?} virtual trigger line named {name:?}"),
                     ))
                 })
         }
@@ -2093,21 +2097,25 @@ fn resolve_output_handle(
     names: &[VtlNameEntry],
 ) -> Result<VtlBit, Box<proto::Response>> {
     let bit = resolve_vtl_handle(handle, names)?;
-    if bit.direction != vtl::Direction::Output {
+    if bit.kind != vtl::VtlKind::Output {
         return Err(Box::new(err(
             proto::ErrorCode::InvalidArgument,
-            "trigger line must address an output line (direction=OUTPUT)",
+            "trigger line must address an output line (kind=OUTPUT)",
         )));
     }
     Ok(bit)
 }
 
-fn proto_direction(d: i32) -> vtl::Direction {
-    match proto::VirtualTriggerLineDirection::try_from(d)
-        .unwrap_or(proto::VirtualTriggerLineDirection::Input)
-    {
-        proto::VirtualTriggerLineDirection::Input => vtl::Direction::Input,
-        proto::VirtualTriggerLineDirection::Output => vtl::Direction::Output,
+/// Convert a proto kind to the internal `vtl::VtlKind`, rejecting UNSPECIFIED —
+/// the caller must state input vs. output explicitly.
+fn proto_kind(d: i32) -> Result<vtl::VtlKind, Box<proto::Response>> {
+    match proto::VirtualTriggerLineKind::try_from(d) {
+        Ok(proto::VirtualTriggerLineKind::Input) => Ok(vtl::VtlKind::Input),
+        Ok(proto::VirtualTriggerLineKind::Output) => Ok(vtl::VtlKind::Output),
+        _ => Err(Box::new(err(
+            proto::ErrorCode::InvalidArgument,
+            "virtual trigger line kind must be INPUT or OUTPUT",
+        ))),
     }
 }
 

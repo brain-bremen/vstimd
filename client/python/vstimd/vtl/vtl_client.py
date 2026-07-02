@@ -6,33 +6,33 @@ from typing import Callable, Optional
 from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import vtl_pb2
 from vstimd.response import ServerResponse
-from .vtl_models import VtlDirection, VtlLineInfo
+from .vtl_models import VtlKind, VtlLineInfo
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
 
-_DIRECTION_TO_PROTO: dict[VtlDirection, vtl_pb2.VirtualTriggerLineDirection] = {
-    VtlDirection.INPUT:  vtl_pb2.VIRTUAL_TRIGGER_LINE_DIRECTION_INPUT,
-    VtlDirection.OUTPUT: vtl_pb2.VIRTUAL_TRIGGER_LINE_DIRECTION_OUTPUT,
+_KIND_TO_PROTO: dict[VtlKind, vtl_pb2.VirtualTriggerLineKind] = {
+    VtlKind.INPUT:  vtl_pb2.VIRTUAL_TRIGGER_LINE_KIND_INPUT,
+    VtlKind.OUTPUT: vtl_pb2.VIRTUAL_TRIGGER_LINE_KIND_OUTPUT,
 }
 
 
 @dataclass(frozen=True)
 class VtlHandle:
-    """A fully-qualified VTL line address, carrying its direction.
+    """A fully-qualified VTL line address, carrying its kind.
 
-    A VTL address is only unambiguous once its direction is known — input and
+    A VTL address is only unambiguous once its kind is known — input and
     output banks are independent signals sharing the same (bank, bit) space.
-    Use this wherever the direction is part of the choice (e.g. an animation
+    Use this wherever the kind is part of the choice (e.g. an animation
     ``start_trigger`` / ``cancel_trigger`` that may fire off an input *or* an
     output edge). Construct with the classmethods::
 
         VtlHandle.input(0, 10)                    # input bank, bit 10
         VtlHandle.output(0, 20)                   # output bank, bit 20
-        VtlHandle.named("frame_sync", VtlDirection.OUTPUT)  # a registered line
+        VtlHandle.named("frame_sync", VtlKind.OUTPUT)  # a registered line
     """
 
-    direction: VtlDirection
+    kind: VtlKind
     bank: Optional[int] = None
     bit: Optional[int] = None
     name: Optional[str] = None
@@ -49,25 +49,25 @@ class VtlHandle:
 
     @classmethod
     def input(cls, bank: int, bit: int) -> "VtlHandle":
-        return cls(VtlDirection.INPUT, bank=bank, bit=bit)
+        return cls(VtlKind.INPUT, bank=bank, bit=bit)
 
     @classmethod
     def output(cls, bank: int, bit: int) -> "VtlHandle":
-        return cls(VtlDirection.OUTPUT, bank=bank, bit=bit)
+        return cls(VtlKind.OUTPUT, bank=bank, bit=bit)
 
     @classmethod
-    def named(cls, name: str, direction: VtlDirection) -> "VtlHandle":
+    def named(cls, name: str, kind: VtlKind) -> "VtlHandle":
         # Direction is explicit: the server matches the registered entry with
-        # this name *and* direction (a name may exist for both directions).
-        return cls(direction, name=name)
+        # this name *and* kind (a name may exist for both directions).
+        return cls(kind, name=name)
 
     def _to_proto(self) -> vtl_pb2.VirtualTriggerLineHandle:
-        dir_proto = _DIRECTION_TO_PROTO[self.direction]
+        dir_proto = _KIND_TO_PROTO[self.kind]
         if self.name is not None:
-            return vtl_pb2.VirtualTriggerLineHandle(name=self.name, direction=dir_proto)
+            return vtl_pb2.VirtualTriggerLineHandle(name=self.name, kind=dir_proto)
         return vtl_pb2.VirtualTriggerLineHandle(
             bank_bit=vtl_pb2.VirtualTriggerLineBankBit(bank=self.bank, bit=self.bit),
-            direction=dir_proto,
+            kind=dir_proto,
         )
 
 
@@ -80,7 +80,7 @@ class VtlClient:
 
     Accessed as ``conn.vtl`` on a :class:`~vstimd.Connection` instance.
 
-    Every line is addressed by a :class:`VtlHandle`, which carries its direction
+    Every line is addressed by a :class:`VtlHandle`, which carries its kind
     (input vs. output). ``set_line`` / ``toggle_line`` / ``clear_latches`` all
     take a handle; there is a single server-side command family behind them.
 
@@ -99,8 +99,8 @@ class VtlClient:
     Example::
 
         with Connection() as conn:
-            conn.vtl.set_line_name(0, 0, VtlDirection.OUTPUT, "frame_sync")
-            conn.vtl.set_line(VtlHandle.named("frame_sync", VtlDirection.OUTPUT), True)
+            conn.vtl.set_line_name(0, 0, VtlKind.OUTPUT, "frame_sync")
+            conn.vtl.set_line(VtlHandle.named("frame_sync", VtlKind.OUTPUT), True)
     """
 
     def __init__(self, send: _SendFn) -> None:
@@ -112,7 +112,7 @@ class VtlClient:
         self,
         bank: int,
         bit: int,
-        direction: VtlDirection,
+        kind: VtlKind,
         name: str,
     ) -> ServerResponse:
         """Register a name for a VTL line. Pass ``name=""`` to clear."""
@@ -121,7 +121,7 @@ class VtlClient:
             set_virtual_trigger_line_name=vtl_pb2.SetVirtualTriggerLineNameRequest(
                 bank=bank,
                 bit=bit,
-                direction=_DIRECTION_TO_PROTO[direction],
+                kind=_KIND_TO_PROTO[kind],
                 name=name,
             ),
         )
@@ -139,7 +139,7 @@ class VtlClient:
                 name=line.name,
                 bank=line.bank,
                 bit=line.bit,
-                direction=VtlDirection(line.direction),
+                kind=VtlKind(line.kind),
                 high=line.high,
             )
             for line in resp.virtual_trigger_line_list.lines
@@ -148,7 +148,7 @@ class VtlClient:
     # ── Line control ────────────────────────────────────────────────────────────
 
     def set_line(self, handle: VtlHandle, value: bool) -> ServerResponse:
-        """Drive a line high or low. The handle's direction selects the bank: an
+        """Drive a line high or low. The handle's kind selects the bank: an
         INPUT handle simulates a hardware trigger input; an OUTPUT handle is a
         manual override (normally the render loop drives outputs)."""
         req = service_pb2.Request(
@@ -182,13 +182,13 @@ class VtlClient:
         )
         return ServerResponse._from_proto(self._send(req))
 
-    def set_bank(self, direction: VtlDirection, bank: int, value: int) -> ServerResponse:
+    def set_bank(self, kind: VtlKind, bank: int, value: int) -> ServerResponse:
         """Write all 64 lines of a bank at once (bitmask). Direction selects the
         input or output bank."""
         req = service_pb2.Request(
             system=_sys(),
             set_virtual_trigger_line_bank=vtl_pb2.SetVirtualTriggerLineBankRequest(
-                direction=_DIRECTION_TO_PROTO[direction],
+                kind=_KIND_TO_PROTO[kind],
                 bank=bank,
                 value=value,
             ),

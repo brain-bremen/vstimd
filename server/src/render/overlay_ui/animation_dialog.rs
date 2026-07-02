@@ -6,8 +6,8 @@
 //! intentionally omitted from v1.
 
 use crate::scene::animation::{Animation, CancelAction, FinalAction, StartAction};
-use crate::scene::{AnimState, AnimationEntry, Edge, VtlBit};
-use vtl::Direction;
+use crate::scene::{AnimState, AnimationEntry, VtlEdge, VtlBit};
+use vtl::VtlKind;
 
 /// A VTL line offered as a trigger choice: display label + resolved address.
 #[derive(Clone)]
@@ -17,7 +17,7 @@ pub struct TriggerLine {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Kind {
+enum AnimationDialogKind {
     Flash,
     Flicker,
     EnableOnEdge,
@@ -28,7 +28,7 @@ enum Kind {
 pub struct AnimationDialog {
     pub open: bool,
     focus_first: bool,
-    kind: Kind,
+    kind: AnimationDialogKind,
     name: String,
     /// One bool per stimulus handle offered, parallel to the `stimuli` slice.
     targets: Vec<bool>,
@@ -81,7 +81,7 @@ impl Default for AnimationDialog {
         Self {
             open: false,
             focus_first: false,
-            kind: Kind::Flash,
+            kind: AnimationDialogKind::Flash,
             name: String::new(),
             targets: Vec::new(),
             enable_on_start: true,
@@ -147,25 +147,25 @@ impl AnimationDialog {
 
     fn build(&self, lines: &[TriggerLine], selected: Vec<u32>) -> AnimationEntry {
         let trigger = lines.get(self.line_idx).map(|l| l.bit);
-        let edge = if self.edge_rising { Edge::Rising } else { Edge::Falling };
+        let edge = if self.edge_rising { VtlEdge::Rising } else { VtlEdge::Falling };
         let animation = match self.kind {
-            Kind::Flash => Animation::FlashForNFrames { duration_frames: self.flash_frames },
-            Kind::Flicker => Animation::FlickerForNFrames {
+            AnimationDialogKind::Flash => Animation::FlashForNFrames { duration_frames: self.flash_frames },
+            AnimationDialogKind::Flicker => Animation::FlickerForNFrames {
                 on_frames: self.on_frames.max(1),
                 off_frames: self.off_frames.max(1),
                 total_frames: (!self.flicker_forever).then_some(self.flicker_total),
                 start_on_phase: self.start_on_phase,
             },
-            Kind::EnableOnEdge => Animation::EnableOnTriggerEdge {
-                trigger: trigger.unwrap_or(VtlBit { bank: 0, bit: 0, direction: Direction::Input }),
+            AnimationDialogKind::EnableOnEdge => Animation::EnableOnTriggerEdge {
+                trigger: trigger.unwrap_or(VtlBit { bank: 0, bit: 0, kind: VtlKind::Input }),
                 edge,
                 enabled: self.enable_to,
             },
-            Kind::CoupleVisibility => Animation::CoupleVisibilityToTriggerLine {
-                trigger: trigger.unwrap_or(VtlBit { bank: 0, bit: 0, direction: Direction::Input }),
+            AnimationDialogKind::CoupleVisibility => Animation::CoupleVisibilityToTriggerLine {
+                trigger: trigger.unwrap_or(VtlBit { bank: 0, bit: 0, kind: VtlKind::Input }),
                 polarity: self.polarity,
             },
-            Kind::MoveSegments => Animation::MoveAlongSegments2D {
+            AnimationDialogKind::MoveSegments => Animation::MoveAlongSegments2D {
                 waypoints: Self::parse_waypoints(&self.waypoints_text),
                 speed_px_per_sec: self.speed,
             },
@@ -177,16 +177,16 @@ impl AnimationDialog {
             entry.config.start_action |= StartAction::ENABLE;
         }
         if self.start_trig_enabled {
-            let edge = if self.start_trig_rising { Edge::Rising } else { Edge::Falling };
-            let direction = if self.start_trig_output { Direction::Output } else { Direction::Input };
+            let edge = if self.start_trig_rising { VtlEdge::Rising } else { VtlEdge::Falling };
+            let kind = if self.start_trig_output { VtlKind::Output } else { VtlKind::Input };
             entry.config.start_trigger =
-                Some((VtlBit { bank: self.start_bank as usize, bit: self.start_bit as u8, direction }, edge));
+                Some((VtlBit { bank: self.start_bank as usize, bit: self.start_bit as u8, kind }, edge));
         }
         if self.cancel_trig_enabled {
-            let edge = if self.cancel_trig_rising { Edge::Rising } else { Edge::Falling };
-            let direction = if self.cancel_trig_output { Direction::Output } else { Direction::Input };
+            let edge = if self.cancel_trig_rising { VtlEdge::Rising } else { VtlEdge::Falling };
+            let kind = if self.cancel_trig_output { VtlKind::Output } else { VtlKind::Input };
             entry.config.cancel_trigger =
-                Some((VtlBit { bank: self.cancel_bank as usize, bit: self.cancel_bit as u8, direction }, edge));
+                Some((VtlBit { bank: self.cancel_bank as usize, bit: self.cancel_bit as u8, kind }, edge));
         }
         // Cancel actions apply to both edge and software cancel.
         let mut cancel_action = CancelAction::empty();
@@ -198,7 +198,7 @@ impl AnimationDialog {
             entry.config.cancel_action_trigger_line = Some(VtlBit {
                 bank: self.cancel_pulse_bank as usize,
                 bit: self.cancel_pulse_bit as u8,
-                direction: Direction::Output,
+                kind: VtlKind::Output,
             });
         }
         entry.config.cancel_action = cancel_action;
@@ -207,7 +207,7 @@ impl AnimationDialog {
             entry.config.final_action_trigger_line = Some(VtlBit {
                 bank: self.final_bank as usize,
                 bit: self.final_bit as u8,
-                direction: Direction::Output,
+                kind: VtlKind::Output,
             });
         }
         if self.arm_immediately {
@@ -235,15 +235,15 @@ impl AnimationDialog {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Type:");
-                    let r = ui.selectable_value(&mut self.kind, Kind::Flash, "Flash");
+                    let r = ui.selectable_value(&mut self.kind, AnimationDialogKind::Flash, "Flash");
                     if self.focus_first {
                         r.request_focus();
                         self.focus_first = false;
                     }
-                    ui.selectable_value(&mut self.kind, Kind::Flicker, "Flicker");
-                    ui.selectable_value(&mut self.kind, Kind::EnableOnEdge, "OnEdge");
-                    ui.selectable_value(&mut self.kind, Kind::CoupleVisibility, "Couple");
-                    ui.selectable_value(&mut self.kind, Kind::MoveSegments, "Move");
+                    ui.selectable_value(&mut self.kind, AnimationDialogKind::Flicker, "Flicker");
+                    ui.selectable_value(&mut self.kind, AnimationDialogKind::EnableOnEdge, "OnEdge");
+                    ui.selectable_value(&mut self.kind, AnimationDialogKind::CoupleVisibility, "Couple");
+                    ui.selectable_value(&mut self.kind, AnimationDialogKind::MoveSegments, "Move");
                 });
                 ui.horizontal(|ui| {
                     ui.label("Name:");
@@ -263,13 +263,13 @@ impl AnimationDialog {
 
                 ui.separator();
                 match self.kind {
-                    Kind::Flash => {
+                    AnimationDialogKind::Flash => {
                         ui.horizontal(|ui| {
                             ui.label("Duration (frames)");
                             ui.add(egui::DragValue::new(&mut self.flash_frames).range(1..=100_000));
                         });
                     }
-                    Kind::Flicker => {
+                    AnimationDialogKind::Flicker => {
                         ui.horizontal(|ui| {
                             ui.label("On / Off frames");
                             ui.add(egui::DragValue::new(&mut self.on_frames).range(1..=10_000));
@@ -284,11 +284,11 @@ impl AnimationDialog {
                         }
                         ui.checkbox(&mut self.start_on_phase, "Start in on-phase");
                     }
-                    Kind::EnableOnEdge | Kind::CoupleVisibility => {
+                    AnimationDialogKind::EnableOnEdge | AnimationDialogKind::CoupleVisibility => {
                         self.trigger_picker(ui, lines);
-                        if self.kind == Kind::EnableOnEdge {
+                        if self.kind == AnimationDialogKind::EnableOnEdge {
                             ui.horizontal(|ui| {
-                                ui.label("Edge");
+                                ui.label("VtlEdge");
                                 ui.selectable_value(&mut self.edge_rising, true, "Rising");
                                 ui.selectable_value(&mut self.edge_rising, false, "Falling");
                             });
@@ -297,7 +297,7 @@ impl AnimationDialog {
                             ui.checkbox(&mut self.polarity, "Visible when line high");
                         }
                     }
-                    Kind::MoveSegments => {
+                    AnimationDialogKind::MoveSegments => {
                         ui.horizontal(|ui| {
                             ui.label("Speed (px/s)");
                             ui.add(egui::DragValue::new(&mut self.speed).speed(1.0));

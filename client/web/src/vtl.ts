@@ -1,43 +1,43 @@
 // Virtual Trigger Line (VTL) client. Every line is addressed by a `VtlHandle`
-// that always carries its direction (input vs. output): either {bank, bit} or a
-// registered name. A single command family drives both directions.
+// that always carries its kind (input vs. output): either {bank, bit} or a
+// registered name. A single command family drives both kinds.
 
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { RequestSchema } from "./_proto/vstimd/v1/service_pb.js";
-import { VirtualTriggerLineDirection } from "./_proto/vstimd/v1/vtl_pb.js";
+import { VirtualTriggerLineKind } from "./_proto/vstimd/v1/vtl_pb.js";
 import { toVtlLineView, type VtlLineView } from "./snapshot.js";
 import type { Send } from "./transport.js";
 
-export type VtlDirection = "input" | "output";
+export type VtlKind = "input" | "output";
 
 /**
- * A fully-qualified VTL line address, carrying its direction. Address a line by
+ * A fully-qualified VTL line address, carrying its kind. Address a line by
  * `{bank, bit}` or by registered `name` — never both. Construct via the
  * `VtlHandle` helpers.
  */
 export type VtlHandle =
-  | { direction: VtlDirection; bank: number; bit: number }
-  | { direction: VtlDirection; name: string };
+  | { kind: VtlKind; bank: number; bit: number }
+  | { kind: VtlKind; name: string };
 
 /** Constructors for {@link VtlHandle} (mirrors the type name). */
 export const VtlHandle = {
-  input: (bank: number, bit: number): VtlHandle => ({ direction: "input", bank, bit }),
-  output: (bank: number, bit: number): VtlHandle => ({ direction: "output", bank, bit }),
-  // Direction is explicit: a name may be registered for both directions.
-  named: (name: string, direction: VtlDirection): VtlHandle => ({ direction, name }),
+  input: (bank: number, bit: number): VtlHandle => ({ kind: "input", bank, bit }),
+  output: (bank: number, bit: number): VtlHandle => ({ kind: "output", bank, bit }),
+  // Kind is explicit: a name may be registered for both kinds.
+  named: (name: string, kind: VtlKind): VtlHandle => ({ kind, name }),
 };
 
-const DIR: Record<VtlDirection, VirtualTriggerLineDirection> = {
-  input: VirtualTriggerLineDirection.INPUT,
-  output: VirtualTriggerLineDirection.OUTPUT,
+const DIR: Record<VtlKind, VirtualTriggerLineKind> = {
+  input: VirtualTriggerLineKind.INPUT,
+  output: VirtualTriggerLineKind.OUTPUT,
 };
 
 /** Build a proto VirtualTriggerLineHandle init from a {@link VtlHandle}. Shared with animations. */
 export function vtlHandleProto(h: VtlHandle) {
-  const direction = DIR[h.direction];
+  const kind = DIR[h.kind];
   return "name" in h
-    ? { handle: { case: "name" as const, value: h.name }, direction }
-    : { handle: { case: "bankBit" as const, value: { bank: h.bank, bit: h.bit } }, direction };
+    ? { handle: { case: "name" as const, value: h.name }, kind }
+    : { handle: { case: "bankBit" as const, value: { bank: h.bank, bit: h.bit } }, kind };
 }
 
 export class VtlClient {
@@ -56,10 +56,10 @@ export class VtlClient {
   }
 
   /** Name (or rename) a line; empty name clears it. */
-  async setName(bank: number, bit: number, direction: VtlDirection, name: string): Promise<void> {
+  async setName(bank: number, bit: number, kind: VtlKind, name: string): Promise<void> {
     await this.system({
       case: "setVirtualTriggerLineName",
-      value: { bank, bit, direction: DIR[direction], name },
+      value: { bank, bit, kind: DIR[kind], name },
     });
   }
 
@@ -79,9 +79,9 @@ export class VtlClient {
     await this.system({ case: "clearVirtualTriggerLineLatches", value: { handle: vtlHandleProto(handle) } });
   }
 
-  /** Write all 64 lines of a bank at once (bitmask). Direction selects the bank. */
-  async setBank(direction: VtlDirection, bank: number, value: bigint): Promise<void> {
-    await this.system({ case: "setVirtualTriggerLineBank", value: { direction: DIR[direction], bank, value } });
+  /** Write all 64 lines of a bank at once (bitmask). Kind selects the bank. */
+  async setBank(kind: VtlKind, bank: number, value: bigint): Promise<void> {
+    await this.system({ case: "setVirtualTriggerLineBank", value: { kind: DIR[kind], bank, value } });
   }
 
   private system(body: MessageInitShape<typeof RequestSchema>["body"]): Promise<unknown> {

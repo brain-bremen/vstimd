@@ -25,7 +25,7 @@ from .connection import Connection
 from ._handles import AnimationHandle, StimulusHandle
 from .response import ErrorCode, ServerResponse
 from .system import ServerInfo, ServerVersion, StimulusListEntry
-from .vtl import VtlClient, VtlDirection, VtlLineInfo
+from .vtl import VtlClient, VtlKind, VtlLineInfo
 from .config import ConfigClient
 from .animations import (
     AnimationClient,
@@ -80,7 +80,7 @@ __all__ = [
     "NotReadyError",
     "UnknownServerError",
     "VtlClient",
-    "VtlDirection",
+    "VtlKind",
     "VtlLineInfo",
     "AnimationClient",
     "AnimationDetails",

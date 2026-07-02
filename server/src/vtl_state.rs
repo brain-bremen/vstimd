@@ -14,14 +14,14 @@
 /// **Input lines** (`input_state`, `input_rise_latch`, `input_fall_latch`)
 /// represent signals arriving *into* vstimd from the outside world.
 /// Canonical writer: `daqd` — sets bits and latches when a DAQ edge fires.
-/// Software writer: ZMQ `SetVirtualTriggerLine` (direction=INPUT) commands
+/// Software writer: ZMQ `SetVirtualTriggerLine` (kind=INPUT) commands
 /// (simulate a hardware trigger for testing).
 /// Reader: the render loop, via [`VtlState::poll`].
 /// **vstimd never writes input lines** — not in animations, not in the render loop.
 ///
 /// **Output lines** (`output_state`) represent signals driven *by* vstimd.
 /// Canonical writers: the render loop (animations + vblank trigger).
-/// Software writer: ZMQ `SetVirtualTriggerLine` (direction=OUTPUT) commands —
+/// Software writer: ZMQ `SetVirtualTriggerLine` (kind=OUTPUT) commands —
 /// **debug/manual override only**.
 /// In normal operation all output writes come from the render loop.
 /// Reader: `daqd` — woken by the output semaphore strobe that `commit_staged`
@@ -120,7 +120,7 @@
 ///
 /// **Intra-server chaining — deterministic one-frame reaction (no gap):**
 /// An animation's `start_trigger` / `cancel_trigger` may address an *output*
-/// line (see [`VtlBit::direction`]). This lets one animation start or cancel
+/// line (see [`VtlBit::kind`]). This lets one animation start or cancel
 /// another entirely inside the server, with no hardware loopback or Python
 /// round-trip. The timing is a fixed one-frame *reaction*, not a gap:
 ///
@@ -148,11 +148,11 @@
 /// > **Status:** [`VtlState::poll`] and [`VtlState::write_outputs`] are
 /// > wired into both the DRM and winit render loops.  ZMQ SetInput*/SetOutput*
 /// > commands provide an additional software-only path for testing and override.
-use vtl::{Direction, VtlOwner, MAX_BANKS};
+use vtl::{VtlKind, VtlOwner, MAX_BANKS};
 
-/// A resolved (bank, bit, direction) address into the VTL shared memory.
+/// A resolved (bank, bit, kind) address into the VTL shared memory.
 ///
-/// The direction distinguishes the two independent banks that share the same
+/// The kind distinguishes the two independent banks that share the same
 /// (bank, bit) index space. It selects which edge set a trigger reads (input
 /// vs. output); for write-only uses (action trigger lines, the vblank bit) it
 /// is informational.
@@ -160,12 +160,12 @@ use vtl::{Direction, VtlOwner, MAX_BANKS};
 pub struct VtlBit {
     pub bank: usize,
     pub bit:  u8,
-    pub direction: Direction,
+    pub kind: VtlKind,
 }
 
-/// A signal edge direction on a VTL line.
+/// The polarity (rising or falling) of a VTL signal edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum Edge {
+pub enum VtlEdge {
     Rising,
     Falling,
 }
@@ -175,7 +175,7 @@ pub struct VtlNameEntry {
     pub name:      String,
     pub bank:      u8,
     pub bit:       u8,
-    pub direction: Direction,
+    pub kind: VtlKind,
 }
 
 /// Serializable VTL configuration — owned by `VtlState.config`.
@@ -316,7 +316,7 @@ impl VtlState {
 
     pub fn sync_names_to_shm(&self) {
         for (idx, e) in self.names.iter().enumerate() {
-            self.owner.write_named_line(idx, &e.name, e.bank, e.bit, e.direction);
+            self.owner.write_named_line(idx, &e.name, e.bank, e.bit, e.kind);
         }
         self.owner.set_n_named_lines(self.names.len());
     }

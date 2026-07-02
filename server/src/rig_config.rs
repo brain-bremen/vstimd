@@ -76,7 +76,7 @@ pub struct VtlRigConfig {
     /// conflict.  Bit 63 on bank 0 is a safe default.
     ///
     /// Addressed by (bank, bit) only — the vblank line is always an output, so
-    /// no direction is specified in the rig config.
+    /// no kind is specified in the rig config.
     pub vblank: Option<VblankBit>,
 }
 
@@ -90,7 +90,7 @@ pub struct VblankBit {
 impl VblankBit {
     /// The resolved output-directed [`VtlBit`].
     pub fn to_vtl_bit(self) -> VtlBit {
-        VtlBit { bank: self.bank, bit: self.bit, direction: vtl::Direction::Output }
+        VtlBit { bank: self.bank, bit: self.bit, kind: vtl::VtlKind::Output }
     }
 }
 

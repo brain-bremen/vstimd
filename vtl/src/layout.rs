@@ -17,16 +17,16 @@ pub const STATE_OFFSET: usize = 0x4000;
 pub const OUTPUT_SEM_OFFSET: usize = STATE_OFFSET + 256;
 pub const SHM_SIZE: usize = 0x5000; // 5 pages, covers state section + semaphore
 
-/// Direction of a VTL line.
+/// VtlKind of a VTL line.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[repr(u8)]
-pub enum Direction {
+pub enum VtlKind {
     Input  = 0,
     Output = 1,
 }
 
-impl Direction {
+impl VtlKind {
     pub fn from_u8(v: u8) -> Option<Self> {
         match v {
             0 => Some(Self::Input),
@@ -59,7 +59,7 @@ pub struct VtlLineEntry {
     pub name:      [u8; 56],
     pub bank:      u8,
     pub bit:       u8,
-    pub direction: u8,
+    pub kind: u8,
     pub _pad:      u8,
 }
 

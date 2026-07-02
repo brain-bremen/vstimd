@@ -172,7 +172,7 @@ class AnimationClient:
         cancel_action_mask: CancelAction,
         cancel_action_trigger_line: Optional[VtlHandle],
     ) -> animations_pb2.CreateAnimationRequest:
-        # Each trigger carries its own direction (via VtlHandle, or resolved from
+        # Each trigger carries its own kind (via VtlHandle, or resolved from
         # a named line). Action trigger lines must address an output line — the
         # server rejects an input-directed handle there.
         return animations_pb2.CreateAnimationRequest(

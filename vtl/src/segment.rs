@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use crate::layout::{
-    Direction, VtlHeader, VtlLineEntry, VtlNamesSection, VtlStateSection,
+    VtlKind, VtlHeader, VtlLineEntry, VtlNamesSection, VtlStateSection,
     MAX_BANKS, MAX_NAMED_LINES, NAMES_OFFSET, OUTPUT_SEM_OFFSET, STATE_OFFSET,
 };
 
@@ -161,22 +161,22 @@ impl VtlSegment {
         (self.names().n_entries.load(Ordering::Acquire) as usize).min(MAX_NAMED_LINES)
     }
 
-    pub fn named_line(&self, idx: usize) -> Option<(&VtlLineEntry, Direction)> {
+    pub fn named_line(&self, idx: usize) -> Option<(&VtlLineEntry, VtlKind)> {
         if idx >= self.n_named_lines() {
             return None;
         }
         let entry = &self.names().entries[idx];
-        let dir = Direction::from_u8(entry.direction)?;
+        let dir = VtlKind::from_u8(entry.kind)?;
         Some((entry, dir))
     }
 
-    /// Find a named line by name. Returns (index, entry, direction) or None.
-    pub fn find_named_line(&self, name: &str) -> Option<(usize, &VtlLineEntry, Direction)> {
+    /// Find a named line by name. Returns (index, entry, kind) or None.
+    pub fn find_named_line(&self, name: &str) -> Option<(usize, &VtlLineEntry, VtlKind)> {
         let n = self.n_named_lines().min(MAX_NAMED_LINES);
         for i in 0..n {
             let e = &self.names().entries[i];
             if e.name_str() == name {
-                let dir = Direction::from_u8(e.direction)?;
+                let dir = VtlKind::from_u8(e.kind)?;
                 return Some((i, e, dir));
             }
         }
@@ -187,7 +187,7 @@ impl VtlSegment {
     ///
     /// Uses raw-pointer writes so no `&mut` reference is ever created over shared
     /// memory, avoiding aliasing UB with concurrent `&`-reads on the same segment.
-    pub fn write_named_line(&self, idx: usize, name: &str, bank: u8, bit: u8, dir: Direction) {
+    pub fn write_named_line(&self, idx: usize, name: &str, bank: u8, bit: u8, dir: VtlKind) {
         assert!(idx < MAX_NAMED_LINES);
         let bytes = name.as_bytes();
         let len = bytes.len().min(55);
@@ -201,7 +201,7 @@ impl VtlSegment {
             }
             std::ptr::write(std::ptr::addr_of_mut!((*entry).bank),      bank);
             std::ptr::write(std::ptr::addr_of_mut!((*entry).bit),       bit);
-            std::ptr::write(std::ptr::addr_of_mut!((*entry).direction), dir as u8);
+            std::ptr::write(std::ptr::addr_of_mut!((*entry).kind), dir as u8);
             std::ptr::write(std::ptr::addr_of_mut!((*entry)._pad),      0u8);
         }
     }

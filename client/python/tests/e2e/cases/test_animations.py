@@ -12,7 +12,7 @@ import pytest
 from vstimd import Connection
 from vstimd.animations import AnimationState, CancelAction, FinalAction, StartAction, VtlEdge
 from vstimd.stimuli.stimuli_models import Color, Vec2
-from vstimd.vtl import VtlDirection, VtlHandle
+from vstimd.vtl import VtlKind, VtlHandle
 
 from ._helpers import (
     label as _label,
@@ -708,7 +708,7 @@ def test_anim_final_action_trigger_line(
     lbl = _label(conn, tid, "flash fires VTL output on completion")
 
     conn.vtl.set_line_name(
-        bank=0, bit=40, direction=VtlDirection.OUTPUT, name="anim_done_out"
+        bank=0, bit=40, kind=VtlKind.OUTPUT, name="anim_done_out"
     )
 
     s = _make_rect(conn, x=0, y=-150, enabled=False)
@@ -716,7 +716,7 @@ def test_anim_final_action_trigger_line(
         s,
         duration_frames=15,
         final_action_mask=FinalAction.FINAL_ACTION_TRIGGER_LINE | FinalAction.DISABLE,
-        final_action_trigger_line=VtlHandle.named("anim_done_out", VtlDirection.OUTPUT),
+        final_action_trigger_line=VtlHandle.named("anim_done_out", VtlKind.OUTPUT),
     )
     conn.animations.arm(a)
 
@@ -736,7 +736,7 @@ def test_anim_final_action_trigger_line(
 
     conn.animations.delete(a)
     conn.stimuli.delete(s)
-    conn.vtl.set_line_name(bank=0, bit=40, direction=VtlDirection.OUTPUT, name="")
+    conn.vtl.set_line_name(bank=0, bit=40, kind=VtlKind.OUTPUT, name="")
     conn.stimuli.delete(lbl)
 
 

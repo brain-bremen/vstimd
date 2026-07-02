@@ -1,11 +1,14 @@
 syntax = "proto3";
 package vstimd.v1;
 
-// ── Direction ─────────────────────────────────────────────────────────────────
+// ── Kind (line direction: input vs. output) ───────────────────────────────────
+//
+// Named `kind` rather than `direction` to avoid confusion with a VTL *edge*'s
+// rising/falling direction (see VtlEdge below).
 //
 // Input lines represent signals arriving *into* vstimd.
 //   Canonical writer: daqd (hardware DAQ) via the vtl shared-memory segment.
-//   Software writer:  ZMQ SetVirtualTriggerLine (direction=INPUT) commands
+//   Software writer:  ZMQ SetVirtualTriggerLine (kind=INPUT) commands
 //                     (simulate a hardware trigger).
 //   Intended reader:  vstimd render loop — polled once per frame at the START
 //                     of each frame to detect rising/falling edges that drive
@@ -15,7 +18,7 @@ package vstimd.v1;
 //   Canonical writer: vstimd render loop — written once per frame at the END
 //                     of each frame (after present/vsync) to reflect what was
 //                     shown on-screen.
-//   Software writer:  ZMQ SetVirtualTriggerLine (direction=OUTPUT) commands
+//   Software writer:  ZMQ SetVirtualTriggerLine (kind=OUTPUT) commands
 //                     (manual override / testing).
 //   Intended reader:  daqd — woken by the output semaphore strobe (posted once
 //                     per frame, not polled), then reads output_state to pulse
@@ -27,9 +30,12 @@ package vstimd.v1;
 // (VtlState::write_outputs) are wired into both the DRM and winit render loops.
 // ZMQ SetVirtualTriggerLine commands provide an additional software-only path.
 
-enum VirtualTriggerLineDirection {
-  VIRTUAL_TRIGGER_LINE_DIRECTION_INPUT  = 0;
-  VIRTUAL_TRIGGER_LINE_DIRECTION_OUTPUT = 1;
+enum VirtualTriggerLineKind {
+  // Unset — an explicit kind is required; the server rejects a handle left
+  // UNSPECIFIED rather than guessing.
+  VIRTUAL_TRIGGER_LINE_KIND_UNSPECIFIED = 0;
+  VIRTUAL_TRIGGER_LINE_KIND_INPUT       = 1;
+  VIRTUAL_TRIGGER_LINE_KIND_OUTPUT      = 2;
 }
 
 // ── Line addressing ───────────────────────────────────────────────────────────
@@ -40,41 +46,41 @@ message VirtualTriggerLineBankBit {
 }
 
 // Address a virtual trigger line either by (bank, bit) index or by registered
-// name, together with the line's direction.
+// name, together with the line's kind (input vs. output).
 //
-// A VTL address is only unambiguous once its direction is known: input and
-// output banks are independent signals that share the same (bank, bit) space.
-// The direction is therefore part of every handle.
+// A VTL address is only unambiguous once its kind is known: input and output
+// banks are independent signals that share the same (bank, bit) space. The kind
+// is therefore part of every handle.
 //
-// The `direction` field is always significant: for a `bank_bit` handle it
-// selects input vs. output; for a `name` handle it selects which registered
-// entry to match (a name may be registered separately for input and output).
-// Direction is never inferred — the caller states it explicitly.
+// The `kind` field is always significant: for a `bank_bit` handle it selects
+// input vs. output; for a `name` handle it selects which registered entry to
+// match (a name may be registered separately for input and output). Kind is
+// never inferred — the caller states it explicitly.
 message VirtualTriggerLineHandle {
   oneof handle {
     VirtualTriggerLineBankBit bank_bit = 1;
     string                    name     = 2;
   }
-  VirtualTriggerLineDirection direction = 3;
+  VirtualTriggerLineKind kind = 3;
 }
 
 // ── Naming ────────────────────────────────────────────────────────────────────
 
 message SetVirtualTriggerLineNameRequest {
-  uint32                      bank      = 1;
-  uint32                      bit       = 2;
-  VirtualTriggerLineDirection direction = 3;
-  string                      name      = 4; // empty string clears the name
+  uint32                 bank = 1;
+  uint32                 bit  = 2;
+  VirtualTriggerLineKind kind = 3;
+  string                 name = 4; // empty string clears the name
 }
 
 message ListVirtualTriggerLinesRequest {}
 
 message VirtualTriggerLineInfo {
-  string                      name      = 1;
-  uint32                      bank      = 2;
-  uint32                      bit       = 3;
-  VirtualTriggerLineDirection direction = 4;
-  bool                        high      = 5;
+  string                 name = 1;
+  uint32                 bank = 2;
+  uint32                 bit  = 3;
+  VirtualTriggerLineKind kind = 4;
+  bool                   high = 5;
 }
 
 message ListVirtualTriggerLinesResponse {
@@ -82,19 +88,19 @@ message ListVirtualTriggerLinesResponse {
 }
 
 // ── Line control ──────────────────────────────────────────────────────────────
-// A single set of commands drives both directions; the handle's direction
-// selects which bank is written.
+// A single set of commands drives both kinds; the handle's kind selects which
+// bank is written.
 //
-// direction=INPUT writes input_state / input_rise_latch / input_fall_latch —
+// kind=INPUT writes input_state / input_rise_latch / input_fall_latch —
 // simulating hardware trigger inputs arriving into vstimd.
 //
-// direction=OUTPUT writes output_state.  USE FOR DEBUGGING AND MANUAL OVERRIDE
-// ONLY.  In normal operation output lines are driven exclusively by the vstimd
-// render loop: animations accumulate changes in output_pending[] and the render
-// loop commits them in a single write after all animations have advanced.
-// Writing output lines via ZMQ bypasses this ordering guarantee and may conflict
-// with animation-generated outputs in the same frame.  Use only when no
-// animations are writing the same bits (e.g. manual bench testing, calibration).
+// kind=OUTPUT writes output_state.  USE FOR DEBUGGING AND MANUAL OVERRIDE ONLY.
+// In normal operation output lines are driven exclusively by the vstimd render
+// loop: animations accumulate changes in output_pending[] and the render loop
+// commits them in a single write after all animations have advanced.  Writing
+// output lines via ZMQ bypasses this ordering guarantee and may conflict with
+// animation-generated outputs in the same frame.  Use only when no animations
+// are writing the same bits (e.g. manual bench testing, calibration).
 
 message SetVirtualTriggerLineRequest {
   VirtualTriggerLineHandle handle = 1;
@@ -106,16 +112,16 @@ message ToggleVirtualTriggerLineRequest {
 }
 
 // Drain accumulated rise/fall latches for an input line without changing its
-// level.  Only valid for direction=INPUT (output lines have no latches).
+// level.  Only valid for kind=INPUT (output lines have no latches).
 message ClearVirtualTriggerLineLatchesRequest {
   VirtualTriggerLineHandle handle = 1;
 }
 
-// Set all 64 lines of a bank at once (bitmask). Direction selects input/output.
+// Set all 64 lines of a bank at once (bitmask). Kind selects input/output.
 message SetVirtualTriggerLineBankRequest {
-  VirtualTriggerLineDirection direction = 1;
-  uint32                      bank      = 2;
-  uint64                      value     = 3;
+  VirtualTriggerLineKind kind  = 1;
+  uint32                 bank  = 2;
+  uint64                 value = 3;
 }
 
 // ── Shared response ───────────────────────────────────────────────────────────

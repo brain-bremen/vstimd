@@ -157,13 +157,13 @@
           "name": "stim_onset",
           "bank": 0,
           "bit": 0,
-          "direction": "Output"
+          "kind": "Output"
         },
         {
           "name": "trial_gate",
           "bank": 0,
           "bit": 4,
-          "direction": "Input"
+          "kind": "Input"
         }
       ]
     }

@@ -7,22 +7,22 @@
 
 use super::{AnimState, Animation, CancelAction, FinalAction, StartAction};
 use crate::scene::SceneState;
-use crate::vtl_state::{Edge, VtlBit, VtlEdges};
-use vtl::Direction;
+use crate::vtl_state::{VtlEdge, VtlBit, VtlEdges};
+use vtl::VtlKind;
 
-/// Pick the edge set (input vs. output) that a trigger's direction addresses.
+/// Pick the edge set (input vs. output) that a trigger's kind addresses.
 fn edges_for<'a>(bit: VtlBit, input: &'a VtlEdges, output: &'a VtlEdges) -> &'a VtlEdges {
-    match bit.direction {
-        Direction::Input => input,
-        Direction::Output => output,
+    match bit.kind {
+        VtlKind::Input => input,
+        VtlKind::Output => output,
     }
 }
 
-fn edge_fired(input: &VtlEdges, output: &VtlEdges, bit: VtlBit, edge: Edge) -> bool {
+fn edge_fired(input: &VtlEdges, output: &VtlEdges, bit: VtlBit, edge: VtlEdge) -> bool {
     let edges = edges_for(bit, input, output);
     let bank = match edge {
-        Edge::Rising => edges.rising[bit.bank],
-        Edge::Falling => edges.falling[bit.bank],
+        VtlEdge::Rising => edges.rising[bit.bank],
+        VtlEdge::Falling => edges.falling[bit.bank],
     };
     (bank >> bit.bit) & 1 != 0
 }

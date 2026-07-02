@@ -13,4 +13,4 @@ pub use animation_entry::{AnimationConfig, AnimationEntry};
 pub use animation_kind::Animation;
 pub use animation_state::AnimState;
 
-pub use crate::vtl_state::{Edge, VtlBit};
+pub use crate::vtl_state::{VtlEdge, VtlBit};

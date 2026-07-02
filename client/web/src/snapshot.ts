@@ -9,11 +9,11 @@ import type { SceneSnapshot as ProtoSnapshot } from "./_proto/vstimd/v1/snapshot
 import type { QueryStimulusResponse } from "./_proto/vstimd/v1/stimuli/query_pb.js";
 import { StimulusType } from "./_proto/vstimd/v1/stimuli/stimulus_type_pb.js";
 import {
-  VirtualTriggerLineDirection,
+  VirtualTriggerLineKind,
   type VirtualTriggerLineInfo,
 } from "./_proto/vstimd/v1/vtl_pb.js";
 import { toServerInfo, type ServerInfo } from "./system.js";
-import type { VtlDirection } from "./vtl.js";
+import type { VtlKind } from "./vtl.js";
 import type { Color, StimulusHandle, StimulusKind, Vec2 } from "./types.js";
 
 export interface StimulusView {
@@ -39,7 +39,7 @@ export interface VtlLineView {
   name: string;
   bank: number;
   bit: number;
-  direction: VtlDirection;
+  kind: VtlKind;
   /** Current level (true = high). */
   high: boolean;
 }
@@ -50,8 +50,8 @@ export function toVtlLineView(l: VirtualTriggerLineInfo): VtlLineView {
     name: l.name,
     bank: l.bank,
     bit: l.bit,
-    direction:
-      l.direction === VirtualTriggerLineDirection.OUTPUT ? "output" : "input",
+    kind:
+      l.kind === VirtualTriggerLineKind.OUTPUT ? "output" : "input",
     high: l.high,
   };
 }

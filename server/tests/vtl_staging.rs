@@ -16,7 +16,7 @@ fn no_edges() -> VtlEdges {
 }
 
 fn bit(bank: usize, b: u8) -> VtlBit {
-    VtlBit { bank, bit: b, direction: vtl::Direction::Output }
+    VtlBit { bank, bit: b, kind: vtl::VtlKind::Output }
 }
 
 /// Simulate the render loop's copy-advance-writeback pattern.
@@ -182,7 +182,7 @@ fn cascade_prevention_unaffected_by_persistent_staged() {
     // the same pass. Output edges are computed *before* the animation pass (from
     // the committed staged of the previous frame), so B reacts one frame later —
     // not from A's mid-pass write. Here output_edges is empty, so B stays Armed.
-    use vstimd::vtl_state::Edge;
+    use vstimd::vtl_state::VtlEdge;
     use vstimd::scene::animation::AnimState;
 
     let mut scene = SceneState::new();
@@ -204,7 +204,7 @@ fn cascade_prevention_unaffected_by_persistent_staged() {
         );
         // B starts on a rising edge of output bit 0. It reads the pre-pass output
         // edges, not A's mid-pass write into staged.
-        e.start_trigger = Some((bit(0, 0), Edge::Rising));
+        e.start_trigger = Some((bit(0, 0), VtlEdge::Rising));
         e
     });
 

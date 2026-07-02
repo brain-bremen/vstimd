@@ -19,7 +19,7 @@ use vstimd::scene::{
         Transform2D,
     },
 };
-use vstimd::vtl_state::{Edge, VtlBit, VtlEdges};
+use vstimd::vtl_state::{VtlEdge, VtlBit, VtlEdges};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -142,11 +142,11 @@ fn current_high(bank: usize, bit: u8) -> VtlEdges {
 }
 
 fn bit(bank: usize, bit: u8) -> VtlBit {
-    VtlBit { bank, bit, direction: vtl::Direction::Input }
+    VtlBit { bank, bit, kind: vtl::VtlKind::Input }
 }
 
 fn out_bit(bank: usize, bit: u8) -> VtlBit {
-    VtlBit { bank, bit, direction: vtl::Direction::Output }
+    VtlBit { bank, bit, kind: vtl::VtlKind::Output }
 }
 
 // ── FlashForNFrames ───────────────────────────────────────────────────────────
@@ -445,7 +445,7 @@ fn flash_with_start_trigger_stays_armed_until_edge() {
     let a = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
-        e.start_trigger = Some((bit(0, 3), Edge::Rising));
+        e.start_trigger = Some((bit(0, 3), VtlEdge::Rising));
         e
     });
 
@@ -471,7 +471,7 @@ fn flash_start_trigger_wrong_edge_type_ignored() {
     let a = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
-        e.start_trigger = Some((bit(0, 0), Edge::Rising));
+        e.start_trigger = Some((bit(0, 0), VtlEdge::Rising));
         e
     });
 
@@ -504,7 +504,7 @@ fn flash_start_trigger_falling_edge() {
     let a = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s]);
-        e.start_trigger = Some((bit(0, 2), Edge::Falling));
+        e.start_trigger = Some((bit(0, 2), VtlEdge::Falling));
         e
     });
 
@@ -542,7 +542,7 @@ fn enable_on_trigger_edge_rising() {
     let a = scene.add_animation(AnimationEntry::armed(
         Animation::EnableOnTriggerEdge {
             trigger: bit(0, 5),
-            edge: Edge::Rising,
+            edge: VtlEdge::Rising,
             enabled: true,
         },
         vec![s],
@@ -571,7 +571,7 @@ fn enable_on_trigger_edge_disable_on_falling() {
     let a = scene.add_animation(AnimationEntry::armed(
         Animation::EnableOnTriggerEdge {
             trigger: bit(0, 2),
-            edge: Edge::Falling,
+            edge: VtlEdge::Falling,
             enabled: false,
         },
         vec![s],
@@ -596,7 +596,7 @@ fn enable_on_trigger_edge_wrong_bank_ignored() {
     let a = scene.add_animation(AnimationEntry::armed(
         Animation::EnableOnTriggerEdge {
             trigger: bit(0, 0),
-            edge: Edge::Rising,
+            edge: VtlEdge::Rising,
             enabled: true,
         },
         vec![s],
@@ -1001,7 +1001,7 @@ fn output_ordering_chained_animations_one_frame_latency() {
     let b = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 2 }, vec![s2]);
-        e.start_trigger = Some((bit(0, 0), Edge::Rising));
+        e.start_trigger = Some((bit(0, 0), VtlEdge::Rising));
         e
     });
 
@@ -1169,7 +1169,7 @@ fn cancel_trigger_runs_cancel_action_restore_state() {
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
         e.cancel_action = CancelAction::RESTORE_STATE;
-        e.cancel_trigger = Some((bit(0, 4), Edge::Rising));
+        e.cancel_trigger = Some((bit(0, 4), VtlEdge::Rising));
         e
     });
 
@@ -1193,7 +1193,7 @@ fn cancel_empty_action_is_hard_abort_leaves_state() {
     let a = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
-        e.cancel_trigger = Some((bit(0, 4), Edge::Rising));
+        e.cancel_trigger = Some((bit(0, 4), VtlEdge::Rising));
         e
     });
 
@@ -1219,7 +1219,7 @@ fn cancel_action_disable_and_toggle_photodiode() {
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
         e.cancel_action = CancelAction::DISABLE | CancelAction::TOGGLE_PHOTODIODE;
-        e.cancel_trigger = Some((bit(0, 4), Edge::Rising));
+        e.cancel_trigger = Some((bit(0, 4), VtlEdge::Rising));
         e
     });
 
@@ -1241,8 +1241,8 @@ fn cancel_trigger_aborts_armed_before_start() {
     let a = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 5 }, vec![s]);
-        e.start_trigger = Some((bit(0, 1), Edge::Rising));
-        e.cancel_trigger = Some((bit(0, 2), Edge::Rising));
+        e.start_trigger = Some((bit(0, 1), VtlEdge::Rising));
+        e.cancel_trigger = Some((bit(0, 2), VtlEdge::Rising));
         e
     });
 
@@ -1265,7 +1265,7 @@ fn cancel_trigger_wrong_edge_ignored() {
     let a = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 5 }, vec![s]);
-        e.cancel_trigger = Some((bit(0, 3), Edge::Rising));
+        e.cancel_trigger = Some((bit(0, 3), VtlEdge::Rising));
         e
     });
 
@@ -1299,7 +1299,7 @@ fn cancel_action_pulses_cancel_trigger_line() {
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
         e.cancel_action = CancelAction::CANCEL_ACTION_TRIGGER_LINE;
         e.cancel_action_trigger_line = Some(bit(0, 6));
-        e.cancel_trigger = Some((bit(0, 0), Edge::Rising));
+        e.cancel_trigger = Some((bit(0, 0), VtlEdge::Rising));
         e
     });
 
@@ -1323,7 +1323,7 @@ fn cancel_ignores_final_action_restart() {
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
         e.final_action = FinalAction::RESTART;
-        e.cancel_trigger = Some((bit(0, 0), Edge::Rising));
+        e.cancel_trigger = Some((bit(0, 0), VtlEdge::Rising));
         e
     });
 
@@ -1465,7 +1465,7 @@ fn output_edge_starts_armed_animation() {
     let b = scene.add_animation({
         let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 5 }, vec![s]);
         e.start_action = StartAction::ENABLE;
-        e.start_trigger = Some((out_bit(0, 0), Edge::Rising));
+        e.start_trigger = Some((out_bit(0, 0), VtlEdge::Rising));
         e
     });
 
@@ -1489,7 +1489,7 @@ fn output_edge_cancels_running_animation() {
     let a = scene.add_animation({
         let mut e = AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 100 }, vec![s]);
         e.cancel_action = CancelAction::DISABLE;
-        e.cancel_trigger = Some((out_bit(1, 3), Edge::Rising));
+        e.cancel_trigger = Some((out_bit(1, 3), VtlEdge::Rising));
         e
     });
 

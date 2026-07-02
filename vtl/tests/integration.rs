@@ -1,4 +1,4 @@
-use vtl::{Direction, VtlClient, VtlOwner};
+use vtl::{VtlKind, VtlClient, VtlOwner};
 
 fn unique_name() -> String {
     // Use PID + thread-id hash to avoid collisions between parallel test threads.
@@ -112,8 +112,8 @@ fn named_line_write_and_read() {
     let name = unique_name();
     let owner = VtlOwner::create(&name, 1, 1).expect("create");
 
-    owner.write_named_line(0, "stim_trigger", 0, 3, Direction::Input);
-    owner.write_named_line(1, "frame_onset",  0, 0, Direction::Output);
+    owner.write_named_line(0, "stim_trigger", 0, 3, VtlKind::Input);
+    owner.write_named_line(1, "frame_onset",  0, 0, VtlKind::Output);
     owner.set_n_named_lines(2);
 
     assert_eq!(owner.n_named_lines(), 2);
@@ -122,11 +122,11 @@ fn named_line_write_and_read() {
     assert_eq!(e0.name_str(), "stim_trigger");
     assert_eq!(e0.bank, 0);
     assert_eq!(e0.bit, 3);
-    assert_eq!(d0, Direction::Input);
+    assert_eq!(d0, VtlKind::Input);
 
     let (e1, d1) = owner.named_line(1).unwrap();
     assert_eq!(e1.name_str(), "frame_onset");
-    assert_eq!(d1, Direction::Output);
+    assert_eq!(d1, VtlKind::Output);
 
     // find_named_line
     let found = owner.find_named_line("stim_trigger");
@@ -141,7 +141,7 @@ fn named_line_write_and_read() {
 fn named_line_visible_via_client() {
     let name = unique_name();
     let owner = VtlOwner::create(&name, 1, 1).expect("create");
-    owner.write_named_line(0, "hello_vtl", 0, 1, Direction::Input);
+    owner.write_named_line(0, "hello_vtl", 0, 1, VtlKind::Input);
     owner.set_n_named_lines(1);
 
     let client = VtlClient::open(&name).expect("open");
@@ -158,7 +158,7 @@ fn long_name_is_truncated_not_panicked() {
     let name = unique_name();
     let owner = VtlOwner::create(&name, 1, 1).expect("create");
     let long = "x".repeat(200);
-    owner.write_named_line(0, &long, 0, 0, Direction::Input);
+    owner.write_named_line(0, &long, 0, 0, VtlKind::Input);
     owner.set_n_named_lines(1);
     let (e, _) = owner.named_line(0).unwrap();
     assert_eq!(e.name_str().len(), 55); // max 55 usable bytes (56th is nul)
@@ -264,8 +264,8 @@ fn named_line_ordering_write_before_publish() {
     let o_w = Arc::clone(&owner);
     let b_w = Arc::clone(&barrier);
     let writer = thread::spawn(move || {
-        o_w.write_named_line(0, "alpha", 0, 0, Direction::Input);
-        o_w.write_named_line(1, "beta",  0, 1, Direction::Output);
+        o_w.write_named_line(0, "alpha", 0, 0, VtlKind::Input);
+        o_w.write_named_line(1, "beta",  0, 1, VtlKind::Output);
         b_w.wait(); // let reader thread start before the publish
         o_w.set_n_named_lines(2); // Release — all preceding writes visible after this
     });
@@ -281,10 +281,10 @@ fn named_line_ordering_write_before_publish() {
         assert_eq!(o_r.n_named_lines(), 2);
         let (e0, d0) = o_r.named_line(0).unwrap();
         assert_eq!(e0.name_str(), "alpha");
-        assert_eq!(d0, Direction::Input);
+        assert_eq!(d0, VtlKind::Input);
         let (e1, d1) = o_r.named_line(1).unwrap();
         assert_eq!(e1.name_str(), "beta");
-        assert_eq!(d1, Direction::Output);
+        assert_eq!(d1, VtlKind::Output);
     })
     .join()
     .unwrap();

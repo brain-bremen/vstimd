@@ -1,7 +1,7 @@
 //! The `Animation` enum — the kind of behaviour an animation drives, plus its
 //! per-kind parameters. Advancing these each frame lives in [`super::advance`].
 
-use crate::vtl_state::{Edge, VtlBit};
+use crate::vtl_state::{VtlEdge, VtlBit};
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Animation {
@@ -10,7 +10,7 @@ pub enum Animation {
     /// Set stimulus enabled once when a trigger edge fires.
     EnableOnTriggerEdge {
         trigger: VtlBit,
-        edge: Edge,
+        edge: VtlEdge,
         enabled: bool,
     },
     /// Enable stimuli for `duration_frames`.

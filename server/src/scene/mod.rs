@@ -6,7 +6,7 @@ pub mod scene_config;
 mod scene_state;
 pub mod stimulus;
 
-pub use animation::{AnimState, AnimationEntry, Edge, FinalAction, VtlBit};
+pub use animation::{AnimState, AnimationEntry, VtlEdge, FinalAction, VtlBit};
 pub use deferred::Deferred;
 pub use photodiode::PhotoDiodeState;
 pub use scene_config::{LoadMode, SceneConfig};
