@@ -9,7 +9,7 @@ multi-stimulus updates.
     A running server (`cargo run --release`, or `--null` for a headless test — see
     [Quick start](../getting-started/quick-start.md)) and the Python client
     (`cd client/python && uv sync`). The examples use Python; the same commands
-    exist in the MATLAB and PsychoPy layers.
+    exist in the PsychoPy layer (a MATLAB client is planned).
 
 ## 1. Connect
 

@@ -77,19 +77,3 @@ Each stimulus is a variant of the `Stimulus` enum — no trait objects, no heap 
 stimulus. Shared fields (position, colour, enabled flag) are held in component structs
 (`Transform2D`, `ShapeAppearance`, `StimulusFlags`) composed into each variant.
 
-## Module layout
-
-```
-server/src/
-├── main.rs          Entry point, backend dispatch, CLI args
-├── ipc.rs           ZMQ REP server thread
-├── proto.rs         Prost-generated protobuf types
-├── scene/           SceneState, Stimulus enum, deferred mode
-└── render/
-    ├── render_state.rs   Shared Vulkan resources + per-frame logic
-    ├── tess.rs           CPU tessellation (lyon → triangles)
-    ├── overlay.rs        egui debug overlay
-    ├── vk/               Vulkan pipelines, GPU buffers, egui renderer
-    ├── drm/              DRM/console backend
-    └── winit_vk/         Desktop backend
-```

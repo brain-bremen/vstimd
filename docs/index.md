@@ -73,7 +73,7 @@ entirely inside the server**, staying synchronised to the display and to DAQ mar
 ## Key features
 
 - **Frame-accurate stimulus timing** — vsync-locked render loop, DRM vblank wait
-- **Cross-language clients** — Python, MATLAB, C# (and PsychoPy-compatible Python layer)
+- **Cross-language clients** — Python, MATLAB *(planned)*, C# (and PsychoPy-compatible Python layer)
 - **Bare-metal Linux rendering** — runs without a compositor (X11/Wayland) via KMS/DRM
 - **Deferred mode** — batch multiple stimulus changes into a single atomic frame flip
 - **Virtual Trigger Lines (VTL)** — hardware TTL / software triggers via shared memory drive frame-accurate, trigger-reactive animations with no DAQ code inside vstimd
@@ -115,7 +115,9 @@ entirely inside the server**, staying synchronised to the display and to DAQ mar
     win.flip()
     ```
 
-=== "MATLAB"
+=== "MATLAB (planned)"
+
+    !!! note "The MATLAB client is planned — it does not exist yet."
 
     ```matlab
     conn = vstimd.Connection('tcp://stimulus-pc:5555');
@@ -125,15 +127,3 @@ entirely inside the server**, staying synchronised to the display and to DAQ mar
     conn.stimuli.delete(h);
     conn.close();
     ```
-
-## Project layout
-
-```
-vstimd/
-├── server/          Rust server (vstimd binary)
-├── client/python/   Python client (vstimd package)
-├── client/matlab/   MATLAB client
-├── proto/           Protobuf schema (source of truth for all clients)
-├── tools/           Timing test tool and utilities
-└── docs/            This documentation
-```

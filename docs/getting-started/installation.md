@@ -40,10 +40,9 @@ To install into an existing environment:
 pip install ./client/python
 ```
 
-## MATLAB client
+## MATLAB client (planned)
 
-See the [MATLAB client](https://github.com/braemons/vstimd/tree/main/client/matlab)
-in the repository.
+A MATLAB client is planned but does not exist yet.
 
 ## Building the docs
 

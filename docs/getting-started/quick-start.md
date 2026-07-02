@@ -40,7 +40,9 @@ Press **D** to spawn demo stimuli, **F1** to toggle the debug overlay, **Esc** t
         conn.stimuli.delete(h)
     ```
 
-=== "MATLAB"
+=== "MATLAB (planned)"
+
+    !!! note "The MATLAB client is planned — it does not exist yet."
 
     ```matlab
     conn = vstimd.Connection();   % default: tcp://localhost:5555

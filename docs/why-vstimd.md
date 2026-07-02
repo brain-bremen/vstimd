@@ -109,7 +109,7 @@ The device is driven over the network with **protobuf messages over ZeroMQ**. Th
 wire protocol is language- and platform-neutral, so the controlling client can be:
 
 - **Python / PsychoPy** on Linux, Windows, or macOS,
-- **MATLAB**,
+- **MATLAB** *(planned)*,
 - **C# / Bonsai**,
 - or anything that can open a TCP socket and encode protobuf — including a
   microcontroller or another embedded board.
