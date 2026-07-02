@@ -15,9 +15,9 @@ package vstimd.v1;
 //                     stimulus animations.
 //
 // Output lines represent signals driven *by* vstimd.
-//   Canonical writer: vstimd render loop — written once per frame at the END
-//                     of each frame (after present/vsync) to reflect what was
-//                     shown on-screen.
+//   Canonical writer: vstimd render loop — committed once per frame at the
+//                     START of each frame (vblank-aligned, via commit_staged())
+//                     to reflect what is being shown on-screen.
 //   Software writer:  ZMQ SetVirtualTriggerLine (kind=OUTPUT) commands
 //                     (manual override / testing).
 //   Intended reader:  daqd — woken by the output semaphore strobe (posted once
@@ -26,8 +26,8 @@ package vstimd.v1;
 //                     Also read back by the animation engine as output *edges*
 //                     so animations can start/cancel each other in the server.
 //
-// NOTE: frame-gated polling (VtlState::poll) and frame-gated output writing
-// (VtlState::write_outputs) are wired into both the DRM and winit render loops.
+// NOTE: frame-gated polling (VtlState::poll) and frame-gated output commit
+// (VtlState::commit_staged) are wired into both the DRM and winit render loops.
 // ZMQ SetVirtualTriggerLine commands provide an additional software-only path.
 
 enum VirtualTriggerLineKind {

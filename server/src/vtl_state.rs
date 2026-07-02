@@ -175,6 +175,9 @@ pub struct VtlNameEntry {
     pub name:      String,
     pub bank:      u8,
     pub bit:       u8,
+    // `direction` alias keeps configs written before the direction→kind rename
+    // loading (they still use the old `direction` key).
+    #[serde(alias = "direction")]
     pub kind: VtlKind,
 }
 

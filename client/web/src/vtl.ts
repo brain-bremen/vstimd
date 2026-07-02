@@ -74,8 +74,12 @@ export class VtlClient {
     await this.system({ case: "toggleVirtualTriggerLine", value: { handle: vtlHandleProto(handle) } });
   }
 
-  /** Drain an input line's rise/fall latches without changing its level. */
+  /** Drain an input line's rise/fall latches without changing its level.
+   *  Only valid for an input handle — outputs have no latches. */
   async clearLatches(handle: VtlHandle): Promise<void> {
+    if (handle.kind === "output") {
+      throw new Error("clearLatches is only valid for input lines (outputs have no latches)");
+    }
     await this.system({ case: "clearVirtualTriggerLineLatches", value: { handle: vtlHandleProto(handle) } });
   }
 

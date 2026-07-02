@@ -174,6 +174,10 @@ class VtlClient:
     def clear_latches(self, handle: VtlHandle) -> ServerResponse:
         """Drain an input line's accumulated rise/fall latches without changing
         its level. Only valid for an INPUT handle (outputs have no latches)."""
+        if handle.kind is not VtlKind.INPUT:
+            raise ValueError(
+                "clear_latches is only valid for INPUT lines (outputs have no latches)"
+            )
         req = service_pb2.Request(
             system=_sys(),
             clear_virtual_trigger_line_latches=vtl_pb2.ClearVirtualTriggerLineLatchesRequest(
