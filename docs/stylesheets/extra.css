@@ -46,13 +46,6 @@
   display: none;
 }
 
-/* ── Home page hero logo (docs/index.md) ─────────────────────────────────── */
-.home-logo {
-  max-width: min(440px, 82%);
-  height: auto;
-  margin: 0.2rem 0 0.4rem;
-}
-
 /* ── Compact comparison matrix (used on why-vstimd.md) ───────────────────────
    Many columns are needed, so shrink the font and padding for this table only
    so it fits the content column; horizontal scroll remains as a fallback. */
