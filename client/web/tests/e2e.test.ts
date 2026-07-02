@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { Connection, NotSupportedError, rgb } from "../src/index.js";
+import { Connection, NotSupportedError, VtlHandle, rgb } from "../src/index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const WEB_PORT = 8137; // dedicated test ports; never collide with a real server
@@ -159,7 +159,7 @@ describe("vstimd web client e2e (--null)", () => {
 
   it("names and fires a VTL input line", async () => {
     await conn.vtl.setName(0, 1, "input", "trig");
-    await conn.vtl.setInput("trig", true);
+    await conn.vtl.setLine(VtlHandle.named("trig", "input"), true);
 
     const snap = await conn.nextSnapshot();
     const line = snap.vtlLines.find((l) => l.name === "trig")!;

@@ -3,6 +3,7 @@
 // not) and toggles a line on click: inputs simulate the hardware bridge, outputs
 // override the animation-driven level — both for debugging.
 
+import { VtlHandle } from "../index.js";
 import type { Connection, SceneSnapshot, VtlDirection, VtlLineView } from "../index.js";
 
 interface Props {
@@ -37,9 +38,9 @@ export function VtlPanel({ conn, snapshot }: Props) {
 
   function toggle(direction: VtlDirection, bank: number, bit: number) {
     if (!conn) return;
-    const line = { bank, bit };
-    if (direction === "input") void conn.vtl.toggleInput(line);
-    else void conn.vtl.toggleOutput(line);
+    const handle =
+      direction === "input" ? VtlHandle.input(bank, bit) : VtlHandle.output(bank, bit);
+    void conn.vtl.toggleLine(handle);
   }
 
   return (
