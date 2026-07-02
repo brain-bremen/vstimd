@@ -36,6 +36,14 @@ export type FinalAction =
   | "restoreState"
   | "endDeferred";
 
+/** Actions performed when an animation is cancelled (edge or software). */
+export type CancelAction =
+  | "disable"
+  | "togglePhotodiode"
+  | "cancelActionTriggerLine"
+  | "restoreState"
+  | "endDeferred";
+
 /**
  * Animation-type tag. This is the server's canonical `type_name` — the Rust enum
  * variant name, which is also the serde tag written to config files. The server
@@ -63,6 +71,7 @@ export interface AnimationInfo {
 export interface AnimationDetails extends AnimationInfo {
   stimuli: StimulusHandle[];
   finalActions: FinalAction[];
+  cancelActions: CancelAction[];
 }
 
 /** One or more stimuli an animation drives. */
@@ -78,9 +87,12 @@ export interface AnimationOpts {
   /** Wait for this line's edge after arming before starting. */
   startTrigger?: VtlLine;
   startEdge?: VtlEdge;
-  /** Cancel (clean teardown) when this line's edge fires while Armed or Running. */
+  /** Cancel when this line's edge fires while Armed or Running. */
   cancelTrigger?: VtlLine;
   cancelEdge?: VtlEdge;
+  /** Actions applied on cancel (edge or software). Empty = hard abort. */
+  cancelActions?: CancelAction[];
+  cancelActionTriggerLine?: VtlLine;
 }
 
 const EDGE: Record<VtlEdge, ProtoEdge> = {
@@ -104,6 +116,14 @@ const FINAL_ACTION: Record<FinalAction, number> = {
   endDeferred: 0x80,
 };
 
+const CANCEL_ACTION: Record<CancelAction, number> = {
+  disable: 0x01,
+  togglePhotodiode: 0x04,
+  cancelActionTriggerLine: 0x08,
+  restoreState: 0x40,
+  endDeferred: 0x80,
+};
+
 
 function stateOf(s: ProtoState): AnimationState {
   switch (s) {
@@ -120,6 +140,10 @@ function maskOf<T extends string>(flags: T[] | undefined, table: Record<T, numbe
 
 function decodeFinalActions(mask: number): FinalAction[] {
   return (Object.keys(FINAL_ACTION) as FinalAction[]).filter((f) => (mask & FINAL_ACTION[f]) !== 0);
+}
+
+function decodeCancelActions(mask: number): CancelAction[] {
+  return (Object.keys(CANCEL_ACTION) as CancelAction[]).filter((f) => (mask & CANCEL_ACTION[f]) !== 0);
 }
 
 function toStimuli(s: Stimuli): StimulusHandle[] {
@@ -201,6 +225,7 @@ export class AnimationsClient {
       typeName: r.typeName as AnimationTypeName,
       stimuli: p?.stimuli ?? [],
       finalActions: decodeFinalActions(p?.finalActionMask ?? 0),
+      cancelActions: decodeCancelActions(p?.cancelActionMask ?? 0),
     };
   }
 
@@ -318,6 +343,8 @@ export class AnimationsClient {
       startEdge: EDGE[opts.startEdge ?? "rising"],
       cancelTrigger: opts.cancelTrigger ? vtlLineHandle(opts.cancelTrigger) : undefined,
       cancelEdge: EDGE[opts.cancelEdge ?? "rising"],
+      cancelActionMask: maskOf(opts.cancelActions, CANCEL_ACTION),
+      cancelActionTriggerLine: opts.cancelActionTriggerLine ? vtlLineHandle(opts.cancelActionTriggerLine) : undefined,
       stimuli: toStimuli(stimuli),
     };
   }

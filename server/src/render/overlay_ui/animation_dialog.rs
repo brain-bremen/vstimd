@@ -5,7 +5,7 @@
 //! variants; `MoveAlongPath2D` (bulk coords) and `ExternalPosition2D` (shm) are
 //! intentionally omitted from v1.
 
-use crate::scene::animation::{Animation, FinalAction, StartAction};
+use crate::scene::animation::{Animation, CancelAction, FinalAction, StartAction};
 use crate::scene::{AnimState, AnimationEntry, Edge, VtlBit};
 
 /// A VTL line offered as a trigger choice: display label + resolved address.
@@ -54,11 +54,18 @@ pub struct AnimationDialog {
     start_bank: u32,
     start_bit: u32,
     start_trig_rising: bool,
-    // Cancel trigger: abort the animation (clean teardown) on a VTL edge.
+    // Cancel trigger: abort the animation on a VTL edge.
     cancel_trig_enabled: bool,
     cancel_bank: u32,
     cancel_bit: u32,
     cancel_trig_rising: bool,
+    // Cancel actions: applied on cancel (edge or software).
+    cancel_disable: bool,
+    cancel_toggle_pd: bool,
+    cancel_restore: bool,
+    cancel_pulse_enabled: bool,
+    cancel_pulse_bank: u32,
+    cancel_pulse_bit: u32,
     // Final trigger: pulse a VTL output line when the animation completes.
     final_trig_enabled: bool,
     final_bank: u32,
@@ -96,6 +103,12 @@ impl Default for AnimationDialog {
             cancel_bank: 0,
             cancel_bit: 0,
             cancel_trig_rising: true,
+            cancel_disable: false,
+            cancel_toggle_pd: false,
+            cancel_restore: false,
+            cancel_pulse_enabled: false,
+            cancel_pulse_bank: 0,
+            cancel_pulse_bit: 0,
             final_trig_enabled: false,
             final_bank: 0,
             final_bit: 0,
@@ -168,6 +181,19 @@ impl AnimationDialog {
             entry.config.cancel_trigger =
                 Some((VtlBit { bank: self.cancel_bank as usize, bit: self.cancel_bit as u8 }, edge));
         }
+        // Cancel actions apply to both edge and software cancel.
+        let mut cancel_action = CancelAction::empty();
+        if self.cancel_disable { cancel_action |= CancelAction::DISABLE; }
+        if self.cancel_toggle_pd { cancel_action |= CancelAction::TOGGLE_PHOTODIODE; }
+        if self.cancel_restore { cancel_action |= CancelAction::RESTORE_STATE; }
+        if self.cancel_pulse_enabled {
+            cancel_action |= CancelAction::CANCEL_ACTION_TRIGGER_LINE;
+            entry.config.cancel_action_trigger_line = Some(VtlBit {
+                bank: self.cancel_pulse_bank as usize,
+                bit: self.cancel_pulse_bit as u8,
+            });
+        }
+        entry.config.cancel_action = cancel_action;
         if self.final_trig_enabled {
             entry.config.final_action |= FinalAction::FINAL_ACTION_TRIGGER_LINE;
             entry.config.final_action_trigger_line =
@@ -295,6 +321,20 @@ impl AnimationDialog {
                         ui.add(egui::DragValue::new(&mut self.cancel_bit).range(0..=63));
                         ui.selectable_value(&mut self.cancel_trig_rising, true, "Rising");
                         ui.selectable_value(&mut self.cancel_trig_rising, false, "Falling");
+                    });
+                }
+                ui.horizontal(|ui| {
+                    ui.label("On cancel:");
+                    ui.checkbox(&mut self.cancel_disable, "Disable");
+                    ui.checkbox(&mut self.cancel_toggle_pd, "Photodiode");
+                    ui.checkbox(&mut self.cancel_restore, "Restore");
+                });
+                ui.checkbox(&mut self.cancel_pulse_enabled, "Pulse VTL line on cancel");
+                if self.cancel_pulse_enabled {
+                    ui.horizontal(|ui| {
+                        ui.label("Bank/Bit");
+                        ui.add(egui::DragValue::new(&mut self.cancel_pulse_bank).range(0..=bank_max));
+                        ui.add(egui::DragValue::new(&mut self.cancel_pulse_bit).range(0..=63));
                     });
                 }
                 ui.checkbox(&mut self.final_trig_enabled, "Pulse VTL line on completion");

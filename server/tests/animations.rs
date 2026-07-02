@@ -13,7 +13,7 @@ use vstimd::scene::deferred::Deferred;
 ///   becomes 1 after the call returns.
 use vstimd::scene::{
     SceneState,
-    animation::{AnimState, Animation, AnimationEntry, FinalAction},
+    animation::{AnimState, Animation, AnimationEntry, CancelAction, FinalAction},
     stimulus::{
         RectStimulus, ShapeAppearance, ShapeCommon, Stimulus, StimulusSceneEntry, StimulusFlags,
         Transform2D,
@@ -1145,9 +1145,9 @@ fn flicker_anim_enabled_restored_on_delete() {
 // ── Cancel: trigger edge + software command ───────────────────────────────────
 
 #[test]
-fn cancel_trigger_aborts_running_and_runs_final_action() {
-    // Flash(10) with RESTORE_STATE; a cancel edge while Running restores the
-    // captured enabled=false and ends Done — well before the flash duration.
+fn cancel_trigger_runs_cancel_action_restore_state() {
+    // Flash(10) with cancel_action=RESTORE_STATE; a cancel edge while Running
+    // restores the captured enabled=false and ends Done — well before duration.
     let mut scene = SceneState::new();
     let s = create_rect(&mut scene);
     set_enabled(&mut scene, s, false);
@@ -1155,7 +1155,7 @@ fn cancel_trigger_aborts_running_and_runs_final_action() {
     let a = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
-        e.final_action = FinalAction::RESTORE_STATE;
+        e.cancel_action = CancelAction::RESTORE_STATE;
         e.cancel_trigger = Some((bit(0, 4), Edge::Rising));
         e
     });
@@ -1168,6 +1168,53 @@ fn cancel_trigger_aborts_running_and_runs_final_action() {
     advance_with(&mut scene, &rising_edge(0, 4));
     assert_eq!(anim_state(&scene, a), &AnimState::Done);
     assert!(!is_enabled(&scene, s), "cancel runs RESTORE_STATE teardown");
+}
+
+#[test]
+fn cancel_empty_action_is_hard_abort_leaves_state() {
+    // No cancel_action: cancel ends Done but leaves visibility untouched.
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, false);
+
+    let a = scene.add_animation({
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
+        e.cancel_trigger = Some((bit(0, 4), Edge::Rising));
+        e
+    });
+
+    advance(&mut scene); // Running, flash enabled the stim
+    assert!(is_enabled(&scene, s));
+
+    advance_with(&mut scene, &rising_edge(0, 4)); // cancel, no action
+    assert_eq!(anim_state(&scene, a), &AnimState::Done);
+    assert!(
+        is_enabled(&scene, s),
+        "empty cancel_action is a hard abort: state left as-is"
+    );
+}
+
+#[test]
+fn cancel_action_disable_and_toggle_photodiode() {
+    let mut scene = SceneState::new();
+    let s = create_rect(&mut scene);
+    set_enabled(&mut scene, s, true);
+    let pd0 = scene.photodiode.lit;
+
+    let a = scene.add_animation({
+        let mut e =
+            AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
+        e.cancel_action = CancelAction::DISABLE | CancelAction::TOGGLE_PHOTODIODE;
+        e.cancel_trigger = Some((bit(0, 4), Edge::Rising));
+        e
+    });
+
+    advance(&mut scene); // Running
+    advance_with(&mut scene, &rising_edge(0, 4)); // cancel
+    assert_eq!(anim_state(&scene, a), &AnimState::Done);
+    assert!(!is_enabled(&scene, s), "cancel_action DISABLE turns stimulus off");
+    assert_ne!(scene.photodiode.lit, pd0, "cancel_action toggles photodiode");
 }
 
 #[test]
@@ -1231,14 +1278,14 @@ fn cancel_trigger_wrong_edge_ignored() {
 }
 
 #[test]
-fn cancel_trigger_pulses_final_action_trigger_line() {
+fn cancel_action_pulses_cancel_trigger_line() {
     let mut scene = SceneState::new();
     let s = create_rect(&mut scene);
     let a = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
-        e.final_action = FinalAction::FINAL_ACTION_TRIGGER_LINE;
-        e.final_action_trigger_line = Some(bit(0, 6));
+        e.cancel_action = CancelAction::CANCEL_ACTION_TRIGGER_LINE;
+        e.cancel_action_trigger_line = Some(bit(0, 6));
         e.cancel_trigger = Some((bit(0, 0), Edge::Rising));
         e
     });
@@ -1249,13 +1296,14 @@ fn cancel_trigger_pulses_final_action_trigger_line() {
     assert_ne!(
         out[0] & (1u64 << 6),
         0,
-        "cancel pulses the final_action trigger line"
+        "cancel pulses the cancel_action trigger line"
     );
 }
 
 #[test]
-fn cancel_does_not_honor_restart() {
-    // Even with RESTART set, cancel is a terminal stop — it lands in Done.
+fn cancel_ignores_final_action_restart() {
+    // final_action=RESTART is irrelevant to cancel (which runs cancel_action) —
+    // cancel is a terminal stop and lands in Done.
     let mut scene = SceneState::new();
     let s = create_rect(&mut scene);
     let a = scene.add_animation({
@@ -1271,7 +1319,7 @@ fn cancel_does_not_honor_restart() {
     assert_eq!(
         anim_state(&scene, a),
         &AnimState::Done,
-        "cancel overrides RESTART"
+        "cancel does not run final_action / RESTART"
     );
 }
 
@@ -1306,7 +1354,7 @@ fn cancel_command_runs_disable_teardown() {
     let a = scene.add_animation({
         let mut e =
             AnimationEntry::armed(Animation::FlashForNFrames { duration_frames: 10 }, vec![s]);
-        e.final_action = FinalAction::DISABLE;
+        e.cancel_action = CancelAction::DISABLE;
         e
     });
 

@@ -5,7 +5,7 @@
 //! see that `animations` and `stimuli` are disjoint fields being borrowed
 //! independently. `SceneState::advance_animations` drives them once per frame.
 
-use super::{AnimState, Animation, FinalAction, StartAction};
+use super::{AnimState, Animation, CancelAction, FinalAction, StartAction};
 use crate::scene::SceneState;
 use crate::vtl_state::{Edge, VtlBit, VtlEdges};
 
@@ -59,7 +59,9 @@ pub(crate) fn advance_one(
             };
             if fires {
                 // Snapshot user_enabled for RESTORE_STATE before modifying anything.
-                let captures_state = entry.final_action.contains(FinalAction::RESTORE_STATE);
+                // Either a final-action or cancel-action RESTORE_STATE needs the capture.
+                let captures_state = entry.final_action.contains(FinalAction::RESTORE_STATE)
+                    || entry.cancel_action.contains(CancelAction::RESTORE_STATE);
                 let stim_handles: Vec<u32> = entry.config.stimuli.clone();
                 let start_action = entry.start_action;
                 let start_action_trigger_line = entry.start_action_trigger_line;
@@ -287,16 +289,24 @@ pub(crate) fn advance_one(
 
     // ── 3. Final actions ──────────────────────────────────────────────────────
     if done {
-        finalize(handle, scene, &stim_handles, output_pending, true);
+        let (action, trigger_line) = {
+            let Some(entry) = scene.config.animations.get(&handle) else {
+                return;
+            };
+            (entry.final_action, entry.final_action_trigger_line)
+        };
+        finalize(handle, scene, &stim_handles, output_pending, action, trigger_line, true, true);
     }
 }
 
-/// Cancel an animation: a clean teardown, distinct from disarm. If the animation
-/// is `Running`, its `final_action` runs (leaving visibility in a defined state
-/// via `RESTORE_STATE` / `DISABLE`, pulsing any trigger line, releasing the
-/// `anim_enabled` hold) — but `RESTART` is *not* honored, so it always ends in
-/// `Done`. If it is `Armed`, it is stopped before it ever started (no teardown,
-/// since nothing was applied). Returns false if the handle is unknown.
+/// Cancel an animation: distinct from disarm. Applies the animation's
+/// `cancel_action` (independent of `final_action`) — leaving visibility in a
+/// defined state via `RESTORE_STATE` / `DISABLE`, pulsing any cancel trigger
+/// line, toggling the photodiode — and always ends in `Done` (`RESTART` is not a
+/// cancel action). An empty `cancel_action` is a hard abort that leaves state
+/// as-is. Works while `Running` (the `anim_enabled` hold is released) or `Armed`
+/// (never started: no hold to release, and `RESTORE_STATE` is a no-op with no
+/// capture). Returns false if the handle is unknown.
 pub(crate) fn cancel_one(
     handle: u32,
     scene: &mut SceneState,
@@ -306,12 +316,25 @@ pub(crate) fn cancel_one(
         return false;
     };
     match entry.state {
-        AnimState::Running { .. } => {
+        AnimState::Running { .. } | AnimState::Armed => {
+            let running = matches!(entry.state, AnimState::Running { .. });
             let stim_handles = entry.config.stimuli.clone();
-            finalize(handle, scene, &stim_handles, output_pending, false);
+            let action = entry.cancel_action.as_final_action();
+            let trigger_line = entry.cancel_action_trigger_line;
+            // Release the anim_enabled hold only if it was actually Running; an
+            // Armed animation never grabbed it. RESTART is never honored.
+            finalize(
+                handle,
+                scene,
+                &stim_handles,
+                output_pending,
+                action,
+                trigger_line,
+                false,
+                running,
+            );
         }
-        // Armed (never started), Idle or Done: nothing to tear down. Land in a
-        // defined stopped state so cancel is always a no-op-safe terminal.
+        // Idle (never armed) or already Done: nothing to tear down.
         _ => {
             if let Some(entry) = scene.config.animations.get_mut(&handle) {
                 entry.state = AnimState::Done;
@@ -321,22 +344,30 @@ pub(crate) fn cancel_one(
     true
 }
 
+/// Shared teardown for both normal completion and cancel. Applies `action`
+/// (a [`FinalAction`] bitset — cancel converts its `CancelAction` via
+/// `as_final_action`), pulsing `trigger_line` for the trigger-line bit. When
+/// `allow_restart` is false, `RESTART` is ignored and the animation lands in
+/// `Done`. When `release_anim_hold` is false, the `anim_enabled` reset is
+/// skipped (used for Armed cancel, which never grabbed the hold).
+#[allow(clippy::too_many_arguments)]
 fn finalize(
     handle: u32,
     scene: &mut SceneState,
     stim_handles: &[u32],
     output_pending: &mut [u64; vtl::MAX_BANKS],
+    final_action: FinalAction,
+    trigger_line: Option<VtlBit>,
     allow_restart: bool,
+    release_anim_hold: bool,
 ) {
-    let (final_action, trigger_line, captured, restart) = {
+    let (captured, restart) = {
         let Some(entry) = scene.config.animations.get(&handle) else {
             return;
         };
-        let fa = entry.final_action;
-        let tl = entry.final_action_trigger_line;
         let cap = entry.captured_user_enabled.clone();
-        let restart = allow_restart && fa.contains(FinalAction::RESTART);
-        (fa, tl, cap, restart)
+        let restart = allow_restart && final_action.contains(FinalAction::RESTART);
+        (cap, restart)
     };
 
     if final_action.contains(FinalAction::RESTORE_STATE) {
@@ -359,11 +390,12 @@ fn finalize(
 
     // Reset anim_enabled for animations that held it during execution.
     {
-        let anim_held = matches!(
-            scene.config.animations.get(&handle).map(|e| &e.animation),
-            Some(Animation::FlickerForNFrames { .. })
-                | Some(Animation::CoupleVisibilityToTriggerLine { .. })
-        );
+        let anim_held = release_anim_hold
+            && matches!(
+                scene.config.animations.get(&handle).map(|e| &e.animation),
+                Some(Animation::FlickerForNFrames { .. })
+                    | Some(Animation::CoupleVisibilityToTriggerLine { .. })
+            );
         if anim_held {
             for &sh in stim_handles {
                 if let Some(e) = scene.config.stimuli.get_mut(&sh)

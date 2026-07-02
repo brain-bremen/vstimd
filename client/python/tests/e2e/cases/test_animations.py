@@ -10,7 +10,7 @@ import time
 import pytest
 
 from vstimd import Connection
-from vstimd.animations import AnimationState, FinalAction, StartAction, VtlEdge
+from vstimd.animations import AnimationState, CancelAction, FinalAction, StartAction, VtlEdge
 from vstimd.stimuli.stimuli_models import Color, Vec2
 from vstimd.vtl import VtlDirection
 
@@ -184,7 +184,7 @@ def test_anim_cancel_command_running(
 
     # Long duration so it is still running when we cancel.
     a = conn.animations.create_flash(
-        s, duration_frames=600, final_action_mask=FinalAction.DISABLE
+        s, duration_frames=600, cancel_action_mask=CancelAction.DISABLE
     )
     conn.animations.arm(a)
 
@@ -222,7 +222,7 @@ def test_anim_cancel_trigger_running(
         duration_frames=600,
         cancel_trigger=(0, 50),
         cancel_edge=VtlEdge.RISING,
-        final_action_mask=FinalAction.DISABLE,
+        cancel_action_mask=CancelAction.DISABLE,
     )
     conn.animations.arm(a)
 
