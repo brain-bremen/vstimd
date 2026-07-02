@@ -2,7 +2,7 @@
 //! entry (`AnimationEntry`) that pairs it with non-serialized runtime state.
 
 use super::{AnimState, Animation, CancelAction, FinalAction, StartAction};
-use crate::vtl_state::{Edge, VtlBit};
+use crate::vtl_state::{VtlEdge, VtlBit};
 
 /// Serializable animation configuration.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -19,12 +19,12 @@ pub struct AnimationConfig {
     /// Output line to pulse for one frame when `FINAL_ACTION_TRIGGER_LINE` is set.
     pub final_action_trigger_line: Option<VtlBit>,
     /// If `Some`, the animation waits for this edge before starting.
-    pub start_trigger: Option<(VtlBit, Edge)>,
+    pub start_trigger: Option<(VtlBit, VtlEdge)>,
     /// If `Some`, this input edge cancels the animation while it is `Armed` or
     /// `Running`. Same wiring as `start_trigger`; evaluated each frame in
     /// `advance_one`.
     #[serde(default)]
-    pub cancel_trigger: Option<(VtlBit, Edge)>,
+    pub cancel_trigger: Option<(VtlBit, VtlEdge)>,
     /// Bitflags applied when the animation is cancelled (edge or software).
     /// Independent of `final_action`; `empty()` means a hard abort that leaves
     /// visibility as-is.

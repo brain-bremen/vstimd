@@ -74,7 +74,24 @@ pub struct VtlRigConfig {
     ///
     /// Choose a bit not used by any gpiochip-daqd output line so there is no
     /// conflict.  Bit 63 on bank 0 is a safe default.
-    pub vblank: Option<VtlBit>,
+    ///
+    /// Addressed by (bank, bit) only — the vblank line is always an output, so
+    /// no kind is specified in the rig config.
+    pub vblank: Option<VblankBit>,
+}
+
+/// A (bank, bit) address for the vblank output line in the rig config.
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub struct VblankBit {
+    pub bank: usize,
+    pub bit:  u8,
+}
+
+impl VblankBit {
+    /// The resolved output-directed [`VtlBit`].
+    pub fn to_vtl_bit(self) -> VtlBit {
+        VtlBit { bank: self.bank, bit: self.bit, kind: vtl::VtlKind::Output }
+    }
 }
 
 impl VtlRigConfig {

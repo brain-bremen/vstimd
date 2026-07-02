@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering;
 
 use crate::layout::{
-    Direction, VtlHeader, VtlLineEntry, VtlNamesSection, VtlStateSection,
+    VtlKind, VtlHeader, VtlLineEntry, VtlNamesSection, VtlStateSection,
     MAX_BANKS, MAX_NAMED_LINES, NAMES_OFFSET, OUTPUT_SEM_OFFSET, STATE_OFFSET,
 };
 
@@ -51,7 +51,7 @@ impl VtlSegment {
     /// Signal the output semaphore, waking one `wait_output` caller.
     ///
     /// Called by the VTL owner (vstimd) after each output-state write so that
-    /// gpiochip-daqd wakes immediately instead of on the next polling interval.
+    /// daqd wakes immediately instead of on the next polling interval.
     pub fn signal_output(&self) {
         #[cfg(unix)]
         unsafe { libc::sem_post(self.output_sem_ptr()); }
@@ -59,7 +59,7 @@ impl VtlSegment {
 
     /// Block until the output semaphore is signaled.
     ///
-    /// Called by gpiochip-daqd in its output loop.  Returns immediately if a
+    /// Called by daqd in its output loop.  Returns immediately if a
     /// signal is already pending (the semaphore count is > 0).  Retries
     /// automatically on `EINTR`.  On non-Unix platforms this is a no-op.
     pub fn wait_output(&self) {
@@ -100,7 +100,7 @@ impl VtlSegment {
 
     // ── Input latches ─────────────────────────────────────────────────────────
 
-    /// Atomically OR `bits` into the rising latch (nidaqd / software-trigger side).
+    /// Atomically OR `bits` into the rising latch (daqd / software-trigger side).
     pub fn set_input_rise(&self, bank: usize, bits: u64) {
         self.state().input_rise_latch[bank].fetch_or(bits, Ordering::AcqRel);
     }
@@ -146,7 +146,7 @@ impl VtlSegment {
         self.state().output_set_pulse[bank].fetch_or(bits, Ordering::AcqRel);
     }
 
-    /// Atomically drain output pulse bits (nidaqd side: call after driving hardware).
+    /// Atomically drain output pulse bits (daqd side: call after driving hardware).
     pub fn drain_output_pulse(&self, bank: usize, mask: u64) -> u64 {
         self.state().output_set_pulse[bank].fetch_and(!mask, Ordering::AcqRel) & mask
     }
@@ -161,22 +161,22 @@ impl VtlSegment {
         (self.names().n_entries.load(Ordering::Acquire) as usize).min(MAX_NAMED_LINES)
     }
 
-    pub fn named_line(&self, idx: usize) -> Option<(&VtlLineEntry, Direction)> {
+    pub fn named_line(&self, idx: usize) -> Option<(&VtlLineEntry, VtlKind)> {
         if idx >= self.n_named_lines() {
             return None;
         }
         let entry = &self.names().entries[idx];
-        let dir = Direction::from_u8(entry.direction)?;
+        let dir = VtlKind::from_u8(entry.kind)?;
         Some((entry, dir))
     }
 
-    /// Find a named line by name. Returns (index, entry, direction) or None.
-    pub fn find_named_line(&self, name: &str) -> Option<(usize, &VtlLineEntry, Direction)> {
+    /// Find a named line by name. Returns (index, entry, kind) or None.
+    pub fn find_named_line(&self, name: &str) -> Option<(usize, &VtlLineEntry, VtlKind)> {
         let n = self.n_named_lines().min(MAX_NAMED_LINES);
         for i in 0..n {
             let e = &self.names().entries[i];
             if e.name_str() == name {
-                let dir = Direction::from_u8(e.direction)?;
+                let dir = VtlKind::from_u8(e.kind)?;
                 return Some((i, e, dir));
             }
         }
@@ -187,7 +187,7 @@ impl VtlSegment {
     ///
     /// Uses raw-pointer writes so no `&mut` reference is ever created over shared
     /// memory, avoiding aliasing UB with concurrent `&`-reads on the same segment.
-    pub fn write_named_line(&self, idx: usize, name: &str, bank: u8, bit: u8, dir: Direction) {
+    pub fn write_named_line(&self, idx: usize, name: &str, bank: u8, bit: u8, dir: VtlKind) {
         assert!(idx < MAX_NAMED_LINES);
         let bytes = name.as_bytes();
         let len = bytes.len().min(55);
@@ -201,7 +201,7 @@ impl VtlSegment {
             }
             std::ptr::write(std::ptr::addr_of_mut!((*entry).bank),      bank);
             std::ptr::write(std::ptr::addr_of_mut!((*entry).bit),       bit);
-            std::ptr::write(std::ptr::addr_of_mut!((*entry).direction), dir as u8);
+            std::ptr::write(std::ptr::addr_of_mut!((*entry).kind), dir as u8);
             std::ptr::write(std::ptr::addr_of_mut!((*entry)._pad),      0u8);
         }
     }

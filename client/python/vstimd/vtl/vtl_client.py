@@ -1,31 +1,74 @@
 from __future__ import annotations
 
-from typing import Callable, Union
+from dataclasses import dataclass
+from typing import Callable, Optional
 
 from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import vtl_pb2
 from vstimd.response import ServerResponse
-from .vtl_models import VtlDirection, VtlLineInfo
+from .vtl_models import VtlKind, VtlLineInfo
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
 
-# A VTL line can be addressed by (bank, bit) or by registered name.
-VtlHandle = Union[tuple[int, int], str]
-
-_DIRECTION_TO_PROTO: dict[VtlDirection, vtl_pb2.VirtualTriggerLineDirection] = {
-    VtlDirection.INPUT:  vtl_pb2.VIRTUAL_TRIGGER_LINE_DIRECTION_INPUT,
-    VtlDirection.OUTPUT: vtl_pb2.VIRTUAL_TRIGGER_LINE_DIRECTION_OUTPUT,
+_KIND_TO_PROTO: dict[VtlKind, vtl_pb2.VirtualTriggerLineKind] = {
+    VtlKind.INPUT:  vtl_pb2.VIRTUAL_TRIGGER_LINE_KIND_INPUT,
+    VtlKind.OUTPUT: vtl_pb2.VIRTUAL_TRIGGER_LINE_KIND_OUTPUT,
 }
 
 
-def _make_handle(handle: VtlHandle) -> vtl_pb2.VirtualTriggerLineHandle:
-    if isinstance(handle, str):
-        return vtl_pb2.VirtualTriggerLineHandle(name=handle)
-    bank, bit = handle
-    return vtl_pb2.VirtualTriggerLineHandle(
-        bank_bit=vtl_pb2.VirtualTriggerLineBankBit(bank=bank, bit=bit)
-    )
+@dataclass(frozen=True)
+class VtlHandle:
+    """A fully-qualified VTL line address, carrying its kind.
+
+    A VTL address is only unambiguous once its kind is known — input and
+    output banks are independent signals sharing the same (bank, bit) space.
+    Use this wherever the kind is part of the choice (e.g. an animation
+    ``start_trigger`` / ``cancel_trigger`` that may fire off an input *or* an
+    output edge). Construct with the classmethods::
+
+        VtlHandle.input(0, 10)                    # input bank, bit 10
+        VtlHandle.output(0, 20)                   # output bank, bit 20
+        VtlHandle.named("frame_sync", VtlKind.OUTPUT)  # a registered line
+    """
+
+    kind: VtlKind
+    bank: Optional[int] = None
+    bit: Optional[int] = None
+    name: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        has_addr = self.bank is not None and self.bit is not None
+        if self.name is not None:
+            if has_addr:
+                raise ValueError(
+                    "VtlHandle: give either a name or a (bank, bit) pair, not both"
+                )
+        elif not has_addr:
+            raise ValueError("VtlHandle needs a name or a (bank, bit) pair")
+
+    @classmethod
+    def input(cls, bank: int, bit: int) -> "VtlHandle":
+        return cls(VtlKind.INPUT, bank=bank, bit=bit)
+
+    @classmethod
+    def output(cls, bank: int, bit: int) -> "VtlHandle":
+        return cls(VtlKind.OUTPUT, bank=bank, bit=bit)
+
+    @classmethod
+    def named(cls, name: str, kind: VtlKind) -> "VtlHandle":
+        # Direction is explicit: the server matches the registered entry with
+        # this name *and* kind (a name may exist for both directions).
+        return cls(kind, name=name)
+
+    def _to_proto(self) -> vtl_pb2.VirtualTriggerLineHandle:
+        dir_proto = _KIND_TO_PROTO[self.kind]
+        if self.name is not None:
+            return vtl_pb2.VirtualTriggerLineHandle(name=self.name, kind=dir_proto)
+        return vtl_pb2.VirtualTriggerLineHandle(
+            bank_bit=vtl_pb2.VirtualTriggerLineBankBit(bank=self.bank, bit=self.bit),
+            kind=dir_proto,
+        )
 
 
 def _sys() -> service_pb2.SystemTarget:
@@ -37,26 +80,27 @@ class VtlClient:
 
     Accessed as ``conn.vtl`` on a :class:`~vstimd.Connection` instance.
 
+    Every line is addressed by a :class:`VtlHandle`, which carries its kind
+    (input vs. output). ``set_line`` / ``toggle_line`` / ``clear_latches`` all
+    take a handle; there is a single server-side command family behind them.
+
     **Input lines** represent signals arriving into vstimd.  The canonical
-    writer is nidaqd (hardware DAQ) via shared memory; ZMQ ``SetInput*``
-    commands simulate that path.  The render loop polls input lines once per
-    frame at the start of each frame, detects rising/falling edges, and feeds
-    them to the animation system.
+    writer is daqd (hardware DAQ) via shared memory; ``set_line`` on an INPUT
+    handle simulates that path.  The render loop polls input lines once per frame
+    at the start of each frame, detects rising/falling edges, and feeds them to
+    the animation system.
 
     **Output lines** represent signals driven by vstimd.  The render loop
-    writes output lines once per frame at the end of each frame (after vsync).
-    nidaqd reads ``output_state`` to pulse hardware DAQ lines (frame-sync,
-    stimulus-onset markers).  ZMQ ``SetOutput*`` commands are a manual
-    override for testing.
-
-    Note: render-loop integration (frame-gated poll and output write) is not
-    yet implemented.  Both directions are currently only accessible via ZMQ.
+    writes output lines once per frame at the end of each frame (after vsync);
+    daqd is woken by the output semaphore strobe and reads ``output_state`` to
+    pulse hardware DAQ lines (frame-sync, stimulus-onset markers). Setting an
+    OUTPUT handle here is a manual override for testing.
 
     Example::
 
         with Connection() as conn:
-            conn.vtl.set_line_name(0, 0, VtlDirection.OUTPUT, "frame_sync")
-            conn.vtl.set_output_line("frame_sync", True)
+            conn.vtl.set_line_name(0, 0, VtlKind.OUTPUT, "frame_sync")
+            conn.vtl.set_line(VtlHandle.named("frame_sync", VtlKind.OUTPUT), True)
     """
 
     def __init__(self, send: _SendFn) -> None:
@@ -68,7 +112,7 @@ class VtlClient:
         self,
         bank: int,
         bit: int,
-        direction: VtlDirection,
+        kind: VtlKind,
         name: str,
     ) -> ServerResponse:
         """Register a name for a VTL line. Pass ``name=""`` to clear."""
@@ -77,7 +121,7 @@ class VtlClient:
             set_virtual_trigger_line_name=vtl_pb2.SetVirtualTriggerLineNameRequest(
                 bank=bank,
                 bit=bit,
-                direction=_DIRECTION_TO_PROTO[direction],
+                kind=_KIND_TO_PROTO[kind],
                 name=name,
             ),
         )
@@ -95,86 +139,60 @@ class VtlClient:
                 name=line.name,
                 bank=line.bank,
                 bit=line.bit,
-                direction=VtlDirection(line.direction),
+                kind=VtlKind(line.kind),
                 high=line.high,
             )
             for line in resp.virtual_trigger_line_list.lines
         ]
 
-    # ── Input line control ────────────────────────────────────────────────────
+    # ── Line control ────────────────────────────────────────────────────────────
 
-    def set_input_line(self, handle: VtlHandle, value: bool) -> ServerResponse:
-        """Drive an input line high or low (simulates a hardware trigger input)."""
+    def set_line(self, handle: VtlHandle, value: bool) -> ServerResponse:
+        """Drive a line high or low. The handle's kind selects the bank: an
+        INPUT handle simulates a hardware trigger input; an OUTPUT handle is a
+        manual override (normally the render loop drives outputs)."""
         req = service_pb2.Request(
             system=_sys(),
-            set_input_virtual_trigger_line=vtl_pb2.SetInputVirtualTriggerLineRequest(
-                handle=_make_handle(handle),
+            set_virtual_trigger_line=vtl_pb2.SetVirtualTriggerLineRequest(
+                handle=handle._to_proto(),
                 value=value,
             ),
         )
         return ServerResponse._from_proto(self._send(req))
 
-    def toggle_input_line(self, handle: VtlHandle) -> bool:
-        """Toggle an input line and return the new state."""
+    def toggle_line(self, handle: VtlHandle) -> bool:
+        """Toggle a line and return the new state."""
         req = service_pb2.Request(
             system=_sys(),
-            toggle_input_virtual_trigger_line=vtl_pb2.ToggleInputVirtualTriggerLineRequest(
-                handle=_make_handle(handle),
+            toggle_virtual_trigger_line=vtl_pb2.ToggleVirtualTriggerLineRequest(
+                handle=handle._to_proto(),
             ),
         )
         resp = self._send(req)
         return resp.virtual_trigger_line_state.high
 
-    def clear_input_latches(self, handle: VtlHandle) -> ServerResponse:
-        """Drain accumulated rise/fall latches without changing the line level."""
+    def clear_latches(self, handle: VtlHandle) -> ServerResponse:
+        """Drain an input line's accumulated rise/fall latches without changing
+        its level. Only valid for an INPUT handle (outputs have no latches)."""
+        if handle.kind is not VtlKind.INPUT:
+            raise ValueError(
+                "clear_latches is only valid for INPUT lines (outputs have no latches)"
+            )
         req = service_pb2.Request(
             system=_sys(),
-            clear_input_virtual_trigger_line_latches=vtl_pb2.ClearInputVirtualTriggerLineLatchesRequest(
-                handle=_make_handle(handle),
+            clear_virtual_trigger_line_latches=vtl_pb2.ClearVirtualTriggerLineLatchesRequest(
+                handle=handle._to_proto(),
             ),
         )
         return ServerResponse._from_proto(self._send(req))
 
-    def set_input_bank(self, bank: int, value: int) -> ServerResponse:
-        """Write all 64 input lines of a bank at once (bitmask)."""
+    def set_bank(self, kind: VtlKind, bank: int, value: int) -> ServerResponse:
+        """Write all 64 lines of a bank at once (bitmask). Direction selects the
+        input or output bank."""
         req = service_pb2.Request(
             system=_sys(),
-            set_input_virtual_trigger_line_bank=vtl_pb2.SetInputVirtualTriggerLineBankRequest(
-                bank=bank,
-                value=value,
-            ),
-        )
-        return ServerResponse._from_proto(self._send(req))
-
-    # ── Output line control ───────────────────────────────────────────────────
-
-    def set_output_line(self, handle: VtlHandle, value: bool) -> ServerResponse:
-        """Drive an output line high or low."""
-        req = service_pb2.Request(
-            system=_sys(),
-            set_output_virtual_trigger_line=vtl_pb2.SetOutputVirtualTriggerLineRequest(
-                handle=_make_handle(handle),
-                value=value,
-            ),
-        )
-        return ServerResponse._from_proto(self._send(req))
-
-    def toggle_output_line(self, handle: VtlHandle) -> bool:
-        """Toggle an output line and return the new state."""
-        req = service_pb2.Request(
-            system=_sys(),
-            toggle_output_virtual_trigger_line=vtl_pb2.ToggleOutputVirtualTriggerLineRequest(
-                handle=_make_handle(handle),
-            ),
-        )
-        resp = self._send(req)
-        return resp.virtual_trigger_line_state.high
-
-    def set_output_bank(self, bank: int, value: int) -> ServerResponse:
-        """Write all 64 output lines of a bank at once (bitmask)."""
-        req = service_pb2.Request(
-            system=_sys(),
-            set_output_virtual_trigger_line_bank=vtl_pb2.SetOutputVirtualTriggerLineBankRequest(
+            set_virtual_trigger_line_bank=vtl_pb2.SetVirtualTriggerLineBankRequest(
+                kind=_KIND_TO_PROTO[kind],
                 bank=bank,
                 value=value,
             ),

@@ -17,13 +17,15 @@ enum AnimationState {
 // One message per animation variant; embedded in CreateAnimationRequest.body.
 // stimuli are specified once in CreateAnimationRequest.stimuli, not here.
 
-// Mirror stimulus enabled state to the level of a trigger line (input or output).
+// Mirror stimulus enabled state to the level of a trigger line. The handle's
+// kind selects the input or output line to follow.
 message CoupleVisibilityToTriggerLine {
   VirtualTriggerLineHandle trigger  = 1;
   bool                     polarity = 2; // true = enable when trigger is HIGH
 }
 
-// Set stimulus enabled once when a trigger edge fires.
+// Set stimulus enabled once when a trigger edge fires. The handle's kind
+// selects the input or output line to watch.
 message EnableOnTriggerEdge {
   VirtualTriggerLineHandle trigger = 1;
   VtlEdge                  edge    = 2;
@@ -88,11 +90,14 @@ message CreateAnimationRequest {
   uint32 final_action_mask = 2;
   // Required when FINAL_ACTION_TRIGGER_LINE (0x08) is set; the output line to pulse.
   VirtualTriggerLineHandle final_action_trigger_line = 3;
-  // Optional: if set, the animation waits for this edge before starting.
+  // Optional: if set, the animation waits for this edge before starting. The
+  // handle's kind selects an input or output line — an output edge lets one
+  // animation start another entirely inside the server (see the intra-server
+  // one-frame reaction described in vtl_state.rs).
   VirtualTriggerLineHandle start_trigger = 4;
   VtlEdge                  start_edge    = 5;
-  // Optional: if set, this input edge cancels the animation while it is Armed
-  // or Running. Same wiring as start_trigger.
+  // Optional: if set, this edge cancels the animation while it is Armed or
+  // Running. Same wiring as start_trigger, including input-or-output kind.
   VirtualTriggerLineHandle cancel_trigger = 9;
   VtlEdge                  cancel_edge    = 16;
   // Actions applied when the animation is cancelled (edge or software command),

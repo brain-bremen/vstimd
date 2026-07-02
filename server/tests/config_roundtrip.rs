@@ -5,7 +5,7 @@ use vstimd::scene::{
     ShapeCommon, Stimulus, StimulusFlags, StimulusSceneEntry, Transform2D,
 };
 use vstimd::vtl_state::{VtlConfig, VtlNameEntry};
-use vtl::Direction;
+use vtl::VtlKind;
 
 fn make_rect_entry() -> StimulusSceneEntry {
     StimulusSceneEntry::new(
@@ -100,13 +100,13 @@ fn roundtrip_vtl_names() {
                 name: "stim_onset".into(),
                 bank: 0,
                 bit: 0,
-                direction: Direction::Output,
+                kind: VtlKind::Output,
             },
             VtlNameEntry {
                 name: "trial_start".into(),
                 bank: 0,
                 bit: 1,
-                direction: Direction::Input,
+                kind: VtlKind::Input,
             },
         ],
     };
@@ -116,8 +116,8 @@ fn roundtrip_vtl_names() {
     assert_eq!(io.vtl.names.len(), 2);
     assert_eq!(io.vtl.names[0].name, "stim_onset");
     assert_eq!(io.vtl.names[1].name, "trial_start");
-    assert_eq!(io.vtl.names[0].direction, Direction::Output);
-    assert_eq!(io.vtl.names[1].direction, Direction::Input);
+    assert_eq!(io.vtl.names[0].kind, VtlKind::Output);
+    assert_eq!(io.vtl.names[1].kind, VtlKind::Input);
 }
 
 #[test]

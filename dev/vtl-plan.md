@@ -5,12 +5,12 @@
 vstimd needs to respond to TTL hardware pulses (e.g. from NI-DAQ boards) to
 control stimulus visibility and animations at frame granularity. Rather than
 embedding DAQ drivers, vstimd defines a **Virtual Trigger Line (VTL)** interface
-based on POSIX shared memory. A separate bridge process (e.g. `nidaqd`) maps
+based on POSIX shared memory. A separate bridge process (e.g. `daqd`) maps
 real hardware lines onto the shared memory words; vstimd polls them every frame
 with zero syscall overhead.
 
 The VTL shm banks always exist once vstimd starts — line *names* are metadata
-layered on top. A `SetVtlLineName` command associates a human-readable name
+layered on top. A `SetVirtualTriggerLineName` command associates a human-readable name
 with a (bank, bit, direction) tuple; no "allocation" of lines is needed.
 
 Goals:
@@ -32,11 +32,12 @@ Goals:
 daqd is a facade: its hardware inputs map to vstimd inputs; vstimd outputs map to
 daqd hardware outputs.
 
-- Input lines are written by nidaqd (hardware) or ZMQ `SetInput*` (testing).
+- Input lines are written by daqd (hardware) or ZMQ `SetVirtualTriggerLine`
+  (kind=INPUT, testing).
   **vstimd never writes input lines** — not in animations, not in the render loop.
 - Output lines are written by the render loop only.
-  ZMQ `SetOutput*` commands exist for **debug / manual override only** and should
-  not be used while animations are writing the same bits.
+  ZMQ `SetVirtualTriggerLine` (kind=OUTPUT) commands exist for **debug / manual
+  override only** and should not be used while animations are writing the same bits.
 
 **Animation trigger sources**
 
@@ -147,8 +148,8 @@ END_DEFERRED            (0x80)  call end_deferred_mode
 `VtlOwner` creates/manages the shm segment; `VtlClient` attaches read-only.
 
 ### ✅ Step 2 — VTL plumbing in vstimd
-- `server/src/scene/vtl_state.rs` — `VtlState`, `VtlEdges`, `poll`, `output_snapshot`, `write_outputs`
-- `proto/vstimd/v1/vtl.proto` — `SetVtlLineName`, `ListVtlLines`, `SetVtlInput`, `SetVtlOutput` commands
+- `server/src/vtl_state.rs` — `VtlState`, `VtlEdges`, `poll`, `output_edges`, `commit_staged`
+- `proto/vstimd/v1/vtl.proto` — `SetVirtualTriggerLineName`, `ListVirtualTriggerLines`, `SetVirtualTriggerLine`, `ToggleVirtualTriggerLine` commands
 - `server/src/scene/command.rs` — VTL commands dispatched
 - `server/src/ipc.rs` — `Arc<Mutex<VtlState>>` threaded through to handle_request
 - `render/drm/mod.rs` + `render/winit_vk/mod.rs` — `VtlState` created at startup, stored as `Option<Arc<Mutex<VtlState>>>`
@@ -191,8 +192,8 @@ the core visibility variants and all final actions.
 - At [A] (after vblank wait):
   1. `vtl.write_outputs(&pending_outputs_prev)` — commit previous frame's animation outputs
   2. `let input_edges = vtl.poll()` — drain input latches
-  3. `let output_snapshot = vtl.output_snapshot()` — freeze output for trigger detection
-  4. `scene.advance_animations(&input_edges, &output_snapshot, &mut pending_outputs)` —
+  3. `let output_edges = vtl.output_edges()` — compute output edges for trigger detection
+  4. `scene.advance_animations(&input_edges, &output_edges, &mut pending_outputs)` —
      advance all animations (brief write lock on scene, released before render)
 - At [C] (after present): `pending_outputs_prev = std::mem::take(&mut pending_outputs)`
 
@@ -210,7 +211,7 @@ the core visibility variants and all final actions.
    for 5 frames then disappears.
 2. Creates `FlickerForNFrames(on=3, off=2, total=30)`, arms it, confirms cycling.
 3. Creates `FlashForNFrames(5 frames)` with `start_trigger=(0,0,Rising)`, arms it,
-   fires `SetVtlInput` rising edge, confirms stimulus shows for 5 frames.
+   fires `SetVirtualTriggerLine` (kind=INPUT) rising edge, confirms stimulus shows for 5 frames.
 4. Creates `CoupleVisibilityToInputTriggerLine`, arms it, toggles input line, confirms
    stimulus tracks it.
 
@@ -267,9 +268,9 @@ Arm `MoveAlongSegments2D` with two waypoints, confirm smooth travel at specified
 
   [A] vtl.write_outputs(pending_outputs_prev)   ← commit frame N-1 animation outputs
   [A] input_edges = vtl.poll()                  ← drain rise/fall latches
-  [S] output_snapshot = vtl.output_snapshot()   ← freeze outputs for trigger detection
+  [S] output_edges = vtl.output_edges()   ← compute output edges for trigger detection
 
-  scene.advance_animations(input_edges, output_snapshot, &mut pending_outputs)
+  scene.advance_animations(input_edges, output_edges, &mut pending_outputs)
     → animations write to stimuli (anim_enabled, user_enabled, position)
     → animations accumulate output bits in pending_outputs
     → completing animations execute final actions
@@ -287,7 +288,7 @@ Arm `MoveAlongSegments2D` with two waypoints, confirm smooth travel at specified
 ## Verification plan
 
 1. **Unit** (`vtl/tests/`): create `VtlOwner`, write bits from a thread, read edges with `poll()`, confirm latches clear.
-2. **Integration** (null renderer): via ZMQ, create a `FlashForNFrames`, arm it, fire `SetVtlInput` software trigger, assert stimulus `enabled` changes across `advance_animations`.
+2. **Integration** (null renderer): via ZMQ, create a `FlashForNFrames`, arm it, fire `SetVirtualTriggerLine` (kind=INPUT) software trigger, assert stimulus `enabled` changes across `advance_animations`.
 3. **Final action test**: animation with `TOGGLE_PHOTODIODE | RESTART` — confirm photodiode toggles each time flash completes and animation re-arms.
 4. **Overlay**: VTL panel, use "Fire rising" button, confirm level updates.
 5. **Output ordering** (integration): animation A (FlashForNFrames, FINAL_ACTION_TRIGGER_LINE → bit X) + animation B (FlashForNFrames, start_trigger = bit X). Fire A. Assert B does NOT start until frame N+1.

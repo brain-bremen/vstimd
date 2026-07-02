@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { Connection, NotSupportedError, rgb } from "../src/index.js";
+import { Connection, NotSupportedError, VtlHandle, rgb } from "../src/index.js";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const WEB_PORT = 8137; // dedicated test ports; never collide with a real server
@@ -159,14 +159,56 @@ describe("vstimd web client e2e (--null)", () => {
 
   it("names and fires a VTL input line", async () => {
     await conn.vtl.setName(0, 1, "input", "trig");
-    await conn.vtl.setInput("trig", true);
+    await conn.vtl.setLine(VtlHandle.named("trig", "input"), true);
 
     const snap = await conn.nextSnapshot();
     const line = snap.vtlLines.find((l) => l.name === "trig")!;
-    expect(line.direction).toBe("input");
+    expect(line.kind).toBe("input");
     expect(line.bank).toBe(0);
     expect(line.bit).toBe(1);
     expect(line.high).toBe(true);
+  });
+
+  it("chains animations via an output edge (intra-server)", async () => {
+    const sa = await conn.stimuli.shapes.createRect({ name: "chain-a" });
+    const sb = await conn.stimuli.shapes.createRect({ name: "chain-b" });
+
+    // A pulses output line (0,25) when it finishes; B starts off that OUTPUT edge.
+    const a = await conn.animations.flash(sa, {
+      durationFrames: 6,
+      startActions: ["enable"],
+      finalActions: ["disable", "finalActionTriggerLine"],
+      finalActionTriggerLine: VtlHandle.output(0, 25),
+    });
+    const b = await conn.animations.flash(sb, {
+      durationFrames: 30,
+      startActions: ["enable"],
+      finalActions: ["disable"],
+      startTrigger: VtlHandle.output(0, 25),
+      startEdge: "rising",
+    });
+
+    await conn.animations.arm(a);
+    await conn.animations.arm(b);
+    expect((await conn.animations.query(b)).state).toBe("armed");
+
+    // A finishes on its own; its output pulse drives B — no input loopback.
+    const waitState = async (h: number, want: string, tries = 40): Promise<string> => {
+      for (let i = 0; i < tries; i++) {
+        const s = (await conn.animations.query(h)).state;
+        if (s === want || s === "done") return s;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      return (await conn.animations.query(h)).state;
+    };
+
+    expect(await waitState(a, "done")).toBe("done");
+    expect(["running", "done"]).toContain(await waitState(b, "running"));
+
+    await conn.animations.delete(a);
+    await conn.animations.delete(b);
+    await conn.stimuli.delete(sa);
+    await conn.stimuli.delete(sb);
   });
 
   it("round-trips a position update (RF-mapping style)", async () => {
@@ -209,7 +251,7 @@ describe("vstimd web client e2e (--null)", () => {
     const lines = await conn.vtl.list();
     const ours = lines.find((l) => l.name === "shutter");
     expect(ours).toBeDefined();
-    expect(ours!.direction).toBe("output");
+    expect(ours!.kind).toBe("output");
     expect(ours!.bank).toBe(0);
     expect(ours!.bit).toBe(2);
   });

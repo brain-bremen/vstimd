@@ -6,7 +6,8 @@
 // and cover only this one animation type.
 
 import { useState } from "react";
-import type { Connection, SceneSnapshot, StimulusHandle } from "../index.js";
+import { VtlHandle } from "../index.js";
+import type { Connection, SceneSnapshot, StimulusHandle, VtlKind } from "../index.js";
 import { Dialog, Field, NumberInput } from "./Dialog.js";
 
 interface Props {
@@ -18,11 +19,11 @@ interface Props {
 
 export function CoupleVisibilityDialog({ conn, snapshot, defaultName, onClose }: Props) {
   const stimuli = snapshot?.stimuli ?? [];
-  // Named VTL lines, to pick a trigger from (matches the egui overlay). The
-  // animation always reads the *input* side at runtime, so direction is shown
-  // as a label only — selecting a line just fills in its bank/bit.
+  // Named VTL lines, to pick a trigger from (matches the egui overlay).
+  // Selecting a line fills in its bank/bit *and* kind.
   const namedLines = (snapshot?.vtlLines ?? []).filter((l) => l.name);
   const [name, setName] = useState(defaultName);
+  const [kind, setKind] = useState<VtlKind>("input");
   const [bank, setBank] = useState(0);
   const [bit, setBit] = useState(0);
   const [polarity, setPolarity] = useState(true);
@@ -30,9 +31,10 @@ export function CoupleVisibilityDialog({ conn, snapshot, defaultName, onClose }:
 
   function pickNamedLine(value: string) {
     if (!value) return;
-    const [b, i] = value.split(":").map(Number);
-    setBank(b);
-    setBit(i);
+    const [dir, b, i] = value.split(":");
+    setKind(dir as VtlKind);
+    setBank(Number(b));
+    setBit(Number(i));
   }
 
   function toggleStimulus(handle: StimulusHandle, on: boolean) {
@@ -40,11 +42,9 @@ export function CoupleVisibilityDialog({ conn, snapshot, defaultName, onClose }:
   }
 
   async function submit() {
-    await conn.animations.coupleVisibilityToTriggerLine(
-      { bank, bit },
-      selected,
-      { name, polarity },
-    );
+    const trigger =
+      kind === "input" ? VtlHandle.input(bank, bit) : VtlHandle.output(bank, bit);
+    await conn.animations.coupleVisibilityToTriggerLine(trigger, selected, { name, polarity });
     onClose();
   }
 
@@ -56,18 +56,24 @@ export function CoupleVisibilityDialog({ conn, snapshot, defaultName, onClose }:
       {namedLines.length > 0 && (
         <Field label="Named line">
           <select
-            value={`${bank}:${bit}`}
+            value={`${kind}:${bank}:${bit}`}
             onChange={(e) => pickNamedLine(e.target.value)}
           >
             <option value="">— pick a named line —</option>
             {namedLines.map((l) => (
-              <option key={`${l.direction}:${l.bank}:${l.bit}`} value={`${l.bank}:${l.bit}`}>
-                {l.name} ({l.direction} {l.bank}/{l.bit})
+              <option key={`${l.kind}:${l.bank}:${l.bit}`} value={`${l.kind}:${l.bank}:${l.bit}`}>
+                {l.name} ({l.kind} {l.bank}/{l.bit})
               </option>
             ))}
           </select>
         </Field>
       )}
+      <Field label="Direction">
+        <select value={kind} onChange={(e) => setKind(e.target.value as VtlKind)}>
+          <option value="input">input</option>
+          <option value="output">output</option>
+        </select>
+      </Field>
       <Field label="Trigger bank, bit">
         <div style={{ display: "flex", gap: 6 }}>
           <NumberInput value={bank} onChange={setBank} step={1} />
@@ -75,7 +81,7 @@ export function CoupleVisibilityDialog({ conn, snapshot, defaultName, onClose }:
         </div>
       </Field>
       <div style={{ fontSize: 11, color: "#888", gridColumn: "1 / -1", marginTop: -4 }}>
-        Trigger is read from the input line at this bank/bit.
+        Trigger is read from the {kind} line at this bank/bit.
       </div>
       <Field label="Polarity">
         <label style={{ fontSize: 13 }}>

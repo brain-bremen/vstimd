@@ -131,13 +131,12 @@ message Request {
     // ── VTL (Virtual Trigger Lines) ─────────────────────────────────────────
     SetVirtualTriggerLineNameRequest set_virtual_trigger_line_name = 90;
     ListVirtualTriggerLinesRequest list_virtual_trigger_lines = 91;
-    SetInputVirtualTriggerLineRequest set_input_virtual_trigger_line = 92;
-    ToggleInputVirtualTriggerLineRequest toggle_input_virtual_trigger_line = 93;
-    ClearInputVirtualTriggerLineLatchesRequest clear_input_virtual_trigger_line_latches = 94;
-    SetInputVirtualTriggerLineBankRequest set_input_virtual_trigger_line_bank = 95;
-    SetOutputVirtualTriggerLineRequest set_output_virtual_trigger_line = 96;
-    ToggleOutputVirtualTriggerLineRequest toggle_output_virtual_trigger_line = 97;
-    SetOutputVirtualTriggerLineBankRequest set_output_virtual_trigger_line_bank = 98;
+    // Direction (input vs. output) is carried on the handle; one command family
+    // drives both. Field numbers 96-98 (the old Output* commands) are retired.
+    SetVirtualTriggerLineRequest set_virtual_trigger_line = 92;
+    ToggleVirtualTriggerLineRequest toggle_virtual_trigger_line = 93;
+    ClearVirtualTriggerLineLatchesRequest clear_virtual_trigger_line_latches = 94;
+    SetVirtualTriggerLineBankRequest set_virtual_trigger_line_bank = 95;
 
     // ── Animations (system target only) ─────────────────────────────────────
     CreateAnimationRequest create_animation = 100;

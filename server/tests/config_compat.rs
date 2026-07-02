@@ -1,6 +1,6 @@
 use vstimd::io_config::load_config;
 use vstimd::scene::Stimulus;
-use vtl::Direction;
+use vtl::VtlKind;
 
 #[test]
 fn load_v2_reference() {
@@ -41,9 +41,9 @@ fn load_v2_reference() {
     assert_eq!(io.vtl.names[0].name, "stim_onset");
     assert_eq!(io.vtl.names[0].bank, 0);
     assert_eq!(io.vtl.names[0].bit, 0);
-    assert_eq!(io.vtl.names[0].direction, Direction::Output);
+    assert_eq!(io.vtl.names[0].kind, VtlKind::Output);
     assert_eq!(io.vtl.names[1].name, "trial_gate");
-    assert_eq!(io.vtl.names[1].direction, Direction::Input);
+    assert_eq!(io.vtl.names[1].kind, VtlKind::Input);
 }
 
 #[test]

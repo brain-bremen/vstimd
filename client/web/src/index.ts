@@ -12,7 +12,7 @@ export { GratingClient, type Waveform, type GratingMask } from "./grating.js";
 export { TextClient } from "./text.js";
 export { ConfigClient, type UploadOpts } from "./config.js";
 export { SystemClient, type ServerInfo } from "./system.js";
-export { VtlClient, type VtlDirection, type VtlLine } from "./vtl.js";
+export { VtlClient, VtlHandle, type VtlKind } from "./vtl.js";
 export {
   AnimationsClient,
   type AnimationState,

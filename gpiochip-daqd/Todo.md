@@ -104,7 +104,7 @@ gpio_line = 5
 ### VTL named-line registration
 The daemon should write its configured lines into the VTL names table
 (`write_named_line` / `set_n_named_lines`) so that `gpioinfo`-style tooling and
-vstimd's ZMQ `ListVtlLines` command can discover them by name.
+vstimd's ZMQ `ListVirtualTriggerLines` command can discover them by name.
 
 ### Debian packaging scripts
 `Cargo.toml` references `packaging/debian/` maintainer scripts (postinst,

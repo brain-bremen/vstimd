@@ -7,14 +7,12 @@ from vstimd._handles import AnimationHandle, StimulusHandle
 from vstimd._proto import service_pb2
 from vstimd._proto.vstimd.v1 import animations_pb2, vtl_pb2
 from vstimd.response import ServerResponse
+from vstimd.vtl import VtlHandle
 from .animations_models import AnimationDetails, AnimationInfo, AnimationState, CancelAction, FinalAction, StartAction, VtlEdge
 
 
 _SendFn = Callable[[service_pb2.Request], service_pb2.Response]
 _FpsGetter = Callable[[], float]
-
-# A VTL line can be addressed by (bank, bit) or by registered name.
-VtlHandle = Union[tuple[int, int], str]
 
 # A stimulus or list of stimuli.
 Stimuli = Union[StimulusHandle, list[StimulusHandle]]
@@ -22,15 +20,6 @@ Stimuli = Union[StimulusHandle, list[StimulusHandle]]
 
 def _to_stimuli(s: Stimuli) -> list[StimulusHandle]:
     return [s] if isinstance(s, int) else list(s)
-
-
-def _make_vtl_handle(handle: VtlHandle) -> vtl_pb2.VirtualTriggerLineHandle:
-    if isinstance(handle, str):
-        return vtl_pb2.VirtualTriggerLineHandle(name=handle)
-    bank, bit = handle
-    return vtl_pb2.VirtualTriggerLineHandle(
-        bank_bit=vtl_pb2.VirtualTriggerLineBankBit(bank=bank, bit=bit)
-    )
 
 
 def _sys() -> service_pb2.SystemTarget:
@@ -183,18 +172,21 @@ class AnimationClient:
         cancel_action_mask: CancelAction,
         cancel_action_trigger_line: Optional[VtlHandle],
     ) -> animations_pb2.CreateAnimationRequest:
+        # Each trigger carries its own kind (via VtlHandle, or resolved from
+        # a named line). Action trigger lines must address an output line — the
+        # server rejects an input-directed handle there.
         return animations_pb2.CreateAnimationRequest(
             name=name,
             start_action_mask=int(start_action_mask),
-            start_action_trigger_line=_make_vtl_handle(start_action_trigger_line) if start_action_trigger_line else None,
+            start_action_trigger_line=start_action_trigger_line._to_proto() if start_action_trigger_line else None,
             final_action_mask=int(final_action_mask),
-            final_action_trigger_line=_make_vtl_handle(final_action_trigger_line) if final_action_trigger_line else None,
-            start_trigger=_make_vtl_handle(start_trigger) if start_trigger else None,
+            final_action_trigger_line=final_action_trigger_line._to_proto() if final_action_trigger_line else None,
+            start_trigger=start_trigger._to_proto() if start_trigger else None,
             start_edge=int(start_edge),
-            cancel_trigger=_make_vtl_handle(cancel_trigger) if cancel_trigger else None,
+            cancel_trigger=cancel_trigger._to_proto() if cancel_trigger else None,
             cancel_edge=int(cancel_edge),
             cancel_action_mask=int(cancel_action_mask),
-            cancel_action_trigger_line=_make_vtl_handle(cancel_action_trigger_line) if cancel_action_trigger_line else None,
+            cancel_action_trigger_line=cancel_action_trigger_line._to_proto() if cancel_action_trigger_line else None,
             stimuli=_to_stimuli(stimuli),
             **body_kwargs,
         )
@@ -224,7 +216,7 @@ class AnimationClient:
             stimuli, {
                 "couple_visibility_to_trigger_line":
                     animations_pb2.CoupleVisibilityToTriggerLine(
-                        trigger=_make_vtl_handle(trigger),
+                        trigger=trigger._to_proto(),
                         polarity=polarity,
                     ),
             },
@@ -263,7 +255,7 @@ class AnimationClient:
         req = self._make_req(
             stimuli, {
                 "enable_on_trigger_edge": animations_pb2.EnableOnTriggerEdge(
-                    trigger=_make_vtl_handle(trigger),
+                    trigger=trigger._to_proto(),
                     edge=int(edge),
                     enabled=enabled,
                 ),

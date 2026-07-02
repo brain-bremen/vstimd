@@ -7,12 +7,22 @@
 
 use super::{AnimState, Animation, CancelAction, FinalAction, StartAction};
 use crate::scene::SceneState;
-use crate::vtl_state::{Edge, VtlBit, VtlEdges};
+use crate::vtl_state::{VtlEdge, VtlBit, VtlEdges};
+use vtl::VtlKind;
 
-fn edge_fired(edges: &VtlEdges, bit: VtlBit, edge: Edge) -> bool {
+/// Pick the edge set (input vs. output) that a trigger's kind addresses.
+fn edges_for<'a>(bit: VtlBit, input: &'a VtlEdges, output: &'a VtlEdges) -> &'a VtlEdges {
+    match bit.kind {
+        VtlKind::Input => input,
+        VtlKind::Output => output,
+    }
+}
+
+fn edge_fired(input: &VtlEdges, output: &VtlEdges, bit: VtlBit, edge: VtlEdge) -> bool {
+    let edges = edges_for(bit, input, output);
     let bank = match edge {
-        Edge::Rising => edges.rising[bit.bank],
-        Edge::Falling => edges.falling[bit.bank],
+        VtlEdge::Rising => edges.rising[bit.bank],
+        VtlEdge::Falling => edges.falling[bit.bank],
     };
     (bank >> bit.bit) & 1 != 0
 }
@@ -27,7 +37,7 @@ pub(crate) fn advance_one(
     handle: u32,
     scene: &mut SceneState,
     input_edges: &VtlEdges,
-    _output_snapshot: &[u64; vtl::MAX_BANKS],
+    output_edges: &VtlEdges,
     output_pending: &mut [u64; vtl::MAX_BANKS],
 ) {
     // ── 0. Cancel trigger (Armed or Running) ──────────────────────────────────
@@ -40,7 +50,7 @@ pub(crate) fn advance_one(
         let cancellable = matches!(entry.state, AnimState::Armed | AnimState::Running { .. });
         if cancellable
             && let Some((bit, edge)) = entry.cancel_trigger
-            && edge_fired(input_edges, bit, edge)
+            && edge_fired(input_edges, output_edges, bit, edge)
         {
             cancel_one(handle, scene, output_pending);
             return;
@@ -55,7 +65,7 @@ pub(crate) fn advance_one(
         if entry.state == AnimState::Armed {
             let fires = match &entry.start_trigger {
                 None => true,
-                Some((bit, edge)) => edge_fired(input_edges, *bit, *edge),
+                Some((bit, edge)) => edge_fired(input_edges, output_edges, *bit, *edge),
             };
             if fires {
                 // Snapshot user_enabled for RESTORE_STATE before modifying anything.
@@ -149,7 +159,8 @@ pub(crate) fn advance_one(
         };
         match &entry.animation {
             Animation::CoupleVisibilityToTriggerLine { trigger, polarity } => {
-                let level = (input_edges.current[trigger.bank] >> trigger.bit) & 1 != 0;
+                let edges = edges_for(*trigger, input_edges, output_edges);
+                let level = (edges.current[trigger.bank] >> trigger.bit) & 1 != 0;
                 let anim_en = level == *polarity;
                 for &sh in &stim_handles {
                     if let Some(e) = scene.config.stimuli.get_mut(&sh)
@@ -167,7 +178,7 @@ pub(crate) fn advance_one(
                 edge,
                 enabled,
             } => {
-                let fired = edge_fired(input_edges, *trigger, *edge);
+                let fired = edge_fired(input_edges, output_edges, *trigger, *edge);
                 if fired {
                     let en = *enabled;
                     for &sh in &stim_handles {

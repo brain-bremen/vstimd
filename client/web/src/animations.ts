@@ -4,7 +4,7 @@
 // must be armed before they fire. Frame/time parameters accept either a
 // `*Frames` integer or a `*Ms` float (converted using the server frame rate,
 // queried lazily and cached). Proto types stay private: the public surface uses
-// string-union enums (state/edge/actions) and the `VtlLine` addressing type.
+// string-union enums (state/edge/actions) and the `VtlHandle` addressing type.
 
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { RequestSchema } from "./_proto/vstimd/v1/service_pb.js";
@@ -13,7 +13,7 @@ import {
   CreateAnimationRequestSchema,
 } from "./_proto/vstimd/v1/animations_pb.js";
 import { VtlEdge as ProtoEdge } from "./_proto/vstimd/v1/vtl_pb.js";
-import { vtlLineHandle, type VtlLine } from "./vtl.js";
+import { vtlHandleProto, type VtlHandle } from "./vtl.js";
 import type { Send } from "./transport.js";
 import type { AnimationHandle, StimulusHandle } from "./types.js";
 
@@ -81,18 +81,18 @@ export type Stimuli = StimulusHandle | StimulusHandle[];
 export interface AnimationOpts {
   name?: string;
   startActions?: StartAction[];
-  startActionTriggerLine?: VtlLine;
+  startActionTriggerLine?: VtlHandle;
   finalActions?: FinalAction[];
-  finalActionTriggerLine?: VtlLine;
+  finalActionTriggerLine?: VtlHandle;
   /** Wait for this line's edge after arming before starting. */
-  startTrigger?: VtlLine;
+  startTrigger?: VtlHandle;
   startEdge?: VtlEdge;
   /** Cancel when this line's edge fires while Armed or Running. */
-  cancelTrigger?: VtlLine;
+  cancelTrigger?: VtlHandle;
   cancelEdge?: VtlEdge;
   /** Actions applied on cancel (edge or software). Empty = hard abort. */
   cancelActions?: CancelAction[];
-  cancelActionTriggerLine?: VtlLine;
+  cancelActionTriggerLine?: VtlHandle;
 }
 
 const EDGE: Record<VtlEdge, ProtoEdge> = {
@@ -235,25 +235,25 @@ export class AnimationsClient {
 
   /** Mirror stimulus enabled state to the level of a trigger line. */
   coupleVisibilityToTriggerLine(
-    trigger: VtlLine,
+    trigger: VtlHandle,
     stimuli: Stimuli,
     opts: { polarity?: boolean } & AnimationOpts = {},
   ): Promise<AnimationHandle> {
     return this.create(stimuli, opts, {
       case: "coupleVisibilityToTriggerLine",
-      value: { trigger: vtlLineHandle(trigger), polarity: opts.polarity ?? true },
+      value: { trigger: vtlHandleProto(trigger), polarity: opts.polarity ?? true },
     });
   }
 
   /** Set stimulus enabled once when a trigger edge fires. */
   enableOnTriggerEdge(
-    trigger: VtlLine,
+    trigger: VtlHandle,
     stimuli: Stimuli,
     opts: { edge?: VtlEdge; enabled?: boolean } & AnimationOpts = {},
   ): Promise<AnimationHandle> {
     return this.create(stimuli, opts, {
       case: "enableOnTriggerEdge",
-      value: { trigger: vtlLineHandle(trigger), edge: EDGE[opts.edge ?? "rising"], enabled: opts.enabled ?? true },
+      value: { trigger: vtlHandleProto(trigger), edge: EDGE[opts.edge ?? "rising"], enabled: opts.enabled ?? true },
     });
   }
 
@@ -338,15 +338,15 @@ export class AnimationsClient {
     return {
       name: opts.name ?? "",
       startActionMask: maskOf(opts.startActions, START_ACTION),
-      startActionTriggerLine: opts.startActionTriggerLine ? vtlLineHandle(opts.startActionTriggerLine) : undefined,
+      startActionTriggerLine: opts.startActionTriggerLine ? vtlHandleProto(opts.startActionTriggerLine) : undefined,
       finalActionMask: maskOf(opts.finalActions, FINAL_ACTION),
-      finalActionTriggerLine: opts.finalActionTriggerLine ? vtlLineHandle(opts.finalActionTriggerLine) : undefined,
-      startTrigger: opts.startTrigger ? vtlLineHandle(opts.startTrigger) : undefined,
+      finalActionTriggerLine: opts.finalActionTriggerLine ? vtlHandleProto(opts.finalActionTriggerLine) : undefined,
+      startTrigger: opts.startTrigger ? vtlHandleProto(opts.startTrigger) : undefined,
       startEdge: EDGE[opts.startEdge ?? "rising"],
-      cancelTrigger: opts.cancelTrigger ? vtlLineHandle(opts.cancelTrigger) : undefined,
+      cancelTrigger: opts.cancelTrigger ? vtlHandleProto(opts.cancelTrigger) : undefined,
       cancelEdge: EDGE[opts.cancelEdge ?? "rising"],
       cancelActionMask: maskOf(opts.cancelActions, CANCEL_ACTION),
-      cancelActionTriggerLine: opts.cancelActionTriggerLine ? vtlLineHandle(opts.cancelActionTriggerLine) : undefined,
+      cancelActionTriggerLine: opts.cancelActionTriggerLine ? vtlHandleProto(opts.cancelActionTriggerLine) : undefined,
       stimuli: toStimuli(stimuli),
     };
   }

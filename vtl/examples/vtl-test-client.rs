@@ -5,7 +5,7 @@
 ///   vtl-test-client <shm-path> set <name> <0|1>
 ///   vtl-test-client <shm-path> pulse <name>
 ///   vtl-test-client <shm-path> watch
-use vtl::{Direction, VtlClient};
+use vtl::{VtlKind, VtlClient};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -68,13 +68,13 @@ fn cmd_list(client: &VtlClient) {
         let b  = entry.bank as usize;
         let mask = 1u64 << entry.bit;
         let state_word = match dir {
-            Direction::Input  => client.input_state(b),
-            Direction::Output => client.output_state(b),
+            VtlKind::Input  => client.input_state(b),
+            VtlKind::Output => client.output_state(b),
         };
         let state = if state_word & mask != 0 { 1u8 } else { 0u8 };
         let rise  = (client.peek_input_rise(b) & mask != 0) as u8;
         let fall  = (client.peek_input_fall(b) & mask != 0) as u8;
-        let dir_s = match dir { Direction::Input => "in", Direction::Output => "out" };
+        let dir_s = match dir { VtlKind::Input => "in", VtlKind::Output => "out" };
         println!("{:<24} {:>5} {:>4}  {:>6}  {:>16}  {:>7}/{:>7}",
             entry.name_str(), b, entry.bit, dir_s, state, rise, fall);
     }
@@ -89,7 +89,7 @@ fn cmd_set(client: &VtlClient, line_name: &str, value: bool) {
         eprintln!("Line '{}' not found", line_name);
         std::process::exit(1);
     };
-    if dir != Direction::Input {
+    if dir != VtlKind::Input {
         eprintln!("Warning: '{}' is an output line — writing input state anyway", line_name);
     }
     let b   = entry.bank as usize;

@@ -4,7 +4,7 @@
 // receptive-field mapping interaction).
 
 import { expect, test } from "@playwright/test";
-import { Connection } from "../src/index.js";
+import { Connection, VtlHandle } from "../src/index.js";
 
 // Backend web port from playwright.config.ts. Reset the scene before each test
 // (the --null server persists across tests) using the same client, node-side.
@@ -40,7 +40,7 @@ test("toggles a VTL bit in the binary grid", async ({ page }) => {
   // Register a named input line server-side, then load the UI.
   const conn = await Connection.connect(BACKEND);
   await conn.vtl.setName(0, 1, "input", "trig");
-  await conn.vtl.setInput("trig", false); // known starting level
+  await conn.vtl.setLine(VtlHandle.named("trig", "input"), false); // known starting level
   conn.close();
 
   await page.goto("/");
@@ -73,6 +73,27 @@ test("lists an animation and arms it", async ({ page }) => {
   // Arming starts it; the polled state leaves idle (armed → running → done).
   await row.getByRole("button", { name: "arm", exact: true }).click();
   await expect(row).not.toContainText("idle");
+});
+
+test("couple-visibility dialog can target an output line (kind picker)", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByText("connected")).toBeVisible();
+
+  await page.getByRole("button", { name: "+ Couple visibility…" }).click();
+
+  // The dialog exposes an input/output kind selector (the direction-aware
+  // trigger feature). Pick "output" so the coupling reads an output line.
+  const kind = page.getByLabel("Direction");
+  await expect(kind).toBeVisible();
+  await expect(kind.locator("option")).toHaveText(["input", "output"]);
+  await kind.selectOption("output");
+
+  await page.getByRole("button", { name: "Create" }).click();
+
+  // The new animation appears with its canonical type tag.
+  await expect(
+    page.locator("tr", { hasText: "CoupleVisibilityToTriggerLine" }),
+  ).toBeVisible();
 });
 
 test("system: Hide all disables every stimulus", async ({ page }) => {

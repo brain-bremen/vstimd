@@ -24,13 +24,16 @@ impl NullBackend {
                 break;
             }
             let t0 = std::time::Instant::now();
-            let (edges, mut staged) = vtl
+            // commit_staged writes the previous frame's outputs to shm; output_edges
+            // then reads them back so animation-to-animation chaining works headlessly.
+            let (input_edges, output_edges, mut staged) = vtl
                 .as_ref()
                 .and_then(|v| v.lock().ok().map(|mut g| {
                     g.commit_staged();
-                    let edges = g.poll();
+                    let input_edges = g.poll();
+                    let output_edges = g.output_edges();
                     let staged = g.staged;
-                    (edges, staged)
+                    (input_edges, output_edges, staged)
                 }))
                 .unwrap_or_default();
             {
@@ -40,8 +43,7 @@ impl NullBackend {
                 }
                 s.runtime.frame_count += 1;
                 let _ = s.runtime.frame_notifier.send(s.runtime.frame_count);
-                let output_snapshot = [0u64; vtl::MAX_BANKS];
-                s.advance_animations(&edges, &output_snapshot, &mut staged);
+                s.advance_animations(&input_edges, &output_edges, &mut staged);
             }
             if let Some(v) = vtl.as_ref() {
                 v.lock().unwrap().staged = staged;

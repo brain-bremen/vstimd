@@ -83,7 +83,7 @@ fn main() {
     )
     .map(|owner| {
         let mut state = VtlState::new(owner);
-        state.vblank_vtl = rig.vtl.vblank;
+        state.vblank_vtl = rig.vtl.vblank.map(|v| v.to_vtl_bit());
         Arc::new(Mutex::new(state))
     })
     .map_err(|e| log::warn!("vtl: failed to create shm segment: {e}"))

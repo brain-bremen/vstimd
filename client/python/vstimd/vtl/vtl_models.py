@@ -4,9 +4,11 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 
-class VtlDirection(IntEnum):
-    INPUT = 0
-    OUTPUT = 1
+class VtlKind(IntEnum):
+    # Values mirror the proto VirtualTriggerLineKind (UNSPECIFIED=0 is never a
+    # valid line kind, so it is not exposed here).
+    INPUT = 1
+    OUTPUT = 2
 
 
 @dataclass(frozen=True)
@@ -14,5 +16,5 @@ class VtlLineInfo:
     name: str
     bank: int
     bit: int
-    direction: VtlDirection
+    kind: VtlKind
     high: bool

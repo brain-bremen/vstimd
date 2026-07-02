@@ -235,14 +235,15 @@ impl SceneState {
     /// Advance all animations by one frame.  Called once per frame by the render
     /// thread at [S] (after output commit and input poll).
     ///
-    /// `input_edges`     — rising/falling/current input lines from `VtlState::poll()`
-    /// `output_snapshot` — frozen output_state read at [S] for output-line trigger detection
-    /// `output_pending`  — `VtlState::staged` passed by value; animations set/clear bits directly;
-    ///                     written back to staged after all animations have run
+    /// `input_edges`    — rising/falling/current input lines from `VtlState::poll()`
+    /// `output_edges`   — rising/falling/current output lines from `VtlState::output_edges()`,
+    ///                    used to start/cancel/couple animations off output-line edges
+    /// `output_pending` — `VtlState::staged` passed by value; animations set/clear bits directly;
+    ///                    written back to staged after all animations have run
     pub fn advance_animations(
         &mut self,
         input_edges: &crate::vtl_state::VtlEdges,
-        output_snapshot: &[u64; vtl::MAX_BANKS],
+        output_edges: &crate::vtl_state::VtlEdges,
         output_pending: &mut [u64; vtl::MAX_BANKS],
     ) {
         // Snapshot the handles into a reused buffer: `advance_one` borrows the
@@ -256,7 +257,7 @@ impl SceneState {
                 handle,
                 self,
                 input_edges,
-                output_snapshot,
+                output_edges,
                 output_pending,
             );
         }

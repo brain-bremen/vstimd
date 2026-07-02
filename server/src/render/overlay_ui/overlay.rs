@@ -388,11 +388,11 @@ pub fn build_overlay_ui(ctx: &egui::Context, args: &mut OverlayArgs<'_>) {
                                 let owner = vst.owner();
                                 let mask = 1u64 << bit.bit;
                                 match edge {
-                                    crate::scene::Edge::Rising => {
+                                    crate::scene::VtlEdge::Rising => {
                                         owner.set_input_bit(bit.bank, bit.bit);
                                         owner.set_input_rise(bit.bank, mask);
                                     }
-                                    crate::scene::Edge::Falling => {
+                                    crate::scene::VtlEdge::Falling => {
                                         owner.clear_input_bit(bit.bank, bit.bit);
                                         owner.set_input_fall(bit.bank, mask);
                                     }
@@ -565,8 +565,12 @@ fn collect_dialog_inputs(
         .and_then(|v| v.try_lock().ok())
         .map(|vst| {
             vst.names.iter().map(|e| TriggerLine {
-                label: format!("{} ({}/{}, {:?})", e.name, e.bank, e.bit, e.direction),
-                bit: crate::scene::VtlBit { bank: e.bank as usize, bit: e.bit },
+                label: format!("{} ({}/{}, {:?})", e.name, e.bank, e.bit, e.kind),
+                bit: crate::scene::VtlBit {
+                    bank: e.bank as usize,
+                    bit: e.bit,
+                    kind: e.kind,
+                },
             }).collect()
         })
         .unwrap_or_default();
@@ -738,8 +742,8 @@ fn vtl_group(ctx: &egui::Context, ui: &mut egui::Ui, want_focus: bool, vtl: Opti
     // Owned copies so the read state and names don't hold a borrow of `vtl_st`
     // across the output writes (`set_staged_bit` needs `&mut`).
     let names = vtl_st.names.clone();
-    let inputs:  Vec<_> = names.iter().filter(|e| e.direction == vtl::Direction::Input).collect();
-    let outputs: Vec<_> = names.iter().filter(|e| e.direction == vtl::Direction::Output).collect();
+    let inputs:  Vec<_> = names.iter().filter(|e| e.kind == vtl::VtlKind::Input).collect();
+    let outputs: Vec<_> = names.iter().filter(|e| e.kind == vtl::VtlKind::Output).collect();
 
     // --- Bank view (integer representation) ---
     let fmt_id = egui::Id::new("vtl_bank_fmt");

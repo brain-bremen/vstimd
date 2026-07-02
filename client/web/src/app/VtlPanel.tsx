@@ -3,7 +3,8 @@
 // not) and toggles a line on click: inputs simulate the hardware bridge, outputs
 // override the animation-driven level — both for debugging.
 
-import type { Connection, SceneSnapshot, VtlDirection, VtlLineView } from "../index.js";
+import { VtlHandle } from "../index.js";
+import type { Connection, SceneSnapshot, VtlKind, VtlLineView } from "../index.js";
 
 interface Props {
   conn: Connection | null;
@@ -11,7 +12,7 @@ interface Props {
 }
 
 interface Bank {
-  direction: VtlDirection;
+  kind: VtlKind;
   bank: number;
   bits: (VtlLineView | undefined)[]; // indexed by bit
 }
@@ -19,27 +20,27 @@ interface Bank {
 function groupBanks(lines: VtlLineView[]): Bank[] {
   const map = new Map<string, Bank>();
   for (const l of lines) {
-    const key = `${l.direction}:${l.bank}`;
+    const key = `${l.kind}:${l.bank}`;
     let g = map.get(key);
     if (!g) {
-      g = { direction: l.direction, bank: l.bank, bits: [] };
+      g = { kind: l.kind, bank: l.bank, bits: [] };
       map.set(key, g);
     }
     g.bits[l.bit] = l;
   }
   return [...map.values()].sort(
-    (a, b) => a.direction.localeCompare(b.direction) || a.bank - b.bank,
+    (a, b) => a.kind.localeCompare(b.kind) || a.bank - b.bank,
   );
 }
 
 export function VtlPanel({ conn, snapshot }: Props) {
   const banks = groupBanks(snapshot?.vtlLines ?? []);
 
-  function toggle(direction: VtlDirection, bank: number, bit: number) {
+  function toggle(kind: VtlKind, bank: number, bit: number) {
     if (!conn) return;
-    const line = { bank, bit };
-    if (direction === "input") void conn.vtl.toggleInput(line);
-    else void conn.vtl.toggleOutput(line);
+    const handle =
+      kind === "input" ? VtlHandle.input(bank, bit) : VtlHandle.output(bank, bit);
+    void conn.vtl.toggleLine(handle);
   }
 
   return (
@@ -51,9 +52,9 @@ export function VtlPanel({ conn, snapshot }: Props) {
         // MSB-first (bit width-1 … 0), grouped into bytes of 8.
         const idxs = Array.from({ length: width }, (_, i) => width - 1 - i);
         return (
-          <div key={`${g.direction}:${g.bank}`} style={{ marginBottom: 8 }}>
+          <div key={`${g.kind}:${g.bank}`} style={{ marginBottom: 8 }}>
             <div style={{ fontSize: 12, color: "#888", marginBottom: 2 }}>
-              {g.direction === "input" ? "In" : "Out"} bank {g.bank}
+              {g.kind === "input" ? "In" : "Out"} bank {g.bank}
             </div>
             <div style={{ fontFamily: "monospace", fontSize: 13, lineHeight: 1.6 }}>
               {idxs.map((bit, i) => {
@@ -64,8 +65,8 @@ export function VtlPanel({ conn, snapshot }: Props) {
                   <span key={bit}>
                     <span
                       role="button"
-                      title={`${g.direction} bank ${g.bank} bit ${bit}${named ? `: ${line!.name}` : ""}`}
-                      onClick={() => toggle(g.direction, g.bank, bit)}
+                      title={`${g.kind} bank ${g.bank} bit ${bit}${named ? `: ${line!.name}` : ""}`}
+                      onClick={() => toggle(g.kind, g.bank, bit)}
                       style={{
                         cursor: conn ? "pointer" : "default",
                         color: high ? "#1a1a1a" : "#777",

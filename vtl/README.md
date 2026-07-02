@@ -1,7 +1,8 @@
 # vtl — Virtual Trigger Lines
 
 A lock-free POSIX shared memory segment for exchanging hardware trigger line state
-between vstimd and companion daemons (e.g. `nidaqd` for NI-DAQ hardware).
+between vstimd and companion `*-daqd` hardware bridges (e.g. `gpiochip-daqd` for
+GPIO lines; future `ni-daqd`, `labjack-daqd`, etc.).
 
 ## Concepts
 
@@ -11,8 +12,8 @@ Represent signals arriving *into* vstimd from the outside world.
 
 | Role | Actor |
 |---|---|
-| Canonical writer | `nidaqd` — writes `input_state` and sets latches when a DAQ edge is detected |
-| Software writer | ZMQ `SetInput*` commands — simulate a hardware trigger for testing |
+| Canonical writer | `daqd` — writes `input_state` and sets latches when a DAQ edge is detected |
+| Software writer | ZMQ `SetVirtualTriggerLine` (kind=INPUT) commands — simulate a hardware trigger for testing |
 | Intended reader | vstimd render loop — calls `VtlState::poll()` once per frame at the **start** of each frame, drains rise/fall latches, and feeds detected edges to the animation system |
 
 ### Output lines
@@ -21,13 +22,13 @@ Represent signals driven *by* vstimd to report what is on screen.
 
 | Role | Actor |
 |---|---|
-| Canonical writer | vstimd render loop — calls `VtlState::write_outputs()` once per frame at the **end** of each frame, after present/vsync, to commit the frame's output state |
-| Software writer | ZMQ `SetOutput*` commands — manual override for testing |
-| Intended reader | `nidaqd` — polls `output_state` to pulse NI-DAQ hardware lines (frame-sync pulses, stimulus-onset markers) |
+| Canonical writer | vstimd render loop — calls `VtlState::commit_staged()` once per frame at the **start** of each frame (aligned to vblank), committing the previous frame's output state |
+| Software writer | ZMQ `SetVirtualTriggerLine` (kind=OUTPUT) commands — manual override for testing |
+| Intended reader | `daqd` — woken by the output semaphore strobe (posted once per frame), then reads `output_state` to pulse DAQ hardware lines (frame-sync pulses, stimulus-onset markers). Also read back by the animation engine as output *edges* (`VtlState::output_edges()`) so animations can start/cancel each other in the server. |
 
-> **Current status:** `VtlState::poll()` and `VtlState::write_outputs()` are implemented
-> but not yet wired into the render loop.  Currently both directions are accessible only
-> via ZMQ commands.
+> **Current status:** `VtlState::poll()` and `VtlState::commit_staged()` are wired into
+> both the DRM and winit render loops. ZMQ `SetVirtualTriggerLine` commands provide an
+> additional software-only path for testing and manual override.
 
 ### Shared memory layout
 
@@ -74,7 +75,7 @@ Each `VtlLineEntry` (60 bytes):
 +00  56   name             null-terminated UTF-8, all-zero if unused
 +38   1   bank             0..3
 +39   1   bit              0..63
-+3A   1   direction        0 = Input, 1 = Output
++3A   1   kind             0 = Input, 1 = Output
 +3B   1   _pad
 ```
 
@@ -142,9 +143,9 @@ with mmap.mmap(fd, 0, access=mmap.ACCESS_READ) as m:
     for i in range(n):
         off = entry_base + i * 60
         name = m[off:off+56].split(b'\x00')[0].decode()
-        bank, bit, direction = m[off+56], m[off+57], m[off+58]
-        dir_str = 'INPUT' if direction == 0 else 'OUTPUT'
-        print(f'  [{i}] {name!r:30s}  bank={bank} bit={bit} {dir_str}')
+        bank, bit, kind = m[off+56], m[off+57], m[off+58]
+        kind_str = 'INPUT' if kind == 0 else 'OUTPUT'
+        print(f'  [{i}] {name!r:30s}  bank={bank} bit={bit} {kind_str}')
 os.close(fd)
 "
 ```
@@ -186,7 +187,7 @@ let rose = owner.set_input_bit(0, 3);  // bank=0, bit=3
 owner.set_output_state(0, 1 << 5);    // set bit 5 of output bank 0
 
 // Register a name visible to other tools:
-owner.write_named_line(0, "stim_onset", 0, 0, vtl::Direction::Output);
+owner.write_named_line(0, "stim_onset", 0, 0, vtl::VtlKind::Output);
 owner.set_n_named_lines(1);
 
 // Per-frame: drain latches accumulated since the last poll:
@@ -194,7 +195,7 @@ let rising  = owner.drain_input_rise(0, u64::MAX);
 let falling = owner.drain_input_fall(0, u64::MAX);
 ```
 
-### Client (nidaqd or test tool)
+### Client (daqd or test tool)
 
 ```rust
 use vtl::VtlClient;
