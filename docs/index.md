@@ -1,5 +1,11 @@
 # vstimd
 
+!!! danger "Alpha software — not ready for production"
+    vstimd is in **early alpha**. The APIs, wire protocol, and behaviour can change at
+    any time, features are incomplete, and it has **not** been validated for experiments
+    or data collection. Use it for evaluation and development only — **do not rely on it
+    in production yet**.
+
 **vstimd** is a visual stimulus server for neuroscience experiments. It runs on dedicated
 hardware and accepts commands from experiment scripts over the network, rendering stimuli with
 precise, vsync-locked frame timing.
@@ -14,18 +20,22 @@ fed by hardware DAQ or a software simulator.
     - **[Choosing an API path](tutorial/index.md)** — the two ways to drive vstimd and
       when to use each, with hands-on tutorials.
 
-```
-Experiment PC                               Stimulus PC (Linux, DRM)
-┌──────────────────┐                        ┌─────────────────────────────────┐
-│ Software client  │       ZMQ / TCP        │ vstimd  (Vulkan + KMS/DRM)       │
-│ Py / MATLAB / C# │    ─── protobuf ──►    │                                  │
-└──────────────────┘                        │  scene state ──► render loop ────┼─► Monitor
-                                            │        ▲                         │
-┌──────────────────┐                        │        │  (VTL-driven anims)     │
-│ Hardware DAQ     │       TTL pulse        │        │                         │
-│ (daqd) or        │    ── shared mem ─►    │  VTL banks (shared memory)       │
-│ software sim     │                        │                                  │
-└──────────────────┘                        └─────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph EXP["Experiment PC"]
+        client["Software client<br/>Python · C# · MATLAB (planned)"]
+        daq["Hardware DAQ (daqd)<br/>or software sim"]
+    end
+    subgraph STIM["Stimulus PC · Linux / DRM"]
+        vstimd["vstimd<br/>Vulkan + KMS/DRM"]
+        vtl["VTL banks<br/>(shared memory)"]
+        loop["scene state → render loop<br/>(VTL-driven anims)"]
+    end
+    client -->|"ZMQ / TCP · protobuf"| vstimd
+    daq -->|"TTL · shared mem"| vtl
+    vstimd --> loop
+    vtl --> loop
+    loop --> monitor([Monitor])
 ```
 
 ## Two ways to control vstimd
@@ -38,12 +48,10 @@ reactions frame-by-frame.
 ZMQ/protobuf that take effect on the next frame: create a stimulus, set its position,
 enable or disable it.
 
-```
-┌───────────────┐   ZMQ / protobuf     ┌──────────────────────────────────┐
-│ Software       │ ──── command ─────►  │ vstimd                           │
-│ client         │  "create rect",      │  scene state ──► render ──► Monitor
-│ (Py/MATLAB/C#) │  "set enabled"       │                                  │
-└───────────────┘                       └──────────────────────────────────┘
+```mermaid
+flowchart LR
+    client["Software client<br/>Python · C# · MATLAB (planned)"] -->|"ZMQ / protobuf · create rect / set enabled"| vstimd["vstimd<br/>scene state → render"]
+    vstimd --> monitor([Monitor])
 ```
 
 **Path 2 — VTL-driven animations (reactive).** *Virtual Trigger Lines* (VTL) are a bank
@@ -53,16 +61,12 @@ per frame with zero syscall overhead, and **animations** react to edges/levels t
 stimulus visibility, position, and output markers in hardware time — no round-trip back
 to the experiment PC.
 
-```
-┌────────────────┐  TTL pulse           ┌───────────────────────────────────┐
-│ Hardware DAQ    │ ── (or ZMQ sim) ──►  │ VTL banks (shared memory)         │
-│ (daqd) or       │                      │       │ poll @ frame start        │
-│ software sim    │                      │       ▼                           │
-└────────────────┘                      │  animations ──► scene ──► render ──┼─► Monitor
-                                         │       │ output markers @ frame end │
-                                         │       ▼                            │
-                                         │  VTL output banks ──► back to DAQ  │
-                                         └───────────────────────────────────┘
+```mermaid
+flowchart LR
+    daq["Hardware DAQ (daqd)<br/>or software sim"] -->|"TTL pulse<br/>(or ZMQ sim)"| vtl["VTL banks<br/>(shared memory)"]
+    vtl -->|"poll @ frame start"| anim["animations → scene → render"]
+    anim --> monitor([Monitor])
+    anim -->|"output markers @ frame end"| out["VTL output banks → back to DAQ"]
 ```
 
 Animations are declarative (flash for N frames, couple visibility to a line, move along a

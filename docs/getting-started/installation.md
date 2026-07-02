@@ -1,29 +1,48 @@
 # Installation
 
+!!! danger "Alpha software — not ready for production"
+    vstimd is in **early alpha**. The APIs, wire protocol, and behaviour can change at
+    any time, features are incomplete, and it has **not** been validated for experiments
+    or data collection. Use it for evaluation and development only — **do not rely on it
+    in production yet**.
+
 ## Server
 
-The server is a Rust binary. You need a working [Rust toolchain](https://rustup.rs) (stable, edition 2024).
+### Linux dependencies
+
+#### Ubuntu / Debian
+
+```sh
+sudo apt install build-essential pkg-config \
+    libdrm-dev libudev-dev libinput-dev \
+    protobuf-compiler
+```
+
+#### Fedora / RHEL
+
+```sh
+sudo dnf install gcc pkg-config \
+    libdrm-devel systemd-devel libinput-devel \
+    protobuf-compiler
+```
+
+### Manual installation
+
+The server is a Rust binary. You need a working [Rust toolchain](https://rustup.rs) (stable, edition 2024), and node.js (v22 or later)
 
 ```sh
 git clone https://github.com/vstimd/vstimd.git
 cd vstimd
-cargo build --release
+make build
+sudo make install
 ```
 
-The compiled binary is at `target/release/vstimd`.
+### Package installation (planned)
 
-### Linux dependencies
+A package will be available soon for Debian/Ubuntu-based distributions as well
+as RHEL-based distributions. This will include systemd service files and other
+configuration files. A Ubuntu PPA will be available soon.
 
-On bare-metal Linux (DRM mode), the server requires:
-
-- Vulkan driver for your GPU (`mesa-vulkan-drivers` or vendor-specific)
-- No compositor running (GDM/Xorg must be stopped — see [Bare-Metal Linux](bare-metal.md))
-
-On desktop Linux (Wayland/X11), no extra steps are needed.
-
-### Windows
-
-Desktop mode only (DRM is not available). Build with the same `cargo build --release`.
 
 ## Python client
 
@@ -52,8 +71,7 @@ environment is declared in `docs/pyproject.toml` and managed with
 [uv](https://docs.astral.sh/uv/):
 
 ```sh
-uv run --project docs mkdocs serve   # live preview at http://127.0.0.1:8000
-uv run --project docs mkdocs build   # static output in site/
+make docs
 ```
 
 The published site is built automatically by
